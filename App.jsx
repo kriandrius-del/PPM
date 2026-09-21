@@ -1270,8 +1270,9 @@ function ScheduleCalendarTab({ devices, services, tasks, onLogService, onEditSer
           </span>
         ))}
         <span style={{ display: "flex", gap: 10, marginLeft: "auto", fontSize: 10.5, color: "#A3ABB4" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 7, height: 7, borderRadius: "50%", border: "1.5px solid #8A94A0" }} /> due</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#8A94A0" }} /> done</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, border: "1.5px solid #8A94A0" }} /> due</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: "#8A94A0" }} /> done</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 15, height: 15, borderRadius: 8, background: "#1B2430", color: "#fff", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>3</span> count</span>
         </span>
       </div>
 
@@ -1286,7 +1287,7 @@ function ScheduleCalendarTab({ devices, services, tasks, onLogService, onEditSer
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 4 }}>
               {WEEKDAY_LABELS.map((w) => <div key={w} style={{ fontSize: 10, fontWeight: 700, color: "#A3ABB4", textAlign: "center" }}>{w}</div>)}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
               {grid.map((dt, i) => {
                 if (!dt) return <div key={i} />;
                 const iso = toISODate(dt);
@@ -1294,28 +1295,45 @@ function ScheduleCalendarTab({ devices, services, tasks, onLogService, onEditSer
                 const done = doneByDate[iso] || [];
                 const dueTasksToday = taskDueByDate[iso] || [];
                 const isToday = iso === toISODate(today);
-                const hasItems = due.length || done.length || dueTasksToday.length;
-                const marks = [
-                  ...done.map((s) => ({ color: (CATEGORY_META[deviceById[s.deviceId]?.serviceCategory] || CATEGORY_META.maintenance).color, filled: true })),
-                  ...due.map((d) => ({ color: (CATEGORY_META[d.serviceCategory] || CATEGORY_META.maintenance).color, filled: false })),
-                  ...dueTasksToday.map((t) => ({ color: (CATEGORY_META[deviceById[t.deviceId]?.serviceCategory] || CATEGORY_META.maintenance).color, filled: false })),
-                ];
+                const totalCount = due.length + done.length + dueTasksToday.length;
+                const hasItems = totalCount > 0;
+                const dueCats = new Set([
+                  ...due.map((d) => d.serviceCategory || "maintenance"),
+                  ...dueTasksToday.map((t) => deviceById[t.deviceId]?.serviceCategory || "maintenance"),
+                ]);
+                const doneCats = new Set(done.map((s) => deviceById[s.deviceId]?.serviceCategory || "maintenance"));
+                const allCats = [...new Set([...dueCats, ...doneCats])];
+                const singleColor = allCats.length === 1 ? CATEGORY_META[allCats[0]].color : null;
                 return (
                   <button key={i} onClick={() => hasItems && setSelectedDate(iso)} style={{
-                    aspectRatio: "1", borderRadius: 8, border: isToday ? "1.5px solid #D97706" : "1px solid #EEF0F2",
-                    background: "#fff", cursor: hasItems ? "pointer" : "default", padding: 2,
-                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, fontFamily: "inherit",
+                    position: "relative", aspectRatio: "1", borderRadius: 9,
+                    border: isToday ? "1.5px solid #D97706" : hasItems ? `1px solid ${singleColor ? singleColor + "55" : "#E1E4E8"}` : "1px solid #F1F2F4",
+                    background: singleColor ? `${singleColor}17` : "#fff",
+                    cursor: hasItems ? "pointer" : "default", padding: 3, overflow: "hidden",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, fontFamily: "inherit",
                   }}>
-                    <span style={{ fontSize: 11, fontWeight: isToday ? 800 : 600, color: "#1B2430" }}>{dt.getDate()}</span>
-                    <div style={{ display: "flex", gap: 2 }}>
-                      {marks.slice(0, 4).map((mk, idx) => (
-                        <span key={idx} style={{
-                          width: 5, height: 5, borderRadius: "50%",
-                          background: mk.filled ? mk.color : "transparent",
-                          border: mk.filled ? "none" : `1.3px solid ${mk.color}`,
-                        }} />
-                      ))}
-                    </div>
+                    <span style={{ fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: "#1B2430" }}>{dt.getDate()}</span>
+                    {hasItems && (
+                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap", justifyContent: "center", maxWidth: "100%" }}>
+                        {allCats.slice(0, 3).map((cat) => {
+                          const meta = CATEGORY_META[cat];
+                          const isDone = doneCats.has(cat);
+                          return (
+                            <span key={cat} style={{
+                              width: 8, height: 8, borderRadius: 2, flexShrink: 0,
+                              background: isDone ? meta.color : "transparent",
+                              border: `1.5px solid ${meta.color}`,
+                            }} />
+                          );
+                        })}
+                      </div>
+                    )}
+                    {totalCount > 1 && (
+                      <span style={{
+                        position: "absolute", top: 2, right: 2, minWidth: 15, height: 15, borderRadius: 8, background: "#1B2430",
+                        color: "#fff", fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+                      }}>{totalCount}</span>
+                    )}
                   </button>
                 );
               })}
@@ -1403,8 +1421,9 @@ function DayDetailModal({ date, due, done, dueTasks, deviceById, onClose, onLogS
 
 function TaskDueRow({ task, device, onMarkDone }) {
   const status = dueStatus(task.nextDate);
+  const catColor = (CATEGORY_META[device?.serviceCategory] || CATEGORY_META.maintenance).color;
   return (
-    <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+    <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", borderLeft: `3px solid ${catColor}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <StatusDot tone={status.tone} />
         <div>
@@ -1421,8 +1440,9 @@ function TaskDueRow({ task, device, onMarkDone }) {
 
 function DueRow({ device, onLogService }) {
   const status = dueStatus(device.nextServiceDate);
+  const catColor = (CATEGORY_META[device.serviceCategory] || CATEGORY_META.maintenance).color;
   return (
-    <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+    <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", borderLeft: `3px solid ${catColor}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <StatusDot tone={status.tone} />
         <div>
@@ -1440,9 +1460,10 @@ function DueRow({ device, onLogService }) {
 }
 
 function CompletedRow({ service, device, onEdit }) {
+  const catColor = (CATEGORY_META[device?.serviceCategory] || CATEGORY_META.maintenance).color;
   return (
     <button onClick={() => onEdit(service)} style={{
-      background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", display: "flex",
+      background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", borderLeft: `3px solid ${catColor}`, display: "flex",
       alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "left", fontFamily: "inherit", width: "100%",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
@@ -1820,7 +1841,7 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
   const variance = totalBudget - totalActual;
 
   const monthlyData = useMemo(() => MONTH_LABELS.map((label, i) => {
-    let svc = 0, wk = 0, bl = 0;
+    let svc = 0, wk = 0, bl = 0, plannedThisMonth = 0;
     services.forEach((s) => { const d = new Date(s.date); if (d.getFullYear() === year && d.getMonth() === i) svc += Number(s.cost) || 0; });
     works.forEach((w) => {
       if (w.budgetType === "non_controllable") return;
@@ -1829,13 +1850,14 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
       if (d.getFullYear() === year && d.getMonth() === i) wk += Number(w.quoteAmount) || 0;
     });
     budgetLines.forEach((l) => {
-      if (l.actualAmount == null) return;
       const d = new Date(l.date);
-      if (d.getFullYear() === year && d.getMonth() === i) bl += Number(l.actualAmount) || 0;
+      if (d.getFullYear() !== year || d.getMonth() !== i) return;
+      plannedThisMonth += Number(l.amount) || 0; // what was budgeted for this specific month
+      if (l.actualAmount != null) bl += Number(l.actualAmount) || 0;
     });
     const supplierMonthly = CATEGORY_KEYS.reduce((s, c) => s + supplierMonthlyByCategory[c], 0);
-    return { month: label, cost: Math.round(svc + wk + bl + supplierMonthly), budget: Math.round(totalBudget / 12) };
-  }), [services, works, budgetLines, year, supplierMonthlyByCategory, totalBudget]);
+    return { month: label, cost: Math.round(svc + wk + bl + supplierMonthly), budget: Math.round(plannedThisMonth + supplierMonthly) };
+  }), [services, works, budgetLines, year, supplierMonthlyByCategory]);
 
   const yearlyData = useMemo(() => {
     const years = []; for (let y = thisYear - 4; y <= thisYear; y++) years.push(y);
@@ -1849,7 +1871,8 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
     });
   }, [services, works, budgetLines, budgets, thisYear, supplierMonthlyByCategory]);
 
-  // Per-day spend for the calendar view (discrete logged items only — services + works).
+  // Per-day spend for the calendar view — logged visits, works, AND any Budget
+  // Plan line with a recorded actual spend, all placed on their real dates.
   const spendByDate = useMemo(() => {
     const m = {};
     services.forEach((s) => {
@@ -1860,8 +1883,67 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
       if (!w.dateRaised || !w.quoteAmount || w.status === "rejected") return;
       (m[w.dateRaised] = m[w.dateRaised] || []).push({ amount: Number(w.quoteAmount), controllable: w.budgetType !== "non_controllable" });
     });
+    budgetLines.forEach((l) => {
+      if (!l.date || l.actualAmount == null) return;
+      (m[l.date] = m[l.date] || []).push({ amount: Number(l.actualAmount), controllable: true });
+    });
     return m;
-  }, [services, works]);
+  }, [services, works, budgetLines]);
+
+  // Actual spend broken down by supplier or by service, for the Month/Year chart's
+  // "By supplier" / "By service" option — one flat list of dated, attributed spend.
+  const [chartBreakdown, setChartBreakdown] = useState("total"); // 'total' | 'supplier' | 'service'
+  const BREAKDOWN_COLORS = ["#2B4562", "#D97706", "#2F855A", "#8E4585", "#2B7A78", "#9B2C2C", "#5B6672", "#C53030"];
+
+  const actualItems = useMemo(() => {
+    const items = [];
+    services.forEach((s) => { if (s.cost) items.push({ date: s.date, amount: Number(s.cost) || 0, supplierId: s.supplierId || null, deviceId: s.deviceId || null }); });
+    budgetLines.forEach((l) => { if (l.actualAmount != null) items.push({ date: l.date, amount: Number(l.actualAmount) || 0, supplierId: l.supplierId || null, deviceId: l.deviceId || null }); });
+    return items;
+  }, [services, budgetLines]);
+
+  const supplierNameById = useMemo(() => Object.fromEntries(suppliers.map((s) => [s.id, s.name])), [suppliers]);
+  const deviceNameById = useMemo(() => Object.fromEntries(devices.map((d) => [d.id, d.name])), [devices]);
+
+  function buildBreakdownData(periods, periodKeyFor, groupBy) {
+    const nameFor = (item) => {
+      if (groupBy === "supplier") return item.supplierId ? (supplierNameById[item.supplierId] || "Unknown supplier") : "No supplier";
+      return item.deviceId ? (deviceNameById[item.deviceId] || "Unknown service") : "No service";
+    };
+    const periodKeys = new Set(periods.map((p) => p.key));
+    const relevant = actualItems.filter((it) => it.date && periodKeys.has(periodKeyFor(it.date)));
+    const totals = {};
+    relevant.forEach((it) => { const n = nameFor(it); totals[n] = (totals[n] || 0) + it.amount; });
+    const sortedNames = Object.entries(totals).sort((a, b) => b[1] - a[1]).map(([n]) => n);
+    const topNames = sortedNames.slice(0, 6);
+    const hasOther = sortedNames.length > 6;
+    const seriesNames = hasOther ? [...topNames, "Other"] : topNames;
+    const data = periods.map((p) => {
+      const row = { label: p.label };
+      seriesNames.forEach((n) => { row[n] = 0; });
+      relevant.forEach((it) => {
+        if (periodKeyFor(it.date) !== p.key) return;
+        let n = nameFor(it);
+        if (hasOther && !topNames.includes(n)) n = "Other";
+        row[n] = (row[n] || 0) + it.amount;
+      });
+      return row;
+    });
+    return { data, seriesNames };
+  }
+
+  const monthBreakdown = useMemo(() => {
+    if (chartBreakdown === "total") return null;
+    const periods = MONTH_LABELS.map((label, i) => ({ label, key: `${year}-${i}` }));
+    return buildBreakdownData(periods, (dateStr) => { const d = new Date(dateStr); return `${d.getFullYear()}-${d.getMonth()}`; }, chartBreakdown);
+  }, [chartBreakdown, year, actualItems, supplierNameById, deviceNameById]);
+
+  const yearBreakdown = useMemo(() => {
+    if (chartBreakdown === "total") return null;
+    const years = []; for (let y = thisYear - 4; y <= thisYear; y++) years.push(y);
+    const periods = years.map((y) => ({ label: String(y), key: String(y) }));
+    return buildBreakdownData(periods, (dateStr) => String(new Date(dateStr).getFullYear()), chartBreakdown);
+  }, [chartBreakdown, thisYear, actualItems, supplierNameById, deviceNameById]);
 
   // Per-device budget-per-visit comparison — uses the nearest visit-specific
   // budget for each logged visit where set, falling back to the device's flat rate.
@@ -2035,19 +2117,47 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
         <ToggleButton active={view === "plan"} onClick={() => setView("plan")}>Plan</ToggleButton>
       </div>
 
+      {(view === "month" || view === "year") && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          <ToggleButton active={chartBreakdown === "total"} onClick={() => setChartBreakdown("total")}>Total</ToggleButton>
+          <ToggleButton active={chartBreakdown === "supplier"} onClick={() => setChartBreakdown("supplier")}>By supplier</ToggleButton>
+          <ToggleButton active={chartBreakdown === "service"} onClick={() => setChartBreakdown("service")}>By service</ToggleButton>
+        </div>
+      )}
+
       {view === "month" || view === "year" ? (
         <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: "14px 8px 4px" }}>
           <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={view === "month" ? monthlyData : yearlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E9ECEF" vertical={false} />
-              <XAxis dataKey={view === "month" ? "month" : "year"} tick={{ fontSize: 11, fill: "#8A94A0" }} axisLine={{ stroke: "#E1E4E8" }} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#8A94A0" }} axisLine={false} tickLine={false} width={44} tickFormatter={(v) => `£${v >= 1000 ? Math.round(v / 1000) + "k" : v}`} />
-              <Tooltip formatter={(v) => gbp(v)} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #E1E4E8" }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="cost" name="Actual" fill="#2B4562" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="budget" name="Budget" fill="#D97706" radius={[4, 4, 0, 0]} opacity={0.55} />
-            </BarChart>
+            {chartBreakdown === "total" ? (
+              <BarChart data={view === "month" ? monthlyData : yearlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E9ECEF" vertical={false} />
+                <XAxis dataKey={view === "month" ? "month" : "year"} tick={{ fontSize: 11, fill: "#8A94A0" }} axisLine={{ stroke: "#E1E4E8" }} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "#8A94A0" }} axisLine={false} tickLine={false} width={44} tickFormatter={(v) => `£${v >= 1000 ? Math.round(v / 1000) + "k" : v}`} />
+                <Tooltip formatter={(v) => gbp(v)} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #E1E4E8" }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="cost" name="Actual" fill="#2B4562" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="budget" name="Budget" fill="#D97706" radius={[4, 4, 0, 0]} opacity={0.55} />
+              </BarChart>
+            ) : (() => {
+              const b = view === "month" ? monthBreakdown : yearBreakdown;
+              if (!b || b.seriesNames.length === 0) return <div />;
+              return (
+                <BarChart data={b.data} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E9ECEF" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8A94A0" }} axisLine={{ stroke: "#E1E4E8" }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: "#8A94A0" }} axisLine={false} tickLine={false} width={44} tickFormatter={(v) => `£${v >= 1000 ? Math.round(v / 1000) + "k" : v}`} />
+                  <Tooltip formatter={(v) => gbp(v)} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #E1E4E8" }} />
+                  <Legend wrapperStyle={{ fontSize: 10.5 }} />
+                  {b.seriesNames.map((name, i) => (
+                    <Bar key={name} dataKey={name} name={name} stackId="a" fill={BREAKDOWN_COLORS[i % BREAKDOWN_COLORS.length]} radius={i === b.seriesNames.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  ))}
+                </BarChart>
+              );
+            })()}
           </ResponsiveContainer>
+          {chartBreakdown !== "total" && (!(view === "month" ? monthBreakdown : yearBreakdown)?.seriesNames.length) && (
+            <div style={{ textAlign: "center", color: "#A3ABB4", fontSize: 12.5, padding: "20px 0" }}>No recorded spend to break down yet.</div>
+          )}
         </div>
       ) : view === "calendar" ? (
         <SpendCalendar year={year} month={calMonth} onMonthChange={setCalMonth} spendByDate={spendByDate}
