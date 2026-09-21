@@ -92,9 +92,9 @@ function daysUntil(dateStr) {
   const target = new Date(dateStr + "T00:00:00");
   return Math.round((target - today) / 86400000);
 }
-function dueStatus(dateStr) {
+function dueStatus(dateStr, everServiced) {
   const d = daysUntil(dateStr);
-  if (d === null) return { label: "No date set", tone: "muted" };
+  if (d === null) return everServiced ? { label: "Completed", tone: "ok" } : { label: "Not yet scheduled", tone: "muted" };
   if (d < 0) return { label: `Overdue ${Math.abs(d)}d`, tone: "danger" };
   if (d <= 30) return { label: `Due in ${d}d`, tone: "warn" };
   return { label: `Due in ${d}d`, tone: "ok" };
@@ -493,7 +493,7 @@ export default function App() {
       .filter((v) => v.deviceId === deviceId && v.date > lastDate)
       .map((v) => v.date)
       .sort()[0];
-    const nextDate = upcomingPlanned || (dev.serviceIntervalMonths ? addMonths(lastDate, dev.serviceIntervalMonths) : dev.nextServiceDate);
+    const nextDate = upcomingPlanned || (dev.serviceIntervalMonths ? addMonths(lastDate, dev.serviceIntervalMonths) : null);
     persist.devices(devices.map((d) => d.id === deviceId ? { ...d, lastServiceDate: lastDate, nextServiceDate: nextDate } : d));
   }
   function saveService(record) {
@@ -588,7 +588,7 @@ export default function App() {
   const navItems = [
     { key: "devices", label: "Services", icon: Wrench },
     { key: "schedule", label: "Schedule", icon: Calendar, alert: overdueCount > 0 },
-    { key: "certificates", label: "Certs", icon: FileCheck },
+    { key: "certificates", label: "Completed", icon: FileCheck },
     { key: "works", label: "Works", icon: Receipt },
     { key: "suppliers", label: "Suppliers", icon: UsersIcon },
     { key: "budget", label: "Budget", icon: PoundSterling },
@@ -956,22 +956,45 @@ function AddLocationModal({ countryId, onClose, onSave }) {
    Devices Tab
 --------------------------------------------------------- */
 function DevicesTab({ devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel }) {
+  const [dueFilter, setDueFilter] = useState("active"); // 'active' | 'overdue' | 'month' | 'completed'
+  const isCompleted = (d) => !d.nextServiceDate && !!d.lastServiceDate;
+  const filteredDevices = devices.filter((d) => {
+    if (dueFilter === "completed") return isCompleted(d);
+    if (dueFilter === "active") return !isCompleted(d);
+    const days = daysUntil(d.nextServiceDate);
+    if (dueFilter === "overdue") return days !== null && days < 0;
+    if (dueFilter === "month") {
+      if (!d.nextServiceDate) return false;
+      const dt = new Date(d.nextServiceDate + "T00:00:00");
+      const now = new Date();
+      return dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth();
+    }
+    return true;
+  });
   return (
     <div>
       <div style={{ position: "relative", marginBottom: 8 }}>
         <Search size={16} color="#8A94A0" style={{ position: "absolute", left: 11, top: 11 }} />
         <TextInput placeholder="Search services, tags, categories…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: "100%", paddingLeft: 34 }} />
       </div>
-      <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14, cursor: "pointer", fontSize: 12, color: "#5B6672", fontWeight: 600 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10, cursor: "pointer", fontSize: 12, color: "#5B6672", fontWeight: 600 }}>
         <input type="checkbox" checked={searchAllLocations} onChange={(e) => onToggleSearchAll(e.target.checked)} style={{ margin: 0 }} />
         Search all locations
       </label>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        <ToggleButton active={dueFilter === "active"} onClick={() => setDueFilter("active")}>Active ({devices.filter((d) => !isCompleted(d)).length})</ToggleButton>
+        <ToggleButton active={dueFilter === "overdue"} onClick={() => setDueFilter("overdue")}>Overdue</ToggleButton>
+        <ToggleButton active={dueFilter === "month"} onClick={() => setDueFilter("month")}>Due this month</ToggleButton>
+        <ToggleButton active={dueFilter === "completed"} onClick={() => setDueFilter("completed")}>Completed</ToggleButton>
+      </div>
       {devices.length === 0 ? (
         <EmptyState icon={Wrench} title="No services yet" body="Add the equipment or service you maintain at this location to start its history." actionLabel={ACTIVE_CAN_EDIT ? "Add a service" : undefined} onAction={onAdd} />
+      ) : filteredDevices.length === 0 ? (
+        <EmptyState icon={Wrench} title={dueFilter === "completed" ? "Nothing completed yet" : "Nothing matches this filter"} body={dueFilter === "completed" ? "One-off services with no more visits scheduled will show up here once logged." : "Try a different filter or clear it to see everything."} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {devices.map((d) => {
-            const status = dueStatus(d.nextServiceDate);
+          {filteredDevices.map((d) => {
+            const status = dueStatus(d.nextServiceDate, !!d.lastServiceDate);
             return (
               <div key={d.id} style={{ background: "#fff", borderRadius: 12, padding: 14, border: "1px solid #E1E4E8" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
@@ -1533,17 +1556,48 @@ function YearCalendar({ year, dueByDate, doneByDate, deviceById, onYearChange, o
    Certificates Tab
 --------------------------------------------------------- */
 function CertificatesTab({ services, deviceById, supplierById, onEdit }) {
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   if (services.length === 0) return <EmptyState icon={FileCheck} title="No certificates saved" body="Log a completed visit with a photo to build your certificate archive." />;
+
+  const filtered = services.filter((s) => {
+    if (dateFrom && (!s.date || s.date < dateFrom)) return false;
+    if (dateTo && (!s.date || s.date > dateTo)) return false;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const dev = deviceById[s.deviceId];
+      const hay = `${s.name || ""} ${dev?.name || ""} ${s.technician || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
   const csvRows = [
     ["Visit name", "Service", "Supplier", "Date", "Technician", "Cost", "Logged by", "Notes"],
-    ...services.map((s) => [s.name || "", deviceById[s.deviceId]?.name || "", s.supplierId ? (supplierById[s.supplierId]?.name || "") : "", s.date || "", s.technician || "", s.cost || 0, s.updatedBy || s.loggedBy || "", s.notes || ""]),
+    ...filtered.map((s) => [s.name || "", deviceById[s.deviceId]?.name || "", s.supplierId ? (supplierById[s.supplierId]?.name || "") : "", s.date || "", s.technician || "", s.cost || 0, s.updatedBy || s.loggedBy || "", s.notes || ""]),
   ];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ position: "relative" }}>
+        <Search size={16} color="#8A94A0" style={{ position: "absolute", left: 11, top: 11 }} />
+        <TextInput placeholder="Search visit name, service, technician…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: "100%", paddingLeft: 34 }} />
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <TextInput type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ flex: 1 }} aria-label="From date" />
+        <TextInput type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ flex: 1 }} aria-label="To date" />
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }} style={{ background: "#EEF0F2", border: "none", borderRadius: 8, padding: "9px 11px", fontSize: 12, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Clear</button>
+        )}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11.5, color: "#8A94A0", fontWeight: 600 }}>{filtered.length} of {services.length}</span>
         <ExportButton rows={csvRows} filename="certificates.csv" />
       </div>
-      {services.map((s) => {
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: "center", color: "#A3ABB4", fontSize: 12.5, padding: "24px 0" }}>Nothing matches this search or date range.</div>
+      ) : filtered.map((s) => {
         const dev = deviceById[s.deviceId];
         const supplier = s.supplierId ? supplierById[s.supplierId] : null;
         return (
