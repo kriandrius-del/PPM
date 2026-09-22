@@ -317,7 +317,7 @@ export default function App() {
   const [serviceModal, setServiceModal] = useState(null); // { deviceId, record? } — record present = editing
   const [historyFor, setHistoryFor] = useState(null); // deviceId — service history list
   const [addWorkFor, setAddWorkFor] = useState(null);
-  const [showAddSupplier, setShowAddSupplier] = useState(false);
+  const [supplierModal, setSupplierModal] = useState(null); // { record? } — record present = editing
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -466,6 +466,7 @@ export default function App() {
       persist.visitBudgets([...visitBudgets, ...newVisitBudgets]);
       const newBudgetLines = scheduleDates.map((date) => ({
         id: uid(), locationId: deviceFields.locationId, deviceId: newId, category: deviceFields.serviceCategory, subCategory: deviceFields.subCategory,
+        supplierId: deviceFields.supplierId || null,
         description: deviceFields.name, date, amount: deviceFields.budgetPerVisit, status: "planned", addedBy: currentUser?.name,
       }));
       persist.budgetLines([...budgetLines, ...newBudgetLines]);
@@ -523,12 +524,17 @@ export default function App() {
   }
   function updateWorkStatus(id, status) { persist.works(works.map((w) => w.id === id ? { ...w, status } : w)); }
   function deleteWork(id) { persist.works(works.filter((w) => w.id !== id)); showToast("Extra work deleted"); }
-  function addSupplier(supplier) {
-    persist.suppliers([{ ...supplier, id: uid(), locationId: selectedLocationId }, ...suppliers]);
-    setShowAddSupplier(false);
-    showToast("Supplier added");
+  function saveSupplier(supplier) {
+    if (supplier.id) {
+      persist.suppliers(suppliers.map((s) => s.id === supplier.id ? { ...s, ...supplier } : s));
+      showToast("Supplier updated");
+    } else {
+      persist.suppliers([{ ...supplier, id: uid(), locationId: selectedLocationId }, ...suppliers]);
+      showToast("Supplier added");
+    }
+    setSupplierModal(null);
   }
-  function deleteSupplier(id) { persist.suppliers(suppliers.filter((s) => s.id !== id)); showToast("Supplier deleted"); }
+  function deleteSupplier(id) { persist.suppliers(suppliers.filter((s) => s.id !== id)); showToast("Supplier deleted"); setSupplierModal(null); }
   function setCategoryBudget(year, category, amount) {
     const existing = locBudgets.find((b) => b.year === year && b.category === category);
     if (existing) {
@@ -739,7 +745,7 @@ export default function App() {
                 onAdd={() => setAddWorkFor(locDevices[0]?.id ?? null)} hasDevices={locDevices.length > 0} />
             )}
             {tab === "suppliers" && (
-              <SuppliersTab suppliers={locSuppliers} onAdd={() => setShowAddSupplier(true)} onDelete={deleteSupplier} />
+              <SuppliersTab suppliers={locSuppliers} onAdd={() => setSupplierModal({})} onEdit={(record) => setSupplierModal({ record })} onDelete={deleteSupplier} />
             )}
             {tab === "budget" && (
               <BudgetTab budgets={locBudgets} services={locServices} works={locWorks} suppliers={locSuppliers}
@@ -757,7 +763,7 @@ export default function App() {
             }}><Plus size={24} /></button>
           )}
           {tab === "suppliers" && ACTIVE_CAN_EDIT && (
-            <button onClick={() => setShowAddSupplier(true)} style={{
+            <button onClick={() => setSupplierModal({})} style={{
               position: "fixed", bottom: 20, right: "max(20px, calc((100vw - 460px) / 2 + 20px))", width: 54, height: 54, borderRadius: "50%",
               background: "#D97706", color: "#fff", border: "none", boxShadow: "0 6px 16px rgba(217,119,6,0.4)",
               display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
@@ -780,7 +786,7 @@ export default function App() {
       {showAddLocation && <AddLocationModal countryId={showAddLocation} onClose={() => setShowAddLocation(null)} onSave={addLocation} />}
       {deviceModal && (
         <AddDeviceModal key={deviceModal.record?.id || "new-device"} countries={countries} locations={locations} defaultLocationId={selectedLocationId}
-          existing={deviceModal.record} subcategoriesByCategory={subcategoriesByCategory} onClose={() => setDeviceModal(null)} onSave={saveDevice}
+          existing={deviceModal.record} subcategoriesByCategory={subcategoriesByCategory} suppliers={suppliers} onClose={() => setDeviceModal(null)} onSave={saveDevice}
           onDelete={(id) => { deleteDevice(id); setDeviceModal(null); }} />
       )}
       {serviceModal && (
@@ -804,7 +810,11 @@ export default function App() {
       {addWorkFor && locDevices.length > 0 && (
         <AddWorkModal devices={locDevices} defaultDeviceId={addWorkFor} onClose={() => setAddWorkFor(null)} onSave={addWork} />
       )}
-      {showAddSupplier && <AddSupplierModal subcategoriesByCategory={subcategoriesByCategory} onClose={() => setShowAddSupplier(false)} onSave={addSupplier} />}
+      {supplierModal && (
+        <AddSupplierModal key={supplierModal.record?.id || "new-supplier"} existing={supplierModal.record}
+          subcategoriesByCategory={subcategoriesByCategory} onClose={() => setSupplierModal(null)}
+          onSave={saveSupplier} onDelete={deleteSupplier} />
+      )}
       {toast && (
         <div style={{
           position: "fixed", bottom: 86, left: "50%", transform: "translateX(-50%)", background: "#1B2430", color: "#fff",
@@ -1710,7 +1720,7 @@ function WorksTab({ works, deviceById, onStatus, onDelete, onAdd, hasDevices }) 
 /* ---------------------------------------------------------
    Suppliers Tab
 --------------------------------------------------------- */
-function SuppliersTab({ suppliers, onAdd, onDelete }) {
+function SuppliersTab({ suppliers, onAdd, onEdit, onDelete }) {
   if (suppliers.length === 0) {
     return <EmptyState icon={UsersIcon} title="No suppliers yet" body="Add cleaning, maintenance and catering suppliers for this location." actionLabel={ACTIVE_CAN_EDIT ? "Add supplier" : undefined} onAction={onAdd} />;
   }
@@ -1730,14 +1740,21 @@ function SuppliersTab({ suppliers, onAdd, onDelete }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {list.map((s) => (
                 <div key={s.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <div>
+                  <button onClick={() => onEdit(s)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 650, fontSize: 14 }}>{s.name}{s.subCategory ? ` · ${s.subCategory}` : ""}</div>
                     <div style={{ fontSize: 12, color: "#8A94A0", marginTop: 2 }}>{s.contact || "No contact on file"}</div>
                     <div style={{ fontSize: 12.5, marginTop: 4, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace" }}>
                       {gbp(s.costAmount)} / {s.costFrequency === "annual" ? "yr" : "mo"}
                     </div>
+                  </button>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    {ACTIVE_CAN_EDIT && (
+                      <button onClick={() => onEdit(s)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                        <Pencil size={15} color="#8A94A0" />
+                      </button>
+                    )}
+                    <ConfirmDeleteButton onConfirm={() => onDelete(s.id)} />
                   </div>
-                  <ConfirmDeleteButton onConfirm={() => onDelete(s.id)} />
                 </div>
               ))}
             </div>
@@ -1748,20 +1765,22 @@ function SuppliersTab({ suppliers, onAdd, onDelete }) {
   );
 }
 
-function AddSupplierModal({ subcategoriesByCategory, onClose, onSave }) {
-  const [category, setCategory] = useState("cleaning");
-  const [name, setName] = useState("");
-  const [subCategory, setSubCategory] = useState("");
-  const [contact, setContact] = useState("");
-  const [costAmount, setCostAmount] = useState("");
-  const [costFrequency, setCostFrequency] = useState("monthly");
+function AddSupplierModal({ existing, subcategoriesByCategory, onClose, onSave, onDelete }) {
+  const isEdit = !!existing;
+  const [category, setCategory] = useState(existing?.category || "cleaning");
+  const [name, setName] = useState(existing?.name || "");
+  const [subCategory, setSubCategory] = useState(existing?.subCategory || "");
+  const [contact, setContact] = useState(existing?.contact || "");
+  const [costAmount, setCostAmount] = useState(existing?.costAmount ? String(existing.costAmount) : "");
+  const [costFrequency, setCostFrequency] = useState(existing?.costFrequency || "monthly");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   function submit() {
     if (!name.trim()) return;
-    onSave({ category, subCategory: subCategory.trim(), name: name.trim(), contact: contact.trim(), costAmount: costAmount ? Number(costAmount) : 0, costFrequency });
+    onSave({ id: existing?.id, category, subCategory: subCategory.trim(), name: name.trim(), contact: contact.trim(), costAmount: costAmount ? Number(costAmount) : 0, costFrequency });
   }
   return (
-    <Modal title="Add supplier" onClose={onClose}>
+    <Modal title={isEdit ? "Edit supplier" : "Add supplier"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Field label="Service category">
           <Select value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -1782,7 +1801,19 @@ function AddSupplierModal({ subcategoriesByCategory, onClose, onSave }) {
             </Select>
           </Field>
         </div>
-        <PrimaryButton onClick={submit}><Plus size={15} /> Save supplier</PrimaryButton>
+        <PrimaryButton onClick={submit}>{isEdit ? <CheckCircle2 size={15} /> : <Plus size={15} />} {isEdit ? "Save changes" : "Save supplier"}</PrimaryButton>
+        {isEdit && (
+          confirmingDelete ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => onDelete(existing.id)} style={{ flex: 1, background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
+              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+              <Trash2 size={13} /> Delete this supplier
+            </button>
+          )
+        )}
       </div>
     </Modal>
   );
@@ -2833,7 +2864,7 @@ function SetCategoryBudgetModal({ year, category, current, onClose, onSave }) {
 /* ---------------------------------------------------------
    Add Device Modal
 --------------------------------------------------------- */
-function AddDeviceModal({ countries, locations, defaultLocationId, existing, subcategoriesByCategory, onClose, onSave, onDelete }) {
+function AddDeviceModal({ countries, locations, defaultLocationId, existing, subcategoriesByCategory, suppliers, onClose, onSave, onDelete }) {
   const isEdit = !!existing;
   const [name, setName] = useState(existing?.name || "");
   const [assetTag, setAssetTag] = useState(existing?.assetTag || "");
@@ -2841,14 +2872,16 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
   const [serviceCategory, setServiceCategory] = useState(existing?.serviceCategory || "maintenance");
   const [subCategory, setSubCategory] = useState(existing?.subCategory || "");
   const [locationId, setLocationId] = useState(existing?.locationId || defaultLocationId || locations[0]?.id || "");
+  const [supplierId, setSupplierId] = useState(existing?.supplierId || "");
   const [interval, setInterval] = useState(existing?.serviceIntervalMonths != null ? String(existing.serviceIntervalMonths) : "12");
   const [nextDate, setNextDate] = useState(existing?.nextServiceDate || new Date().toISOString().slice(0, 10));
   const [budgetPerVisit, setBudgetPerVisit] = useState(existing?.budgetPerVisit ? String(existing.budgetPerVisit) : "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const locationSuppliers = suppliers.filter((s) => s.locationId === locationId);
 
   // Repeat schedule — same options as Budget Plan contract lines, so setting up
   // a service's visits and its budget lines stay in sync. Only used when adding new.
-  const [repeat, setRepeat] = useState("interval"); // 'interval' | 'manual' | 'weekly' | 'monthly' | 'quarterly' | 'custom'
+  const [repeat, setRepeat] = useState("once"); // 'once' | 'interval' | 'manual' | 'weekly' | 'monthly' | 'quarterly' | 'custom'
   const [customCount, setCustomCount] = useState("7");
   const [manualDates, setManualDates] = useState([new Date().toISOString().slice(0, 10)]);
 
@@ -2860,7 +2893,7 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
     if (!name.trim() || !locationId) return;
     const base = {
       id: existing?.id, name: name.trim(), assetTag: assetTag.trim(), category: category.trim(), serviceCategory,
-      subCategory: subCategory.trim(), locationId,
+      subCategory: subCategory.trim(), locationId, supplierId: supplierId || null,
       lastServiceDate: existing?.lastServiceDate ?? null,
       budgetPerVisit: budgetPerVisit ? Number(budgetPerVisit) : 0,
     };
@@ -2869,9 +2902,12 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
       return;
     }
     // New service — build the visit schedule based on the chosen repeat pattern.
+    // "once" (the default) deliberately makes NO recurring schedule — nextServiceDate
+    // clears after that single visit is logged, instead of silently recurring.
     let scheduleDates = [nextDate];
-    let intervalMonths = interval ? Number(interval) : null;
-    if (repeat === "manual") { scheduleDates = manualDates.filter(Boolean); intervalMonths = null; }
+    let intervalMonths = null;
+    if (repeat === "interval") { intervalMonths = interval ? Number(interval) : null; }
+    else if (repeat === "manual") { scheduleDates = manualDates.filter(Boolean); intervalMonths = null; }
     else if (repeat === "weekly") { scheduleDates = Array.from({ length: 52 }, (_, i) => addDays(nextDate, i * 7)); intervalMonths = null; }
     else if (repeat === "monthly") { scheduleDates = Array.from({ length: 12 }, (_, i) => addMonths(nextDate, i)); intervalMonths = 1; }
     else if (repeat === "quarterly") { scheduleDates = Array.from({ length: 4 }, (_, i) => addMonths(nextDate, i * 3)); intervalMonths = 3; }
@@ -2914,6 +2950,15 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
           </Select>
         </Field>
         <SubCategoryField value={subCategory} onChange={setSubCategory} suggestions={subcategoriesByCategory?.[serviceCategory] || []} />
+        <Field label="Default supplier (optional)">
+          <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <option value="">— None —</option>
+            {locationSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name} ({CATEGORY_META[s.category]?.label})</option>)}
+          </Select>
+          {locationSuppliers.length === 0 && (
+            <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>No suppliers added at this location yet — add one from the Suppliers tab first.</span>
+          )}
+        </Field>
         <Field label={`Budget per visit (${ACTIVE_CURRENCY_CODE}, optional)`}><TextInput type="number" min="0" step="0.01" value={budgetPerVisit} onChange={(e) => setBudgetPerVisit(e.target.value)} placeholder="0.00" /></Field>
 
         {isEdit ? (
@@ -2926,7 +2971,8 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
             <Field label="First visit date"><TextInput type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} /></Field>
             <Field label="Repeat">
               <Select value={repeat} onChange={(e) => setRepeat(e.target.value)}>
-                <option value="interval">Simple — every N months</option>
+                <option value="once">One-off — no repeat</option>
+                <option value="interval">Recurring — every N months</option>
                 <option value="manual">Pick each visit date myself</option>
                 <option value="weekly">Weekly (52 visits)</option>
                 <option value="monthly">Monthly (12 visits)</option>
@@ -2963,7 +3009,7 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
                 </div>
               </Field>
             )}
-            {(repeat === "weekly" || repeat === "monthly" || repeat === "quarterly" || repeat === "custom" || repeat === "manual") && (
+            {(repeat === "once" || repeat === "weekly" || repeat === "monthly" || repeat === "quarterly" || repeat === "custom" || repeat === "manual") && (
               <div style={{ fontSize: 11, color: "#8A94A0", background: "#F1F4F7", borderRadius: 8, padding: "8px 10px" }}>
                 This also adds a matching visit budget and Budget → Plan line for each date, using the budget per visit above — so this service and the Budget tab stay in sync.
               </div>
@@ -2997,7 +3043,7 @@ function LogServiceModal({ device, existing, suppliers, visitBudgets, onClose, o
   const [name, setName] = useState(existing?.name || defaultName);
   const [date, setDate] = useState(existing?.date || new Date().toISOString().slice(0, 10));
   const [technician, setTechnician] = useState(existing?.technician || "");
-  const [supplierId, setSupplierId] = useState(existing?.supplierId || "");
+  const [supplierId, setSupplierId] = useState(existing?.supplierId || device?.supplierId || "");
   const [notes, setNotes] = useState(existing?.notes || "");
   const [cost, setCost] = useState(existing?.cost ? String(existing.cost) : "");
   const [photo, setPhoto] = useState(existing?.certificatePhoto || null);
