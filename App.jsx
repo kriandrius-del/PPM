@@ -4,7 +4,7 @@ import {
   MapPin, ChevronRight, ChevronLeft, ChevronDown, CheckCircle2, Clock,
   Trash2, Tag, Download, Search, Loader2, Globe2, Building2,
   User, Users as UsersIcon, PoundSterling, Sparkles, Soup, SprayCan,
-  ShieldAlert, PieChart, Pencil,
+  ShieldAlert, PieChart, Pencil, RefreshCw, QrCode, Printer, Gauge, Send,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
@@ -288,7 +288,7 @@ function ExportButton({ rows, filename, label = "Export CSV" }) {
 /* ---------------------------------------------------------
    Main App
 --------------------------------------------------------- */
-export default function App() {
+function MainApp() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [countries, setCountries] = useState([]);
@@ -341,6 +341,16 @@ export default function App() {
       setCurrentUserId(nav.currentUserId || null);
       setSelectedCountryId(nav.selectedCountryId || null);
       setSelectedLocationId(nav.selectedLocationId || null);
+      // Deep link from a staff QR sticker: ?service=<id> jumps to that service's history.
+      const deepId = new URLSearchParams(window.location.search).get("service");
+      const deepDev = deepId ? d.find((x) => x.id === deepId) : null;
+      if (deepDev) {
+        const deepLoc = l.find((x) => x.id === deepDev.locationId);
+        setSelectedLocationId(deepDev.locationId);
+        if (deepLoc) setSelectedCountryId(deepLoc.countryId);
+        setTab("devices");
+        setHistoryFor(deepDev.id);
+      }
       setLoading(false);
     })();
   }, []);
@@ -488,14 +498,36 @@ export default function App() {
     const forDevice = updatedServices.filter((s) => s.deviceId === deviceId && s.date);
     if (forDevice.length === 0) return; // no services logged — leave manually-set schedule alone
     const lastDate = forDevice.reduce((max, s) => (s.date > max ? s.date : max), forDevice[0].date);
-    // Prefer the next planned visit-budget date after the one just logged, if this
-    // service has a pre-set schedule (manual/custom/weekly) rather than a simple interval.
-    const upcomingPlanned = visitBudgets
-      .filter((v) => v.deviceId === deviceId && v.date > lastDate)
-      .map((v) => v.date)
-      .sort()[0];
+    // Find the planned visit-budget date nearest to the one just logged (the visit may have
+    // happened a day or two early or late) and advance to whichever date comes after THAT one —
+    // not just "any date after the logged one", which could still be this same occurrence.
+    const deviceVBDates = [...new Set(visitBudgets.filter((v) => v.deviceId === deviceId).map((v) => v.date))].sort();
+    let upcomingPlanned;
+    if (deviceVBDates.length > 0) {
+      let nearestIdx = 0, nearestDiff = Infinity;
+      deviceVBDates.forEach((d, i) => {
+        const diff = Math.abs(new Date(d + "T00:00:00").getTime() - new Date(lastDate + "T00:00:00").getTime());
+        if (diff < nearestDiff) { nearestDiff = diff; nearestIdx = i; }
+      });
+      upcomingPlanned = deviceVBDates[nearestIdx + 1];
+    }
     const nextDate = upcomingPlanned || (dev.serviceIntervalMonths ? addMonths(lastDate, dev.serviceIntervalMonths) : null);
     persist.devices(devices.map((d) => d.id === deviceId ? { ...d, lastServiceDate: lastDate, nextServiceDate: nextDate } : d));
+  }
+  // A logged visit's cost should also mark the matching auto-generated Budget Plan
+  // line as recorded, so the Plan doesn't sit forever showing "not yet spent" for
+  // work that's actually been done and paid for.
+  function syncBudgetLineForVisit(deviceId, visitDate, visitCost) {
+    if (visitCost == null || visitCost === "") return;
+    const deviceLines = budgetLines.filter((l) => l.deviceId === deviceId);
+    if (deviceLines.length === 0) return;
+    let nearest = null, nearestDiff = Infinity;
+    deviceLines.forEach((l) => {
+      const diff = Math.abs(new Date(l.date + "T00:00:00").getTime() - new Date(visitDate + "T00:00:00").getTime());
+      if (diff < nearestDiff) { nearestDiff = diff; nearest = l; }
+    });
+    if (!nearest) return;
+    persist.budgetLines(budgetLines.map((l) => l.id === nearest.id ? { ...l, actualAmount: Number(visitCost), actualDate: visitDate, status: "completed" } : l));
   }
   function saveService(record) {
     const isEdit = !!record.id;
@@ -507,6 +539,24 @@ export default function App() {
     }
     persist.services(next);
     recomputeSchedule(record.deviceId, next);
+    if (record.date && record.cost) syncBudgetLineForVisit(record.deviceId, record.date, record.cost);
+    // Failed checklist items become high-priority follow-up works — only for items that
+    // weren't already failed on a previous save of this same visit, so edits don't duplicate them.
+    const prevFails = new Set(isEdit ? (services.find((s) => s.id === record.id)?.checklistResults || []).filter((r) => r.result === "fail").map((r) => r.item) : []);
+    const newFails = (record.checklistResults || []).filter((r) => r.result === "fail" && !prevFails.has(r.item));
+    if (newFails.length) {
+      const dev = deviceById[record.deviceId];
+      const followUps = newFails.map((r) => ({
+        id: uid(), deviceId: record.deviceId, description: `Failed check: ${r.item}${r.note ? ` — ${r.note}` : ""}`,
+        quoteAmount: 0, dateRaised: record.date || new Date().toISOString().slice(0, 10), status: "requested",
+        budgetType: "budgeted", photos: [], priority: "high", supplierId: record.supplierId || dev?.supplierId || null,
+        comments: [], source: "checklist", loggedBy: currentUser?.name, loggedAt: new Date().toISOString(),
+      }));
+      persist.works([...followUps, ...works]);
+      showToast(`Visit logged · ${newFails.length} follow-up job${newFails.length === 1 ? "" : "s"} created`);
+      setServiceModal(null);
+      return;
+    }
     setServiceModal(null);
     showToast(isEdit ? "Visit updated" : "Visit logged");
   }
@@ -523,6 +573,7 @@ export default function App() {
     showToast("Extra work added");
   }
   function updateWorkStatus(id, status) { persist.works(works.map((w) => w.id === id ? { ...w, status } : w)); }
+  function updateWork(id, patch) { persist.works(works.map((w) => w.id === id ? { ...w, ...patch } : w)); }
   function deleteWork(id) { persist.works(works.filter((w) => w.id !== id)); showToast("Extra work deleted"); }
   function saveSupplier(supplier) {
     if (supplier.id) {
@@ -589,6 +640,24 @@ export default function App() {
   function deleteVisitBudget(id) {
     persist.visitBudgets(visitBudgets.filter((v) => v.id !== id));
     showToast("Visit budget deleted");
+  }
+  function syncDeviceToBudgetPlan(deviceId) {
+    const dev = deviceById[deviceId];
+    if (!dev || !dev.budgetPerVisit) { showToast("Set a budget per visit first"); return; }
+    const existingDates = new Set(visitBudgets.filter((v) => v.deviceId === deviceId).map((v) => v.date));
+    const startDate = dev.nextServiceDate || new Date().toISOString().slice(0, 10);
+    const count = dev.serviceIntervalMonths ? 12 : 1;
+    const dates = Array.from({ length: count }, (_, i) => dev.serviceIntervalMonths ? addMonths(startDate, i * dev.serviceIntervalMonths) : startDate)
+      .filter((d) => !existingDates.has(d));
+    if (dates.length === 0) { showToast("Already up to date"); return; }
+    const newVisitBudgets = dates.map((date) => ({ id: uid(), deviceId, date, amount: dev.budgetPerVisit }));
+    persist.visitBudgets([...visitBudgets, ...newVisitBudgets]);
+    const newBudgetLines = dates.map((date) => ({
+      id: uid(), locationId: dev.locationId, deviceId, category: dev.serviceCategory, subCategory: dev.subCategory,
+      supplierId: dev.supplierId || null, description: dev.name, date, amount: dev.budgetPerVisit, status: "planned", addedBy: currentUser?.name,
+    }));
+    persist.budgetLines([...budgetLines, ...newBudgetLines]);
+    showToast(`Added ${dates.length} line${dates.length === 1 ? "" : "s"} to Budget Plan`);
   }
 
   const navItems = [
@@ -737,11 +806,12 @@ export default function App() {
                 onMarkTaskDone={markTaskDone} />
             )}
             {tab === "certificates" && (
-              <CertificatesTab services={locServices} deviceById={deviceById} supplierById={supplierById}
+              <CertificatesTab devices={locDevices} visitBudgets={locVisitBudgets} services={locServices} deviceById={deviceById} supplierById={supplierById}
                 onEdit={(record) => setServiceModal({ deviceId: record.deviceId, record })} />
             )}
             {tab === "works" && (
-              <WorksTab works={locWorks} deviceById={deviceById} onStatus={updateWorkStatus} onDelete={deleteWork}
+              <WorksTab works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
+                onUpdate={updateWork} onDelete={deleteWork} currentUserName={currentUser?.name}
                 onAdd={() => setAddWorkFor(locDevices[0]?.id ?? null)} hasDevices={locDevices.length > 0} />
             )}
             {tab === "suppliers" && (
@@ -805,10 +875,11 @@ export default function App() {
           onUpdateTask={updateDeviceTask}
           onMarkTaskDone={markTaskDone} onDeleteTask={deleteDeviceTask}
           onAddVisitBudget={(vb) => addVisitBudget({ deviceId: historyFor, ...vb })}
-          onUpdateVisitBudget={updateVisitBudget} onDeleteVisitBudget={deleteVisitBudget} />
+          onUpdateVisitBudget={updateVisitBudget} onDeleteVisitBudget={deleteVisitBudget}
+          onSyncBudget={() => syncDeviceToBudgetPlan(historyFor)} />
       )}
       {addWorkFor && locDevices.length > 0 && (
-        <AddWorkModal devices={locDevices} defaultDeviceId={addWorkFor} onClose={() => setAddWorkFor(null)} onSave={addWork} />
+        <AddWorkModal devices={locDevices} suppliers={locSuppliers} defaultDeviceId={addWorkFor} onClose={() => setAddWorkFor(null)} onSave={addWork} />
       )}
       {supplierModal && (
         <AddSupplierModal key={supplierModal.record?.id || "new-supplier"} existing={supplierModal.record}
@@ -966,6 +1037,7 @@ function AddLocationModal({ countryId, onClose, onSave }) {
    Devices Tab
 --------------------------------------------------------- */
 function DevicesTab({ devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel }) {
+  const [qrFor, setQrFor] = useState(null);
   const [dueFilter, setDueFilter] = useState("active"); // 'active' | 'overdue' | 'month' | 'completed'
   const isCompleted = (d) => !d.nextServiceDate && !!d.lastServiceDate;
   const filteredDevices = devices.filter((d) => {
@@ -1020,6 +1092,9 @@ function DevicesTab({ devices, search, setSearch, onAdd, onEdit, onLogService, o
                     </div>
                   </button>
                   <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => setQrFor(d)} title="QR stickers" style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                      <QrCode size={15} color="#8A94A0" />
+                    </button>
                     {ACTIVE_CAN_EDIT && (
                       <button onClick={() => onEdit(d)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
                         <Pencil size={15} color="#8A94A0" />
@@ -1045,11 +1120,12 @@ function DevicesTab({ devices, search, setSearch, onAdd, onEdit, onLogService, o
           })}
         </div>
       )}
+      {qrFor && <ServiceQrModal device={qrFor} locationLabel={locationLabel(qrFor)} onClose={() => setQrFor(null)} />}
     </div>
   );
 }
 
-function DeviceHistoryModal({ device, services, tasks, visitBudgets, onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget }) {
+function DeviceHistoryModal({ device, services, tasks, visitBudgets, onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
   const sorted = [...services].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const sortedVisitBudgets = [...visitBudgets].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const [addingTask, setAddingTask] = useState(false);
@@ -1119,6 +1195,14 @@ function DeviceHistoryModal({ device, services, tasks, visitBudgets, onClose, on
               </button>
             ))}
           </div>
+        )}
+        {ACTIVE_CAN_EDIT && device?.budgetPerVisit > 0 && (
+          <button onClick={onSyncBudget} style={{
+            width: "100%", marginTop: 8, background: "#F1F4F7", border: "1px dashed #C7D0DA", borderRadius: 8, padding: "8px 10px",
+            fontSize: 11.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+          }}>
+            <RefreshCw size={12} /> Sync to Budget Plan
+          </button>
         )}
       </div>
 
@@ -1565,12 +1649,17 @@ function YearCalendar({ year, dueByDate, doneByDate, deviceById, onYearChange, o
 /* ---------------------------------------------------------
    Certificates Tab
 --------------------------------------------------------- */
-function CertificatesTab({ services, deviceById, supplierById, onEdit }) {
+function CertificatesTab({ services, deviceById, supplierById, onEdit, devices = [], visitBudgets = [] }) {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  if (services.length === 0) return <EmptyState icon={FileCheck} title="No certificates saved" body="Log a completed visit with a photo to build your certificate archive." />;
+  if (services.length === 0) return (
+    <div>
+      <ComplianceCard devices={devices} visitBudgets={visitBudgets} services={services} supplierById={supplierById} />
+      <EmptyState icon={FileCheck} title="No completed visits yet" body="Log a completed visit to build your certificate archive." />
+    </div>
+  );
 
   const filtered = services.filter((s) => {
     if (dateFrom && (!s.date || s.date < dateFrom)) return false;
@@ -1590,6 +1679,7 @@ function CertificatesTab({ services, deviceById, supplierById, onEdit }) {
   ];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <ComplianceCard devices={devices} visitBudgets={visitBudgets} services={services} supplierById={supplierById} />
       <div style={{ position: "relative" }}>
         <Search size={16} color="#8A94A0" style={{ position: "absolute", left: 11, top: 11 }} />
         <TextInput placeholder="Search visit name, service, technician…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: "100%", paddingLeft: 34 }} />
@@ -1619,6 +1709,12 @@ function CertificatesTab({ services, deviceById, supplierById, onEdit }) {
               <div style={{ fontWeight: 650, fontSize: 14 }}>{s.name || (dev ? dev.name : "Service")}</div>
               <div style={{ fontSize: 11.5, color: "#8A94A0" }}>{dev ? dev.name : "Unknown service"}{supplier ? ` · ${supplier.name}` : ""}</div>
               <div style={{ fontSize: 12, color: "#8A94A0" }}>{fmtDate(s.date)} · {s.technician || "No technician noted"}{s.cost ? ` · ${gbp(s.cost)}` : ""}</div>
+              {s.checklistResults && s.checklistResults.length > 0 && (() => {
+                const answered = s.checklistResults.filter((r) => r.result && r.result !== "na");
+                const passed = answered.filter((r) => r.result === "pass").length;
+                const failed = answered.filter((r) => r.result === "fail").length;
+                return <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, color: failed ? "#C53030" : "#2F855A" }}>Checklist {passed}/{answered.length} passed{failed ? ` · ${failed} failed` : ""}</div>;
+              })()}
             </div>
             <ChevronRight size={16} color="#C0C6CC" />
           </button>
@@ -1632,11 +1728,33 @@ function CertificatesTab({ services, deviceById, supplierById, onEdit }) {
    Extra Works / Quotes Tab
 --------------------------------------------------------- */
 const WORK_STATUSES = [
+  { key: "requested", label: "Requested", tone: "warn" },
   { key: "quoted", label: "Quoted", tone: "muted" },
   { key: "approved", label: "Approved", tone: "warn" },
+  { key: "in_progress", label: "In progress", tone: "warn" },
   { key: "completed", label: "Completed", tone: "ok" },
   { key: "rejected", label: "Rejected", tone: "danger" },
 ];
+const WORK_PRIORITIES = [
+  { key: "high", label: "High", color: "#C53030", bg: "#FBEAEA" },
+  { key: "medium", label: "Medium", color: "#B7791F", bg: "#FDF1E0" },
+  { key: "low", label: "Low", color: "#5B6672", bg: "#EEF0F2" },
+];
+const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
+const CHECKLIST_PRESETS = {
+  cleaning: ["All areas cleaned to spec", "Washrooms cleaned & restocked", "Bins emptied", "Kitchen / tea points cleaned", "Consumables levels checked", "Issues or damage reported"],
+  maintenance: ["Visual inspection completed", "Safety checks passed", "Filters / consumables replaced", "Operating readings within range", "Area left clean and safe", "Asset labels / records updated"],
+  catering: ["Food temperatures recorded", "Fridge / freezer temps in range", "Allergen labelling correct", "Hygiene & cleaning schedule followed", "Stock rotation checked", "Waste removed"],
+};
+function PriorityTag({ priority }) {
+  const p = WORK_PRIORITIES.find((x) => x.key === priority) || WORK_PRIORITIES[1];
+  return <span style={{ fontSize: 11, fontWeight: 700, color: p.color, background: p.bg, padding: "3px 8px", borderRadius: 20 }}>{p.label}</span>;
+}
+function WorkStatusTag({ status }) {
+  const s = WORK_STATUSES.find((x) => x.key === status) || WORK_STATUSES[1];
+  const colors = { ok: ["#2F6B4A", "#EAF4EE"], warn: ["#8A5A0B", "#FDF1E0"], danger: ["#9B2C2C", "#FBEAEA"], muted: ["#5B6672", "#EEF0F2"] }[s.tone];
+  return <span style={{ fontSize: 11, fontWeight: 700, color: colors[0], background: colors[1], padding: "3px 8px", borderRadius: 20 }}>{s.label}</span>;
+}
 const WORK_BUDGET_TYPES = [
   { key: "budgeted", label: "Budgeted", hint: "Planned, counts toward the budget" },
   { key: "non_controllable", label: "Non-controllable", hint: "Unplanned / unavoidable, tracked separately" },
@@ -1655,16 +1773,24 @@ function BudgetTypeTag({ type }) {
   );
 }
 
-function WorksTab({ works, deviceById, onStatus, onDelete, onAdd, hasDevices }) {
-  const countable = works.filter((w) => w.status !== "rejected");
+function WorksTab({ works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName }) {
+  const [statusFilter, setStatusFilter] = useState("open"); // 'open' | 'requested' | 'all' | 'closed'
+  const [openWorkId, setOpenWorkId] = useState(null);
+  const countable = works.filter((w) => w.status !== "rejected" && w.status !== "requested");
   const budgetedTotal = countable.filter((w) => w.budgetType !== "non_controllable").reduce((sum, w) => sum + (Number(w.quoteAmount) || 0), 0);
   const nonControllableTotal = countable.filter((w) => w.budgetType === "non_controllable").reduce((sum, w) => sum + (Number(w.quoteAmount) || 0), 0);
   if (works.length === 0) {
-    return <EmptyState icon={Receipt} title="No extra works logged" body={hasDevices ? "Track work outside the regular service plan, with a quote and its approval status." : "Add a service first, then log extra works against it."} actionLabel={hasDevices && ACTIVE_CAN_EDIT ? "Add extra work" : undefined} onAction={hasDevices ? onAdd : undefined} />;
+    return <EmptyState icon={Receipt} title="No extra works logged" body={hasDevices ? "Track work outside the regular service plan — requests, quotes, approvals and follow-ups from failed checks." : "Add a service first, then log extra works against it."} actionLabel={hasDevices && ACTIVE_CAN_EDIT ? "Add extra work" : undefined} onAction={hasDevices ? onAdd : undefined} />;
   }
+  const isClosed = (w) => w.status === "completed" || w.status === "rejected";
+  const requestedCount = works.filter((w) => w.status === "requested").length;
+  const filtered = works
+    .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : !isClosed(w))
+    .sort((a, b) => (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || ""));
+  const openWork = openWorkId ? works.find((w) => w.id === openWorkId) : null;
   const csvRows = [
-    ["Service", "Description", "Amount", "Status", "Budget type", "Date raised", "Logged by"],
-    ...works.map((w) => [deviceById[w.deviceId]?.name || "", w.description || "", w.quoteAmount || 0, w.status || "", w.budgetType === "non_controllable" ? "Non-controllable" : "Budgeted", w.dateRaised || "", w.loggedBy || ""]),
+    ["Service", "Description", "Priority", "Assigned to", "Amount", "Status", "Budget type", "Date raised", "Raised by", "Comments"],
+    ...works.map((w) => [deviceById[w.deviceId]?.name || "", w.description || "", w.priority || "medium", w.supplierId ? (supplierById[w.supplierId]?.name || "") : "", w.quoteAmount || 0, w.status || "", w.budgetType === "non_controllable" ? "Non-controllable" : "Budgeted", w.dateRaised || "", w.requestedBy || w.loggedBy || "", (w.comments || []).length]),
   ];
   return (
     <div>
@@ -1681,39 +1807,142 @@ function WorksTab({ works, deviceById, onStatus, onDelete, onAdd, hasDevices }) 
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", color: "#8A5A0B" }}>{gbp(nonControllableTotal)}</div>
         </div>
       </div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        <ToggleButton active={statusFilter === "open"} onClick={() => setStatusFilter("open")}>Open</ToggleButton>
+        <ToggleButton active={statusFilter === "requested"} onClick={() => setStatusFilter("requested")}>New requests{requestedCount ? ` (${requestedCount})` : ""}</ToggleButton>
+        <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Closed</ToggleButton>
+        <ToggleButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All</ToggleButton>
+      </div>
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: "center", color: "#A3ABB4", fontSize: 12.5, padding: "24px 0" }}>Nothing in this view.</div>
+      ) : (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {works.map((w) => {
+        {filtered.map((w) => {
           const dev = deviceById[w.deviceId];
+          const assignee = w.supplierId ? supplierById[w.supplierId] : null;
+          const commentCount = (w.comments || []).length;
           return (
-            <div key={w.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 14 }}>
+            <button key={w.id} onClick={() => setOpenWorkId(w.id)} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: `3px solid ${(WORK_PRIORITIES.find((p) => p.key === (w.priority || "medium")) || WORK_PRIORITIES[1]).color}`, borderRadius: 12, padding: 14, textAlign: "left", cursor: "pointer", fontFamily: "inherit", width: "100%" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14.5 }}>{dev ? dev.name : "Unknown service"}</div>
-                  <div style={{ fontSize: 12, color: "#8A94A0", marginTop: 2 }}>Raised {fmtDate(w.dateRaised)}</div>
+                  <div style={{ fontSize: 12, color: "#8A94A0", marginTop: 2 }}>Raised {fmtDate(w.dateRaised)}{w.requestedBy ? ` by ${w.requestedBy}` : ""}</div>
                 </div>
-                <ConfirmDeleteButton onConfirm={() => onDelete(w.id)} />
+                <WorkStatusTag status={w.status} />
               </div>
               <div style={{ margin: "8px 0", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <PriorityTag priority={w.priority || "medium"} />
                 <CategoryBadge category={dev?.serviceCategory} />
                 <BudgetTypeTag type={w.budgetType} />
               </div>
-              <p style={{ fontSize: 13.5, color: "#3A4451", margin: "0 0 8px" }}>{w.description}</p>
+              <p style={{ fontSize: 13.5, color: "#3A4451", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{w.description}</p>
               {w.photos && w.photos.length > 0 && (
                 <div style={{ display: "flex", gap: 6, marginBottom: 10, overflowX: "auto" }}>
                   {w.photos.map((p, i) => <img key={i} src={p} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: "1px solid #E1E4E8" }} />)}
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 15 }}>{gbp(w.quoteAmount)}</span>
-                <Select value={w.status} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onStatus(w.id, e.target.value)} style={{ fontSize: 12.5, padding: "6px 8px", opacity: ACTIVE_CAN_EDIT ? 1 : 0.6 }}>
-                  {WORK_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                </Select>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "#8A94A0" }}>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 15, color: "#1B2430" }}>{gbp(w.quoteAmount)}</span>
+                <span>{assignee ? assignee.name : "Unassigned"} · {commentCount} comment{commentCount === 1 ? "" : "s"}</span>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
+      )}
+      {openWork && (
+        <WorkDetailModal work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
+          onClose={() => setOpenWorkId(null)} onUpdate={(patch) => onUpdate(openWork.id, patch)}
+          onDelete={() => { onDelete(openWork.id); setOpenWorkId(null); }} />
+      )}
     </div>
+  );
+}
+
+function WorkDetailModal({ work, device, suppliers, currentUserName, onClose, onUpdate, onDelete }) {
+  const [comment, setComment] = useState("");
+  const [amount, setAmount] = useState(work.quoteAmount ? String(work.quoteAmount) : "");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const comments = work.comments || [];
+  const relevantSuppliers = suppliers.filter((s) => !device || s.category === device.serviceCategory);
+  const otherSuppliers = suppliers.filter((s) => device && s.category !== device.serviceCategory);
+  function addComment() {
+    if (!comment.trim()) return;
+    onUpdate({ comments: [...comments, { text: comment.trim(), by: currentUserName || "Unknown", at: new Date().toISOString() }] });
+    setComment("");
+  }
+  return (
+    <Modal title={device ? device.name : "Extra work"} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 13.5, color: "#3A4451", whiteSpace: "pre-wrap" }}>{work.description}</div>
+        <div style={{ fontSize: 11.5, color: "#8A94A0" }}>Raised {fmtDate(work.dateRaised)}{work.requestedBy ? ` by ${work.requestedBy}` : work.loggedBy ? ` by ${work.loggedBy}` : ""}{work.source === "checklist" ? " · from a failed checklist item" : work.source === "request" ? " · via request portal" : ""}</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Field label="Status">
+            <Select value={work.status} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ status: e.target.value })}>
+              {WORK_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </Select>
+          </Field>
+          <Field label="Priority">
+            <Select value={work.priority || "medium"} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ priority: e.target.value })}>
+              {WORK_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <Field label="Assigned supplier">
+          <Select value={work.supplierId || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ supplierId: e.target.value || null })}>
+            <option value="">— Unassigned —</option>
+            {relevantSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {otherSuppliers.length > 0 && <optgroup label="Other categories">{otherSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</optgroup>}
+          </Select>
+        </Field>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+          <Field label={`Quote / cost (${ACTIVE_CURRENCY_CODE})`}>
+            <TextInput type="number" min="0" step="0.01" value={amount} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => setAmount(e.target.value)} onBlur={() => onUpdate({ quoteAmount: amount ? Number(amount) : 0 })} placeholder="0.00" />
+          </Field>
+          <Field label="Budget type">
+            <Select value={work.budgetType || "budgeted"} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ budgetType: e.target.value })}>
+              {WORK_BUDGET_TYPES.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+            </Select>
+          </Field>
+        </div>
+        {work.photos && work.photos.length > 0 && (
+          <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+            {work.photos.map((p, i) => <img key={i} src={p} alt="" style={{ width: 80, height: 80, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: "1px solid #E1E4E8" }} />)}
+          </div>
+        )}
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 6 }}>Comments ({comments.length})</div>
+          {comments.length === 0 ? (
+            <div style={{ fontSize: 12, color: "#A3ABB4", marginBottom: 8 }}>No comments yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+              {comments.map((c, i) => (
+                <div key={i} style={{ background: "#F7F8F9", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 13, color: "#1B2430", whiteSpace: "pre-wrap" }}>{c.text}</div>
+                  <div style={{ fontSize: 10.5, color: "#8A94A0", marginTop: 3 }}>{c.by} · {new Date(c.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {ACTIVE_CAN_EDIT && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <TextInput value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add an update…" style={{ flex: 1 }} onKeyDown={(e) => { if (e.key === "Enter") addComment(); }} />
+              <button onClick={addComment} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 9, padding: "0 14px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Post</button>
+            </div>
+          )}
+        </div>
+        {ACTIVE_CAN_EDIT && (confirmingDelete ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onDelete} style={{ flex: 1, background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
+            <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+            <Trash2 size={13} /> Delete this work
+          </button>
+        ))}
+      </div>
+    </Modal>
   );
 }
 
@@ -1901,7 +2130,7 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
       if (m[cat] !== undefined) m[cat] += Number(s.cost) || 0;
     });
     works.forEach((w) => {
-      if (w.status !== "approved" && w.status !== "completed") return;
+      if (w.status !== "approved" && w.status !== "in_progress" && w.status !== "completed") return;
       if (w.budgetType === "non_controllable") return;
       const d = new Date(w.dateRaised);
       if (d.getFullYear() !== year) return;
@@ -1930,7 +2159,7 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
     services.forEach((s) => { const d = new Date(s.date); if (d.getFullYear() === year && d.getMonth() === i) svc += Number(s.cost) || 0; });
     works.forEach((w) => {
       if (w.budgetType === "non_controllable") return;
-      if (w.status !== "approved" && w.status !== "completed") return;
+      if (w.status !== "approved" && w.status !== "in_progress" && w.status !== "completed") return;
       const d = new Date(w.dateRaised);
       if (d.getFullYear() === year && d.getMonth() === i) wk += Number(w.quoteAmount) || 0;
     });
@@ -1949,7 +2178,7 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
     const supplierAnnual = CATEGORY_KEYS.reduce((s, c) => s + supplierMonthlyByCategory[c] * 12, 0);
     return years.map((y) => {
       const svc = services.filter((s) => new Date(s.date).getFullYear() === y).reduce((sum, s) => sum + (Number(s.cost) || 0), 0);
-      const wk = works.filter((w) => w.budgetType !== "non_controllable" && (w.status === "approved" || w.status === "completed") && new Date(w.dateRaised).getFullYear() === y).reduce((sum, w) => sum + (Number(w.quoteAmount) || 0), 0);
+      const wk = works.filter((w) => w.budgetType !== "non_controllable" && (w.status === "approved" || w.status === "in_progress" || w.status === "completed") && new Date(w.dateRaised).getFullYear() === y).reduce((sum, w) => sum + (Number(w.quoteAmount) || 0), 0);
       const bl = budgetLines.filter((l) => l.actualAmount != null && new Date(l.date).getFullYear() === y).reduce((sum, l) => sum + (Number(l.actualAmount) || 0), 0);
       const budgetY = effectiveTotalBudgetForYear(y);
       return { year: String(y), cost: Math.round(svc + wk + bl + supplierAnnual), budget: Math.round(budgetY) };
@@ -2080,7 +2309,7 @@ function BudgetTab({ budgets, services, works, suppliers, devices, budgetLines, 
   const serviceLineRows = useMemo(() => {
     const rows = devices.map((d) => {
       const svcCost = services.filter((s) => s.deviceId === d.id && new Date(s.date).getFullYear() === year).reduce((sum, s) => sum + (Number(s.cost) || 0), 0);
-      const wkCost = works.filter((w) => w.deviceId === d.id && w.budgetType !== "non_controllable" && (w.status === "approved" || w.status === "completed") && new Date(w.dateRaised).getFullYear() === year).reduce((sum, w) => sum + (Number(w.quoteAmount) || 0), 0);
+      const wkCost = works.filter((w) => w.deviceId === d.id && w.budgetType !== "non_controllable" && (w.status === "approved" || w.status === "in_progress" || w.status === "completed") && new Date(w.dateRaised).getFullYear() === year).reduce((sum, w) => sum + (Number(w.quoteAmount) || 0), 0);
       const lineCost = budgetLines.filter((l) => l.deviceId === d.id && l.actualAmount != null && new Date(l.date).getFullYear() === year).reduce((sum, l) => sum + (Number(l.actualAmount) || 0), 0);
       return { device: d, total: svcCost + wkCost + lineCost };
     }).filter((r) => r.total > 0);
@@ -2873,6 +3102,9 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
   const [subCategory, setSubCategory] = useState(existing?.subCategory || "");
   const [locationId, setLocationId] = useState(existing?.locationId || defaultLocationId || locations[0]?.id || "");
   const [supplierId, setSupplierId] = useState(existing?.supplierId || "");
+  const [checklist, setChecklist] = useState(existing?.checklist || []);
+  const [newCheckItem, setNewCheckItem] = useState("");
+  function addCheckItem() { if (!newCheckItem.trim()) return; setChecklist((p) => [...p, newCheckItem.trim()]); setNewCheckItem(""); }
   const [interval, setInterval] = useState(existing?.serviceIntervalMonths != null ? String(existing.serviceIntervalMonths) : "12");
   const [nextDate, setNextDate] = useState(existing?.nextServiceDate || new Date().toISOString().slice(0, 10));
   const [budgetPerVisit, setBudgetPerVisit] = useState(existing?.budgetPerVisit ? String(existing.budgetPerVisit) : "");
@@ -2893,7 +3125,7 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
     if (!name.trim() || !locationId) return;
     const base = {
       id: existing?.id, name: name.trim(), assetTag: assetTag.trim(), category: category.trim(), serviceCategory,
-      subCategory: subCategory.trim(), locationId, supplierId: supplierId || null,
+      subCategory: subCategory.trim(), locationId, supplierId: supplierId || null, checklist,
       lastServiceDate: existing?.lastServiceDate ?? null,
       budgetPerVisit: budgetPerVisit ? Number(budgetPerVisit) : 0,
     };
@@ -2906,7 +3138,13 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
     // clears after that single visit is logged, instead of silently recurring.
     let scheduleDates = [nextDate];
     let intervalMonths = null;
-    if (repeat === "interval") { intervalMonths = interval ? Number(interval) : null; }
+    if (repeat === "interval") {
+      intervalMonths = interval ? Number(interval) : null;
+      // Still generate a year's worth of linked Budget Plan lines, same as every
+      // other recurring mode — this used to be skipped here, which is why a
+      // "Recurring every N months" service never showed up in Budget.
+      if (intervalMonths) scheduleDates = Array.from({ length: 12 }, (_, i) => addMonths(nextDate, i * intervalMonths));
+    }
     else if (repeat === "manual") { scheduleDates = manualDates.filter(Boolean); intervalMonths = null; }
     else if (repeat === "weekly") { scheduleDates = Array.from({ length: 52 }, (_, i) => addDays(nextDate, i * 7)); intervalMonths = null; }
     else if (repeat === "monthly") { scheduleDates = Array.from({ length: 12 }, (_, i) => addMonths(nextDate, i)); intervalMonths = 1; }
@@ -2920,7 +3158,7 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
     scheduleDates = scheduleDates.filter(Boolean).sort();
     onSave({
       ...base, serviceIntervalMonths: intervalMonths, nextServiceDate: scheduleDates[0] || nextDate,
-      scheduleDates: repeat === "interval" ? null : scheduleDates,
+      scheduleDates,
     });
   }
   return (
@@ -2960,6 +3198,29 @@ function AddDeviceModal({ countries, locations, defaultLocationId, existing, sub
           )}
         </Field>
         <Field label={`Budget per visit (${ACTIVE_CURRENCY_CODE}, optional)`}><TextInput type="number" min="0" step="0.01" value={budgetPerVisit} onChange={(e) => setBudgetPerVisit(e.target.value)} placeholder="0.00" /></Field>
+        <Field label={`Visit checklist (${checklist.length} item${checklist.length === 1 ? "" : "s"}, optional)`}>
+          {checklist.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
+              {checklist.map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F7F8F9", borderRadius: 7, padding: "6px 8px" }}>
+                  <CheckCircle2 size={13} color="#8A94A0" />
+                  <span style={{ flex: 1, fontSize: 12.5 }}>{item}</span>
+                  <button type="button" onClick={() => setChecklist((p) => p.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><X size={13} color="#A3ABB4" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 6 }}>
+            <TextInput value={newCheckItem} onChange={(e) => setNewCheckItem(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCheckItem(); } }} placeholder="e.g. Filters cleaned" style={{ flex: 1 }} />
+            <button type="button" onClick={addCheckItem} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>Add</button>
+          </div>
+          {checklist.length === 0 && (
+            <button type="button" onClick={() => setChecklist(CHECKLIST_PRESETS[serviceCategory] || [])} style={{ background: "none", border: "none", color: "#2B4562", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: "4px 0", textAlign: "left" }}>
+              + Start from a standard {(CATEGORY_META[serviceCategory] || CATEGORY_META.maintenance).label.toLowerCase()} checklist
+            </button>
+          )}
+          <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>Ticked off Pass / Fail / N/A each time a visit is logged. Failed items create follow-up jobs in Works.</span>
+        </Field>
 
         {isEdit ? (
           <div style={{ display: "flex", gap: 10 }}>
@@ -3045,6 +3306,15 @@ function LogServiceModal({ device, existing, suppliers, visitBudgets, onClose, o
   const [technician, setTechnician] = useState(existing?.technician || "");
   const [supplierId, setSupplierId] = useState(existing?.supplierId || device?.supplierId || "");
   const [notes, setNotes] = useState(existing?.notes || "");
+  const templateItems = device?.checklist || [];
+  const [checkResults, setCheckResults] = useState(() => {
+    const prev = existing?.checklistResults || [];
+    return templateItems.map((item) => {
+      const found = prev.find((r) => r.item === item);
+      return { item, result: found?.result || "", note: found?.note || "" };
+    });
+  });
+  function setCheck(i, patch) { setCheckResults((prev) => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
   const [cost, setCost] = useState(existing?.cost ? String(existing.cost) : "");
   const [photo, setPhoto] = useState(existing?.certificatePhoto || null);
   const [busy, setBusy] = useState(false);
@@ -3075,6 +3345,7 @@ function LogServiceModal({ device, existing, suppliers, visitBudgets, onClose, o
       id: existing?.id, deviceId: device.id, name: name.trim() || defaultName, date,
       technician: technician.trim(), supplierId: supplierId || null,
       notes: notes.trim(), cost: cost ? Number(cost) : 0, certificatePhoto: photo,
+      checklistResults: checkResults.length ? checkResults : undefined,
     });
   }
   return (
@@ -3099,6 +3370,33 @@ function LogServiceModal({ device, existing, suppliers, visitBudgets, onClose, o
         ) : device?.budgetPerVisit ? (
           <div style={{ fontSize: 11.5, color: "#8A94A0" }}>Flat per-visit budget for this service: {gbp(device.budgetPerVisit)}</div>
         ) : null}
+        {checkResults.length > 0 && (
+          <Field label={`Checklist (${checkResults.filter((r) => r.result).length}/${checkResults.length} answered)`}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {checkResults.map((r, i) => (
+                <div key={i} style={{ background: r.result === "fail" ? "#FBEAEA" : "#F7F8F9", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ fontSize: 13, color: "#1B2430", fontWeight: 600, flex: 1 }}>{r.item}</span>
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      {[["pass", "Pass", "#2F855A"], ["fail", "Fail", "#C53030"], ["na", "N/A", "#8A94A0"]].map(([key, label, color]) => (
+                        <button key={key} type="button" onClick={() => setCheck(i, { result: r.result === key ? "" : key })} style={{
+                          border: `1.5px solid ${color}`, background: r.result === key ? color : "#fff", color: r.result === key ? "#fff" : color,
+                          borderRadius: 7, padding: "4px 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                        }}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {r.result === "fail" && (
+                    <TextInput value={r.note} onChange={(e) => setCheck(i, { note: e.target.value })} placeholder="What's wrong? (creates a follow-up job)" style={{ width: "100%", marginTop: 6, fontSize: 12.5 }} />
+                  )}
+                </div>
+              ))}
+            </div>
+            {checkResults.some((r) => r.result === "fail") && (
+              <span style={{ fontSize: 11, color: "#9B2C2C" }}>Each failed item will create a high-priority follow-up in Works.</span>
+            )}
+          </Field>
+        )}
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Work performed, parts replaced, readings…" /></Field>
         <Field label="Certificate photo">
           <label style={{ border: "1px dashed #D7DCE1", borderRadius: 10, padding: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "#5B6672", fontSize: 13, background: photo ? "transparent" : "#FAFBFC" }}>
@@ -3138,8 +3436,10 @@ function LogServiceModal({ device, existing, suppliers, visitBudgets, onClose, o
 /* ---------------------------------------------------------
    Add Extra Work Modal
 --------------------------------------------------------- */
-function AddWorkModal({ devices, defaultDeviceId, onClose, onSave }) {
+function AddWorkModal({ devices, suppliers = [], defaultDeviceId, onClose, onSave }) {
   const [deviceId, setDeviceId] = useState(defaultDeviceId || devices[0]?.id);
+  const [priority, setPriority] = useState("medium");
+  const [supplierId, setSupplierId] = useState(() => devices.find((d) => d.id === (defaultDeviceId || devices[0]?.id))?.supplierId || "");
   const [description, setDescription] = useState("");
   const [quoteAmount, setQuoteAmount] = useState("");
   const [dateRaised, setDateRaised] = useState(() => new Date().toISOString().slice(0, 10));
@@ -3161,16 +3461,29 @@ function AddWorkModal({ devices, defaultDeviceId, onClose, onSave }) {
   function removePhoto(i) { setPhotos((prev) => prev.filter((_, idx) => idx !== i)); }
   function submit() {
     if (!deviceId || !description.trim()) return;
-    onSave({ deviceId, description: description.trim(), quoteAmount: quoteAmount ? Number(quoteAmount) : 0, dateRaised, status, budgetType, photos });
+    onSave({ deviceId, description: description.trim(), quoteAmount: quoteAmount ? Number(quoteAmount) : 0, dateRaised, status, budgetType, photos, priority, supplierId: supplierId || null, comments: [] });
   }
   return (
     <Modal title="Add extra work" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <Field label="Device">
-          <Select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+        <Field label="Service">
+          <Select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); const d = devices.find((x) => x.id === e.target.value); if (d?.supplierId) setSupplierId(d.supplierId); }}>
             {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </Select>
         </Field>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Field label="Priority">
+            <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
+              {WORK_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </Select>
+          </Field>
+          <Field label="Assigned supplier">
+            <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <option value="">— Unassigned —</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </Field>
+        </div>
         <Field label="Description"><TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What extra work is being quoted or done?" /></Field>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label={`Quote amount (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={quoteAmount} onChange={(e) => setQuoteAmount(e.target.value)} placeholder="0.00" /></Field>
@@ -3207,5 +3520,289 @@ function AddWorkModal({ devices, defaultDeviceId, onClose, onSave }) {
         <PrimaryButton onClick={submit} style={{ marginTop: 4 }}><Plus size={15} /> Save extra work</PrimaryButton>
       </div>
     </Modal>
+  );
+}
+
+/* ---------------------------------------------------------
+   QR codes & public request portal
+--------------------------------------------------------- */
+function appBaseUrl() {
+  if (typeof window === "undefined") return "";
+  return window.location.origin + window.location.pathname;
+}
+function qrImageUrl(data, size = 240) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=8&data=${encodeURIComponent(data)}`;
+}
+function escapeHtml(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function printStickers(device, locationLabel, stickers) {
+  const w = window.open("", "_blank");
+  if (!w) return false;
+  const cards = stickers.map((s) => `
+    <div class="card">
+      <div class="head">${escapeHtml(s.title)}</div>
+      <img src="${qrImageUrl(s.url, 360)}" />
+      <div class="name">${escapeHtml(device.name)}</div>
+      <div class="sub">${escapeHtml(locationLabel || "")}</div>
+      <div class="hint">${escapeHtml(s.hint)}</div>
+    </div>`).join("");
+  w.document.write(`<!doctype html><html><head><title>QR stickers — ${escapeHtml(device.name)}</title>
+    <style>body{font-family:Helvetica,Arial,sans-serif;margin:24px;display:flex;gap:24px;flex-wrap:wrap}
+    .card{width:300px;border:2px solid #1B2430;border-radius:14px;padding:16px;text-align:center;page-break-inside:avoid}
+    .head{background:#1B2430;color:#fff;font-weight:700;padding:8px;border-radius:8px;font-size:16px}
+    img{width:240px;height:240px;margin:12px auto;display:block}
+    .name{font-weight:700;font-size:17px}.sub{color:#5B6672;font-size:12px;margin-top:2px}
+    .hint{color:#5B6672;font-size:11px;margin-top:8px}</style></head>
+    <body>${cards}<script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
+  w.document.close();
+  return true;
+}
+function ServiceQrModal({ device, locationLabel, onClose }) {
+  const base = appBaseUrl();
+  const stickers = [
+    { key: "request", title: "Report a problem", url: `${base}?request=${device.id}`, hint: "Scan with your phone camera — no login needed" },
+    { key: "service", title: "Staff: service record", url: `${base}?service=${device.id}`, hint: "Opens history & Log visit" },
+  ];
+  const [printBlocked, setPrintBlocked] = useState(false);
+  return (
+    <Modal title={`QR stickers — ${device.name}`} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 12.5, color: "#5B6672" }}>Print these and stick them on or near the asset. Anyone can scan the first one to report an issue; the second takes staff straight to this service's record.</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          {stickers.map((s) => (
+            <div key={s.key} style={{ flex: 1, border: "1px solid #E1E4E8", borderRadius: 10, padding: 10, textAlign: "center", background: "#fff" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1B2430", marginBottom: 6 }}>{s.title}</div>
+              <img src={qrImageUrl(s.url, 220)} alt={s.title} style={{ width: "100%", maxWidth: 150, aspectRatio: "1", display: "block", margin: "0 auto" }} />
+              <div style={{ fontSize: 10, color: "#8A94A0", marginTop: 6, wordBreak: "break-all" }}>{s.url}</div>
+            </div>
+          ))}
+        </div>
+        <PrimaryButton onClick={() => setPrintBlocked(!printStickers(device, locationLabel, stickers))}><Printer size={15} /> Print stickers</PrimaryButton>
+        {printBlocked && <div style={{ fontSize: 11.5, color: "#9B2C2C" }}>Your browser blocked the print window — allow pop-ups for this site, or long-press / right-click the codes above to save them.</div>}
+        <div style={{ fontSize: 10.5, color: "#A3ABB4" }}>QR images are generated by api.qrserver.com from the link shown — the link only contains this service's ID. Stickers work on your deployed (Vercel) site; links from inside the Claude preview won't open for other people.</div>
+      </div>
+    </Modal>
+  );
+}
+
+function RequestPortal({ deviceId }) {
+  const [loading, setLoading] = useState(true);
+  const [device, setDevice] = useState(null);
+  const [location, setLocation] = useState(null);
+  const [recent, setRecent] = useState([]);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [photo, setPhoto] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(null);
+  const [error, setError] = useState("");
+
+  async function refresh() {
+    const [devices, locations, works] = await Promise.all([loadShared(SKEYS.devices), loadShared(SKEYS.locations), loadShared(SKEYS.works)]);
+    const dev = devices.find((d) => d.id === deviceId) || null;
+    setDevice(dev);
+    setLocation(dev ? locations.find((l) => l.id === dev.locationId) || null : null);
+    setRecent(works.filter((w) => w.deviceId === deviceId && w.status !== "completed" && w.status !== "rejected").slice(0, 8));
+    setLoading(false);
+  }
+  useEffect(() => { refresh(); }, [deviceId]);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try { setPhoto(await compressImage(file)); } catch (err) { /* allow retry */ }
+    setBusy(false);
+  }
+  async function submit() {
+    if (!name.trim() || !description.trim()) { setError("Please add your name and describe the problem."); return; }
+    setError(""); setBusy(true);
+    const latest = await loadShared(SKEYS.works); // re-read so we don't overwrite someone else's change
+    const record = {
+      id: uid(), deviceId, description: description.trim(), quoteAmount: 0,
+      dateRaised: new Date().toISOString().slice(0, 10), status: "requested", budgetType: "budgeted",
+      photos: photo ? [photo] : [], priority, supplierId: device?.supplierId || null, comments: [],
+      source: "request", requestedBy: name.trim(), loggedAt: new Date().toISOString(),
+    };
+    await saveShared(SKEYS.works, [record, ...latest]);
+    setSubmitted(record); setBusy(false);
+    setDescription(""); setPhoto(null); setPriority("medium");
+    refresh();
+  }
+
+  const shell = (children) => (
+    <div style={{ minHeight: "100vh", background: "#EEF0F2", fontFamily: "'IBM Plex Sans', -apple-system, sans-serif", color: "#1B2430", padding: 16 }}>
+      <div style={{ maxWidth: 460, margin: "0 auto" }}>
+        <div style={{ background: "#1B2430", color: "#fff", borderRadius: 14, padding: "16px 18px", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "#9AA5B1", fontWeight: 600 }}>Report a problem</div>
+          <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{device ? device.name : "PPM Service Book"}</div>
+          {location && <div style={{ fontSize: 12.5, color: "#C7D0DA", marginTop: 2 }}>{location.name}</div>}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+  if (loading) return shell(<div style={{ textAlign: "center", padding: 30, color: "#8A94A0" }}><Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} /></div>);
+  if (!device) return shell(<div style={{ background: "#fff", borderRadius: 12, padding: 18, fontSize: 13.5 }}>This QR code doesn't match a service anymore — it may have been removed. Please let the facilities team know directly.</div>);
+  return shell(
+    <>
+      {submitted && (
+        <div style={{ background: "#EAF4EE", border: "1px solid #BFDCC9", borderRadius: 12, padding: 14, marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, color: "#2F6B4A", display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={16} /> Thanks — your request was sent</div>
+          <div style={{ fontSize: 12.5, color: "#3A5A46", marginTop: 4 }}>Reference <b>{submitted.id.slice(-6).toUpperCase()}</b>. You can check its status below any time by scanning the same code.</div>
+        </div>
+      )}
+      <div style={{ background: "#fff", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <Field label="Your name"><TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sam from Finance" /></Field>
+        <Field label="What's the problem?"><TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Tap in the kitchen is leaking" /></Field>
+        <Field label="How urgent is it?">
+          <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <option value="low">Low — when someone gets a chance</option>
+            <option value="medium">Medium — needs attention this week</option>
+            <option value="high">High — urgent / safety issue</option>
+          </Select>
+        </Field>
+        <Field label="Photo (optional)">
+          <label style={{ border: "1px dashed #D7DCE1", borderRadius: 10, padding: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "#5B6672", fontSize: 13, background: "#FAFBFC" }}>
+            {busy ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Camera size={15} />}
+            {photo ? "Replace photo" : "Add a photo"}
+            <input type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+          </label>
+          {photo && <img src={photo} alt="" style={{ width: "100%", borderRadius: 10, marginTop: 8 }} />}
+        </Field>
+        {error && <div style={{ fontSize: 12.5, color: "#C53030" }}>{error}</div>}
+        <PrimaryButton onClick={submit}><Send size={15} /> Send request</PrimaryButton>
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 6 }}>Open issues for this {device.name.length > 24 ? "service" : device.name} ({recent.length})</div>
+        {recent.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: "#8A94A0" }}>No open issues right now.</div>
+        ) : recent.map((w) => (
+          <div key={w.id} style={{ background: "#fff", borderRadius: 10, padding: "10px 12px", marginBottom: 6, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: "#1B2430" }}>{w.description}</div>
+              <div style={{ fontSize: 10.5, color: "#8A94A0", marginTop: 2 }}>Ref {w.id.slice(-6).toUpperCase()} · {fmtDate(w.dateRaised)}</div>
+            </div>
+            <WorkStatusTag status={w.status} />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+export default function App() {
+  const requestId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("request") : null;
+  if (requestId) return <RequestPortal deviceId={requestId} />;
+  return <MainApp />;
+}
+
+/* ---------------------------------------------------------
+   Compliance: were planned visits done on time?
+   A planned visit (from a service's visit-budget schedule) that's now in the past counts as
+   on time if a visit was logged within ±GRACE days of it, late if logged after that but before
+   the next planned date, and missed otherwise.
+--------------------------------------------------------- */
+const COMPLIANCE_GRACE_DAYS = 7;
+function computeCompliance(devices, visitBudgets, services) {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const DAY = 86400000;
+  const t = (d) => new Date(d + "T00:00:00").getTime();
+  const perDevice = [];
+  devices.forEach((dev) => {
+    const planned = [...new Set(visitBudgets.filter((v) => v.deviceId === dev.id).map((v) => v.date))].sort();
+    const due = planned.filter((d) => d <= todayISO);
+    if (due.length === 0) return;
+    const visits = services.filter((s) => s.deviceId === dev.id && s.date).map((s) => s.date).sort();
+    const used = new Set();
+    let onTime = 0, late = 0, missed = 0;
+    due.forEach((pd, i) => {
+      const nextPlanned = planned[planned.indexOf(pd) + 1];
+      let match = visits.findIndex((vd, vi) => !used.has(vi) && Math.abs(t(vd) - t(pd)) <= COMPLIANCE_GRACE_DAYS * DAY);
+      if (match >= 0) { used.add(match); onTime++; return; }
+      match = visits.findIndex((vd, vi) => !used.has(vi) && t(vd) > t(pd) && (!nextPlanned || vd < nextPlanned));
+      if (match >= 0) { used.add(match); late++; return; }
+      // still inside the grace window — not missed yet
+      if ((Date.now() - t(pd)) / DAY <= COMPLIANCE_GRACE_DAYS) return;
+      missed++;
+    });
+    const total = onTime + late + missed;
+    if (total > 0) perDevice.push({ device: dev, onTime, late, missed, total, pct: Math.round((onTime / total) * 100) });
+  });
+  const totals = perDevice.reduce((a, r) => ({ onTime: a.onTime + r.onTime, late: a.late + r.late, missed: a.missed + r.missed }), { onTime: 0, late: 0, missed: 0 });
+  const total = totals.onTime + totals.late + totals.missed;
+  const answered = services.flatMap((s) => (s.checklistResults || []).filter((r) => r.result === "pass" || r.result === "fail"));
+  const passed = answered.filter((r) => r.result === "pass").length;
+  return {
+    perDevice: perDevice.sort((a, b) => a.pct - b.pct), totals, total,
+    pct: total ? Math.round((totals.onTime / total) * 100) : null,
+    checklistPct: answered.length ? Math.round((passed / answered.length) * 100) : null, checksAnswered: answered.length,
+  };
+}
+function ComplianceCard({ devices, visitBudgets, services, supplierById }) {
+  const [open, setOpen] = useState(false);
+  const [by, setBy] = useState("service"); // 'service' | 'supplier'
+  const c = useMemo(() => computeCompliance(devices, visitBudgets, services), [devices, visitBudgets, services]);
+  if (c.pct === null && c.checklistPct === null) return null;
+  const tone = (p) => p === null ? "#8A94A0" : p >= 90 ? "#2F855A" : p >= 70 ? "#B7791F" : "#C53030";
+  let rows = c.perDevice.map((r) => ({ key: r.device.id, label: r.device.name, ...r }));
+  if (by === "supplier") {
+    const g = {};
+    c.perDevice.forEach((r) => {
+      const name = r.device.supplierId ? (supplierById[r.device.supplierId]?.name || "Unknown supplier") : "No supplier set";
+      g[name] = g[name] || { key: name, label: name, onTime: 0, late: 0, missed: 0, total: 0 };
+      ["onTime", "late", "missed", "total"].forEach((k) => { g[name][k] += r[k]; });
+    });
+    rows = Object.values(g).map((r) => ({ ...r, pct: Math.round((r.onTime / r.total) * 100) })).sort((a, b) => a.pct - b.pct);
+  }
+  return (
+    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, marginBottom: 4, overflow: "hidden" }}>
+      <button onClick={() => setOpen((v) => !v)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+        <Gauge size={18} color="#2B4562" />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700 }}>Compliance</div>
+          <div style={{ fontSize: 11, color: "#8A94A0" }}>Planned visits done within ±{COMPLIANCE_GRACE_DAYS} days</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'IBM Plex Mono', monospace", color: tone(c.pct) }}>{c.pct === null ? "—" : `${c.pct}%`}</div>
+          <div style={{ fontSize: 10, color: "#8A94A0" }}>on time</div>
+        </div>
+        <ChevronDown size={16} color="#8A94A0" style={{ transform: open ? "none" : "rotate(-90deg)", transition: "transform .15s" }} />
+      </button>
+      {open && (
+        <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[["On time", c.totals.onTime, "#2F855A"], ["Late", c.totals.late, "#B7791F"], ["Missed", c.totals.missed, "#C53030"], ["Checks passed", c.checklistPct === null ? "—" : `${c.checklistPct}%`, tone(c.checklistPct)]].map(([label, val, color]) => (
+              <div key={label} style={{ flex: 1, background: "#F7F8F9", borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color, fontFamily: "'IBM Plex Mono', monospace" }}>{val}</div>
+                <div style={{ fontSize: 10, color: "#8A94A0", fontWeight: 600 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+          {rows.length > 0 && (
+            <>
+              <div style={{ display: "flex", gap: 6 }}>
+                <ToggleButton active={by === "service"} onClick={() => setBy("service")}>By service</ToggleButton>
+                <ToggleButton active={by === "supplier"} onClick={() => setBy("supplier")}>By supplier</ToggleButton>
+              </div>
+              {rows.map((r) => (
+                <div key={r.key}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 3 }}>
+                    <span style={{ fontWeight: 650 }}>{r.label}</span>
+                    <span style={{ color: tone(r.pct), fontWeight: 700 }}>{r.pct}% <span style={{ color: "#A3ABB4", fontWeight: 500 }}>({r.onTime}/{r.total}{r.missed ? `, ${r.missed} missed` : ""}{r.late ? `, ${r.late} late` : ""})</span></span>
+                  </div>
+                  <div style={{ height: 6, background: "#EEF0F2", borderRadius: 20, overflow: "hidden" }}>
+                    <div style={{ width: `${r.pct}%`, height: "100%", background: tone(r.pct) }} />
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+          <div style={{ fontSize: 10.5, color: "#A3ABB4" }}>Based on each service's planned visit dates (its visit budgets) that are now in the past. Services without planned dates aren't scored.</div>
+        </div>
+      )}
+    </div>
   );
 }
