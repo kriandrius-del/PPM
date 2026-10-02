@@ -1,13 +1,14 @@
 // Add/edit service, log a visit, service history, import and service library.
-import { useState, useMemo } from "react";
-import { Archive, Ban, BookOpen, Camera, CheckCircle2, CheckSquare, ChevronDown, ClipboardList, Copy, Download, FileSpreadsheet, HardHat, ImagePlus, KeyRound, Link2, Loader2, Mail, MapPin, PauseCircle, Pencil, Plus, Printer, RefreshCw, SkipForward, Square, Star, StickyNote, Trash2, TrendingUp, Upload, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Archive, Ban, BookOpen, Camera, CheckCircle2, CheckSquare, ChevronDown, ClipboardList, Copy, Download, FileSpreadsheet, HardHat, ImagePlus, KeyRound, Link2, Loader2, Mail, MapPin, PauseCircle, Pencil, Plus, Printer, RefreshCw, ShieldCheck, SkipForward, Square, Star, StickyNote, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, SignOffSection, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, IMPORT_FIELDS, LATE_REASONS, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
-import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
+import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, IMPORT_FIELDS, JOB_TEMPLATES, LATE_REASONS, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
+import { ACTIVE_BRAND, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
 import { buildAssetRecord, buildBlankChecklist, openPrintReport, tableHtml } from "../lib/reports.js";
-import { addDays, addMonths, availability, checklistLabel, compressImage, currentDowntime, downloadBlob, dueStatus, escapeHtml, fmtDate, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
+import { addDays, addMonths, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
+import { TEMPLATE_EXAMPLE_PREFIX, buildServicesTemplate, readSpreadsheetRows } from "../lib/excelTemplate.js";
 
-export function DeviceHistoryModal({ allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
+export function DeviceHistoryModal({ onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
   const sorted = [...services].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const sortedVisitBudgets = [...visitBudgets].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const [addingTask, setAddingTask] = useState(false);
@@ -77,6 +78,9 @@ export function DeviceHistoryModal({ allDevices = [], onOutOfService, works = []
               </>
             );
           })()}
+          {Number(device.usageInterval) > 0 && <UsageCard device={device} onRecord={onRecordUsage} />}
+          {onMerge && <button onClick={onMerge} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Duplicate of another service? Merge it…</button>}
+          {services.filter((v) => v.certUrl).length > 0 && <div style={{ fontSize: 12 }}>{services.filter((v) => v.certUrl).slice(0, 3).map((v) => <a key={v.id} href={v.certUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", color: "var(--accent)", fontWeight: 600 }}>📄 Certificate — {fmtDate(v.date)}</a>)}</div>}
           <CostHistory device={device} services={services} works={works} />
           <NotesLog notes={device.notesLog || []} onAdd={onAddNote} onDelete={onDeleteNote} />
         </div>
@@ -165,7 +169,7 @@ export function DeviceHistoryModal({ allDevices = [], onOutOfService, works = []
             }}>
               <div>
                 <div style={{ fontWeight: 650, fontSize: 13.5 }}>{s.name || "Service"}</div>
-                <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{fmtDate(s.date)}{s.cost ? ` · ${gbp(s.cost)}` : ""}{s.arrived && s.left ? ` · on site ${s.arrived}–${s.left}` : ""}{s.skipped ? " · skipped" : s.aborted ? " · not completed" : ""}{(s.updatedBy || s.loggedBy) ? ` · ${s.updatedBy || s.loggedBy}` : ""}</div>
+                <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{fmtDate(s.date)}{s.cost ? ` · ${gbp(s.cost)}` : ""}{s.arrived && s.left ? ` · on site ${s.arrived}–${s.left}` : ""}{s.verifiedBy ? " · ✓ verified" : ""}{s.certToFollow && !s.certificatePhoto && !s.certUrl ? " · certificate awaited" : ""}{s.skipped ? " · skipped" : s.aborted ? " · not completed" : ""}{(s.updatedBy || s.loggedBy) ? ` · ${s.updatedBy || s.loggedBy}` : ""}</div>
               </div>
               <Pencil size={14} color="#8A94A0" />
             </button>
@@ -304,6 +308,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
   const [serialNumber, setSerialNumber] = useState(src?.serialNumber || "");
   const [installDate, setInstallDate] = useState(src?.installDate || "");
   const [warrantyEnd, setWarrantyEnd] = useState(src?.warrantyEnd || "");
+  const [usageInterval, setUsageInterval] = useState(src?.usageInterval ? String(src.usageInterval) : "");
   const [area, setArea] = useState(src?.area || "");
   const [photo, setPhoto] = useState(src?.photo || null);
   const [links, setLinks] = useState(src?.links || []);
@@ -350,7 +355,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
       lastServiceDate: existing?.lastServiceDate ?? null,
       budgetPerVisit: budgetPerVisit ? Number(budgetPerVisit) : 0,
       manufacturer: manufacturer.trim(), model: model.trim(), serialNumber: serialNumber.trim(),
-      installDate: installDate || null, warrantyEnd: warrantyEnd || null,
+      installDate: installDate || null, warrantyEnd: warrantyEnd || null, usageInterval: usageInterval === "" ? null : Number(usageInterval),
       expectedLifeYears: expectedLifeYears ? Number(expectedLifeYears) : null, replacementCost: replacementCost ? Number(replacementCost) : null,
       condition: condition || null, conditionNotes: conditionNotes.trim(), conditionDate: condition && condition !== (existing?.condition || "") ? new Date().toISOString().slice(0, 10) : (existing?.conditionDate || null),
       parentId: parentId || null, criticality, tags: [...new Set(tags.split(",").map((t) => t.trim()).filter(Boolean))],
@@ -428,11 +433,11 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
           </Field>
         </div>
         {condition && <Field label="Condition notes (optional)"><TextInput value={conditionNotes} onChange={(e) => setConditionNotes(e.target.value)} placeholder={CONDITION_GRADES[condition].note} /></Field>}
-        {(PARENT_CANDIDATES_CACHE[locationId] || []).filter((d) => d.id !== existing?.id).length > 0 && (
+        {(PARENT_CANDIDATES_CACHE[locationId] || []).filter((d) => !d.isChild && d.id !== existing?.id).length > 0 && (
           <Field label="Part of (optional)">
             <Select value={parentId} onChange={(e) => setParentId(e.target.value)}>
               <option value="">— Stand-alone —</option>
-              {(PARENT_CANDIDATES_CACHE[locationId] || []).filter((d) => d.id !== existing?.id && d.parentId !== existing?.id).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              {(PARENT_CANDIDATES_CACHE[locationId] || []).filter((d) => !d.isChild && d.id !== existing?.id && d.parentId !== existing?.id).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </Select>
           </Field>
         )}
@@ -460,6 +465,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
               <div style={{ display: "flex", gap: 8 }}>
                 <Field label="Installed"><TextInput type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} /></Field>
                 <Field label="Warranty ends"><TextInput type="date" value={warrantyEnd} onChange={(e) => setWarrantyEnd(e.target.value)} /></Field>
+                <Field label="Also service every … run hours (optional)"><TextInput type="number" min="0" value={usageInterval} onChange={(e) => setUsageInterval(e.target.value)} placeholder="e.g. 250 for a generator" /></Field>
               </div>
               <Field label="Photo of the equipment">
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -558,6 +564,12 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
             <TextInput value={newCheckItem} onChange={(e) => setNewCheckItem(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCheckItem(); } }} placeholder="e.g. Filters cleaned" style={{ flex: 1 }} />
             <button type="button" onClick={addCheckItem} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Add</button>
           </div>
+          {(PARENT_CANDIDATES_CACHE[locationId] || []).some((d) => d.id !== existing?.id && d.checklist?.length) && (
+            <select value="" onChange={(e) => { const d = (PARENT_CANDIDATES_CACHE[locationId] || []).find((x) => x.id === e.target.value); if (d) setChecklist((p) => [...p, ...d.checklist.filter((x) => !p.includes(x))]); }} style={{ ...inputStyle, fontSize: 12.5, marginTop: 6 }}>
+              <option value="">Copy checklist from another service…</option>
+              {(PARENT_CANDIDATES_CACHE[locationId] || []).filter((d) => d.id !== existing?.id && d.checklist?.length).map((d) => <option key={d.id} value={d.id}>{d.name} ({d.checklist.length} items)</option>)}
+            </select>
+          )}
           {checklist.length === 0 && (
             <button type="button" onClick={() => setChecklist(CHECKLIST_PRESETS[serviceCategory] || [])} style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: "4px 0", textAlign: "left" }}>
               + Start from a standard {(CATEGORY_META[serviceCategory] || CATEGORY_META.maintenance).label.toLowerCase()} checklist
@@ -673,7 +685,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
 /* ---------------------------------------------------------
    Log Service Modal
 --------------------------------------------------------- */
-export function LogServiceModal({ spares = [], lastVisit = null, locationName = "", openPermits = [], device, existing, suppliers, visitBudgets, onClose, onSave, onDelete }) {
+export function LogServiceModal({ onVerify, spares = [], lastVisit = null, locationName = "", openPermits = [], device, existing, suppliers, visitBudgets, onClose, onSave, onDelete }) {
   const isEdit = !!existing;
   const defaultName = device ? `${(CATEGORY_META[device.serviceCategory] || CATEGORY_META.maintenance).label} visit` : "Visit";
   const [name, setName] = useState(existing?.name || defaultName);
@@ -694,6 +706,9 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
   const [aborted, setAborted] = useState(!!existing?.aborted);
   const [skipped, setSkipped] = useState(!!existing?.skipped);
   const [arrived, setArrived] = useState(existing?.arrived || "");
+  const [usageHours, setUsageHours] = useState(existing?.usageHours != null ? String(existing.usageHours) : "");
+  const [certToFollow, setCertToFollow] = useState(!!existing?.certToFollow);
+  const [certUrl, setCertUrl] = useState(existing?.certUrl || "");
   const [left, setLeft] = useState(existing?.left || "");
   const [skipReason, setSkipReason] = useState(existing?.skipReason || "");
   const [abortReason, setAbortReason] = useState(existing?.abortReason || "");
@@ -755,6 +770,8 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
       lateReason: isLate || existing?.lateReason ? lateReason || undefined : undefined,
       aborted: aborted || undefined, abortReason: aborted ? abortReason || "Not completed" : undefined,
       arrived: arrived || undefined, left: left || undefined,
+      usageHours: usageHours === "" ? undefined : Number(usageHours), certToFollow: certToFollow && !photo && !certUrl.trim() ? true : undefined,
+      certUrl: certUrl.trim() ? (/^https?:\/\//i.test(certUrl.trim()) ? certUrl.trim() : `https://${certUrl.trim()}`) : undefined,
       skipped: skipped && !aborted ? true : undefined, skipReason: skipped && !aborted ? skipReason || "Skipped" : undefined, dueDateAtLog: (isEdit ? existing?.dueDateAtLog : device.nextServiceDate) || undefined,
     });
   }
@@ -807,6 +824,9 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
         ) : device?.budgetPerVisit ? (
           <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Flat per-visit budget for this service: {gbp(device.budgetPerVisit)}</div>
         ) : null}
+        {Number(device?.usageInterval) > 0 && <Field label={`Run hours on the meter now (services every ${device.usageInterval} h)`}><TextInput type="number" min="0" value={usageHours} onChange={(e) => setUsageHours(e.target.value)} /></Field>}
+        <Field label="Certificate / report link (optional)"><TextInput value={certUrl} onChange={(e) => setCertUrl(e.target.value)} placeholder="SharePoint / supplier portal link" /></Field>
+        {!photo && !certUrl.trim() && !aborted && !skipped && <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, fontWeight: 600, cursor: "pointer", marginTop: -4 }}><input type="checkbox" checked={certToFollow} onChange={(e) => setCertToFollow(e.target.checked)} style={{ margin: 0 }} /> Supplier will send the certificate later (remind me after 14 days)</label>}
         <div style={{ display: "flex", gap: 8 }}>
           <Field label="Arrived (optional)"><TextInput type="time" value={arrived} onChange={(e) => setArrived(e.target.value)} /></Field>
           <Field label="Left (optional)"><TextInput type="time" value={left} onChange={(e) => setLeft(e.target.value)} /></Field>
@@ -953,6 +973,16 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
             <span style={{ fontSize: 11.5, color: "var(--faint)", marginLeft: 6 }}>{["", "Poor", "Below par", "OK", "Good", "Excellent"][rating]}</span>
           </div>
         </Field>
+        {isEdit && onVerify && ACTIVE_CAN_EDIT && (
+          existing.verifiedBy ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--ok-soft)", borderRadius: 9, padding: "8px 10px", fontSize: 12.5, color: "var(--ok)", fontWeight: 650 }}>
+              <ShieldCheck size={15} /> <span style={{ flex: 1 }}>Checked & verified by {existing.verifiedBy} · {fmtDate(String(existing.verifiedAt).slice(0, 10))}</span>
+              <button type="button" onClick={() => { onVerify(existing.id, false); onClose(); }} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 11.5, cursor: "pointer", fontFamily: "inherit" }}>Undo</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => { onVerify(existing.id, true); onClose(); }} style={{ background: "var(--ok-soft)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, color: "var(--ok)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><ShieldCheck size={14} /> I've checked this visit — mark as verified</button>
+          )
+        )}
         {isEdit && (
           <button type="button" onClick={() => {
             const e = escapeHtml; const sup = suppliers.find((x) => x.id === supplierId);
@@ -1019,7 +1049,7 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
 /* ---------------------------------------------------------
    Add Extra Work Modal
 --------------------------------------------------------- */
-export function AddWorkModal({ openWorks = [], prefill = null, devices, suppliers = [], defaultDeviceId, onClose, onSave }) {
+export function AddWorkModal({ jobTemplates = null, onSaveJobTemplates, openWorks = [], prefill = null, devices, suppliers = [], defaultDeviceId, onClose, onSave }) {
   const [deviceId, setDeviceId] = useState(defaultDeviceId || devices[0]?.id);
   const [priority, setPriority] = useState(prefill?.priority || "medium");
   const [poNumber, setPoNumber] = useState("");
@@ -1032,6 +1062,9 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
   const [status, setStatus] = useState("quoted");
   const [budgetType, setBudgetType] = useState("budgeted");
   const [category, setCategory] = useState(prefill?.category || "");
+  const [warranty, setWarranty] = useState(false);
+  const devW = devices.find((x) => x.id === deviceId); const underWarranty = devW?.warrantyEnd && daysUntil(devW.warrantyEnd) >= 0;
+  useEffect(() => { const d = devices.find((x) => x.id === deviceId); if (!prefill?.priority && d?.criticality === "critical") setPriority("high"); }, []);
   const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
 
@@ -1050,7 +1083,7 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
     { const miss = missingRequiredFields("work", devices.find((d) => d.id === deviceId)?.serviceCategory, workCustom); if (miss.length) { setWorkFieldErr(`Please fill in: ${miss.join(", ")}`); return; } }
     if (!deviceId || !description.trim()) return;
     if (suppliers.find((s) => s.id === supplierId)?.status === "blocked" && !window.confirm("This supplier is marked 'Do not use'. Raise the work anyway?")) return;
-    onSave({ category: category || null, deviceId, description: description.trim(), quoteAmount: quoteAmount ? Number(quoteAmount) : 0, dateRaised, status, budgetType, photos, priority, supplierId: supplierId || null, comments: [], poNumber: poNumber.trim(), custom: Object.keys(workCustom).length ? workCustom : undefined });
+    onSave({ warranty: warranty && underWarranty ? true : undefined, category: category || null, deviceId, description: description.trim(), quoteAmount: quoteAmount ? Number(quoteAmount) : 0, dateRaised, status, budgetType, photos, priority, supplierId: supplierId || null, comments: [], poNumber: poNumber.trim(), custom: Object.keys(workCustom).length ? workCustom : undefined });
   }
   return (
     <Modal title="Add extra work" onClose={onClose}>
@@ -1058,10 +1091,28 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
         {(() => { const dup = openWorks.filter((w) => w.deviceId === deviceId); return dup.length ? <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>This service already has {dup.length} open job{dup.length === 1 ? "" : "s"}: {dup.slice(0, 2).map((w) => `"${String(w.description).slice(0, 40)}" (${w.status.replace("_", " ")})`).join(", ")}. Check it isn't the same problem.</div> : null; })()}
         {suppliers.find((s) => s.id === supplierId)?.status === "blocked" && <div style={{ fontSize: 12, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 700 }}>This supplier is marked "Do not use".</div>}
         <Field label="Service">
-          <Select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); const d = devices.find((x) => x.id === e.target.value); if (d?.supplierId) setSupplierId(d.supplierId); }}>
+          <Select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); const d = devices.find((x) => x.id === e.target.value); if (d?.supplierId) setSupplierId(d.supplierId); if (!prefill?.priority && d?.criticality === "critical") setPriority("high"); }}>
             {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </Select>
         </Field>
+        {!prefill?.description && (
+          <Field label="Common jobs (tap to fill in)">
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {(jobTemplates || JOB_TEMPLATES).map((t) => (
+                <button key={t.description} type="button" onClick={() => { setDescription(t.description); if (t.priority) setPriority(t.priority); if (t.category) setCategory(t.category); }} style={{ background: "var(--card-hi)", border: "1px solid var(--border)", borderRadius: 14, padding: "4px 10px", fontSize: 11.8, fontWeight: 600, color: "var(--text-2)", cursor: "pointer", fontFamily: "inherit" }}>{t.description}</button>
+              ))}
+            </div>
+            {onSaveJobTemplates && description.trim() && !(jobTemplates || JOB_TEMPLATES).some((t) => t.description === description.trim()) && (
+              <button type="button" onClick={() => onSaveJobTemplates([...(jobTemplates || JOB_TEMPLATES), { description: description.trim(), priority, category: category || null }])} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.8, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>+ Save "{description.trim().slice(0, 30)}" as a common job</button>
+            )}
+          </Field>
+        )}
+        {underWarranty && (
+          <div style={{ background: "var(--ok-soft)", borderRadius: 9, padding: "8px 10px", fontSize: 12.5 }}>
+            <b style={{ color: "var(--ok)" }}>Under warranty until {fmtDate(devW.warrantyEnd)}</b>{devW.manufacturer ? ` — ${devW.manufacturer}` : ""}
+            <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 5, cursor: "pointer", fontWeight: 600 }}><input type="checkbox" checked={warranty} onChange={(e) => setWarranty(e.target.checked)} style={{ margin: 0 }} /> This is a warranty claim (no cost to us)</label>
+          </div>
+        )}
         <Field label="Trade (optional)">
           <Select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">—</option>{WORK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
         </Field>
@@ -1076,6 +1127,12 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
               <option value="">— Unassigned —</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
+            {category && suppliers.some((s2) => (s2.trades || []).includes(category) && s2.id !== supplierId && s2.status !== "blocked") && (
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5, alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "var(--faint)" }}>{category} suppliers:</span>
+                {suppliers.filter((s2) => (s2.trades || []).includes(category) && s2.status !== "blocked").map((s2) => <button key={s2.id} type="button" onClick={() => setSupplierId(s2.id)} style={{ background: s2.id === supplierId ? "var(--accent)" : "var(--card-hi)", color: s2.id === supplierId ? "var(--on-accent)" : "var(--text-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "3px 9px", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{s2.name}</button>)}
+              </div>
+            )}
           </Field>
         </div>
         <Field label="PO / work order number (optional)"><TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="e.g. PO-40213" /></Field>
@@ -1150,20 +1207,27 @@ export function NotesLog({ notes, onAdd, onDelete }) {
   );
 }
 
-export function ImportModal({ suppliers, existing, onClose, onImport }) {
+export function ImportModal({ suppliers, existing, areas = [], locationName = "", onClose, onImport }) {
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
-  const rows = useMemo(() => (text.trim() ? parseDelimited(text) : []), [text]);
+  const [sheetRows, setSheetRows] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const allRows = useMemo(() => sheetRows || (text.trim() ? parseDelimited(text) : []), [text, sheetRows]);
+  // The header is the first row that has a "Service name"-type column (the Excel template has title rows above it).
+  const normHead = (h) => String(h).trim().toLowerCase().replace(/[_*▾]/g, " ").replace(/\s+/g, " ").trim();
+  const headerIdx = Math.max(0, allRows.findIndex((r) => r.some((h) => IMPORT_FIELDS[0].aliases.includes(normHead(h)) || normHead(h) === "service name")));
+  const rows = useMemo(() => allRows.slice(headerIdx).filter((r, i) => i === 0 || !String(r[0] || "").trim().startsWith(TEMPLATE_EXAMPLE_PREFIX.trim())), [allRows, headerIdx]);
   const header = rows[0] || [];
   const map = useMemo(() => {
     const m = {};
     header.forEach((h, i) => {
-      const k = String(h).trim().toLowerCase().replace(/[_*]/g, " ").replace(/\s+/g, " ");
+      const k = normHead(h);
       const f = IMPORT_FIELDS.find((f) => f.aliases.includes(k) || f.label.toLowerCase() === k);
       if (f && m[f.key] === undefined) m[f.key] = i;
     });
     return m;
-  }, [text]);
+  }, [rows]);
   const catKey = (v) => { const t = String(v || "").trim().toLowerCase(); if (!t) return "maintenance"; return CATEGORY_KEYS.find((k) => k === t || CATEGORY_META[k].label.toLowerCase() === t) || "maintenance"; };
   const existingNames = new Set(existing.map((d) => d.name.trim().toLowerCase()));
   const parsed = rows.slice(1).map((r) => {
@@ -1183,14 +1247,31 @@ export function ImportModal({ suppliers, existing, onClose, onImport }) {
         area: get("area"), supplierId: sup?.id || null, serviceIntervalMonths: interval, nextServiceDate: toISO(get("nextServiceDate")),
         budgetPerVisit: Number(String(get("budgetPerVisit")).replace(/[£$€,]/g, "")) || 0, manufacturer: get("manufacturer"), model: get("model"),
         serialNumber: get("serialNumber"), installDate: toISO(get("installDate")),
+        criticality: (() => { const t = get("criticality").toLowerCase(); return t.startsWith("crit") ? "critical" : t.startsWith("high") ? "high" : undefined; })(),
+        condition: (() => { const t = get("condition").trim().toUpperCase()[0]; return ["A", "B", "C", "D"].includes(t) ? t : undefined; })(),
       },
     };
   });
   const good = parsed.filter((p) => !p.skip);
-  function readFile(e) {
+  async function readFile(e) {
     const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
-    if (/\.xlsx?$/i.test(f.name)) { setErr("Please save the sheet as CSV first (File → Save as → CSV), or copy the cells and paste them below."); return; }
-    const r = new FileReader(); r.onload = () => { setErr(""); setText(String(r.result)); }; r.readAsText(f);
+    setErr(""); setFileName(f.name);
+    if (/\.xls$/i.test(f.name)) { setErr("That's an old .xls file — in Excel choose File → Save as → Excel Workbook (.xlsx), then upload again."); return; }
+    if (/\.xlsx$/i.test(f.name)) {
+      setBusy(true);
+      try { const rowsIn = await readSpreadsheetRows(await f.arrayBuffer()); setSheetRows(rowsIn); setText(""); if (!rowsIn.length) setErr("That sheet looks empty."); }
+      catch (x) { setErr("Couldn't read that Excel file. Try saving it again in Excel, or copy the cells and paste them below."); }
+      setBusy(false); return;
+    }
+    const r = new FileReader(); r.onload = () => { setSheetRows(null); setText(String(r.result)); }; r.readAsText(f);
+  }
+  async function excelTemplate() {
+    setBusy(true);
+    try {
+      const buf = await buildServicesTemplate({ suppliers, areas, locationName, companyName: ACTIVE_BRAND.companyName || "" });
+      downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `services-import-${(locationName || "site").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.xlsx`);
+    } catch (x) { setErr("Couldn't create the Excel template — check your connection and try again."); }
+    setBusy(false);
   }
   function template() {
     downloadBlob(new Blob([toCSV([IMPORT_FIELDS.map((f) => f.label), ["Emergency lighting test", "EL-01", "Maintenance", "", "Emergency lighting", "Ground floor", suppliers[0]?.name || "", "1", "01/11/2026", "45", "", "", "", ""]])], { type: "text/csv" }), "services-import-template.csv");
@@ -1198,15 +1279,19 @@ export function ImportModal({ suppliers, existing, onClose, onImport }) {
   return (
     <Modal title="Import services" onClose={onClose} width={560}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Bring in your asset register in one go. Upload a CSV, or copy the cells from Excel / Google Sheets (including the header row) and paste them below. Only a <b>Service name</b> column is required.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Bring in your asset register in one go. Download the Excel template, fill it in, and upload it — or paste cells from any spreadsheet (including the header row). Only a <b>Service name</b> column is required.</div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={excelTemplate} disabled={busy} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            <FileSpreadsheet size={14} /> {busy ? "Working…" : "1. Download Excel template"}
+          </button>
           <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "var(--accent)", color: "var(--on-accent)", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-            <Upload size={14} /> Choose CSV file
-            <input type="file" accept=".csv,.txt,.tsv,.xlsx,.xls" onChange={readFile} style={{ display: "none" }} />
+            <Upload size={14} /> 2. Upload filled-in file
+            <input type="file" accept=".xlsx,.csv,.txt,.tsv,.xls" onChange={readFile} style={{ display: "none" }} />
           </label>
-          <button onClick={template} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Download size={14} /> Template</button>
         </div>
-        <TextArea value={text} onChange={(e) => { setText(e.target.value); setErr(""); }} placeholder="…or paste cells here" style={{ minHeight: 80, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }} />
+        <div style={{ fontSize: 11.5, color: "var(--faint)" }}>The template has dropdowns for category, area, supplier, interval, criticality and condition, using the names already in the app. Prefer CSV? <button onClick={template} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Download a CSV template</button>.</div>
+        {fileName && sheetRows && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--ok)" }}>✓ Read {fileName} — {Math.max(0, rows.length - 1)} row{rows.length === 2 ? "" : "s"}</div>}
+        <TextArea value={text} onChange={(e) => { setText(e.target.value); setSheetRows(null); setFileName(""); setErr(""); }} placeholder="…or copy the cells from Excel / Google Sheets and paste them here" style={{ minHeight: 80, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }} />
         {err && <div style={{ fontSize: 12, color: "var(--danger)" }}>{err}</div>}
         {rows.length > 0 && (
           <>
@@ -1335,6 +1420,21 @@ function OutOfServiceForm({ onSubmit }) {
     <div style={{ display: "flex", gap: 6 }}>
       <TextInput autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. compressor failed" style={{ flex: 1, fontSize: 12.5 }} />
       <button onClick={() => onSubmit(reason.trim())} style={{ background: "#C53030", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Mark down</button>
+    </div>
+  );
+}
+
+function UsageCard({ device, onRecord }) {
+  const [v, setV] = useState("");
+  const latest = (device.usageReadings || [])[0];
+  const since = latest ? Number(latest.hours) - (Number(device.usageAtLastService) || 0) : null;
+  const pct = since != null ? Math.min(100, Math.round((since / Number(device.usageInterval)) * 100)) : 0;
+  return (
+    <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700 }}><span>Run hours</span><span style={{ color: pct >= 100 ? "var(--danger)" : pct >= 90 ? "var(--warn)" : "var(--muted)" }}>{since != null ? `${Math.round(since)} / ${device.usageInterval} h since service` : "No reading yet"}</span></div>
+      <div style={{ height: 6, borderRadius: 3, background: "var(--track)", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: pct >= 100 ? "var(--danger)" : pct >= 90 ? "var(--warn)" : "var(--ok)" }} /></div>
+      {latest && <div style={{ fontSize: 11, color: "var(--faint)" }}>Last reading {latest.hours} h on {fmtDate(latest.date)}</div>}
+      {ACTIVE_CAN_EDIT && onRecord && <div style={{ display: "flex", gap: 6 }}><TextInput type="number" min="0" value={v} onChange={(e) => setV(e.target.value)} placeholder="Hours on the meter now" style={{ flex: 1 }} /><button onClick={() => { if (v !== "") { onRecord(Number(v)); setV(""); } }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Record</button></div>}
     </div>
   );
 }

@@ -1,18 +1,21 @@
 // Reactive works and projects.
 import { useState } from "react";
-import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, FolderKanban, Mail, Printer, Receipt, Send, Square, Timer, Trash2, X } from "lucide-react";
+import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, FolderKanban, Mail, Printer, Receipt, Repeat, Send, Square, Timer, Trash2, X } from "lucide-react";
 import { BudgetTypeTag, CategoryBadge, ConfirmTextDelete, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, PriorityTag, Select, TextArea, TextInput, ToggleButton, WorkStatusTag, inputStyle } from "../components/ui.jsx";
 import { PRIORITY_RANK, PROJECT_STATUSES, SLA_DAYS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_SLA, ACTIVE_USERS, siteInfoText } from "../lib/globals.js";
 import { addDays, daysUntil, escapeHtml, fmtDate, gbp, replacementYear, uid, workSla } from "../lib/utils.js";
 import { buildWorkOrderSheet, openPrintReport, tableHtml } from "../lib/reports.js";
 
-export function WorksTab({ invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
+export function WorksTab({ onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
   const needsApproval = (w) => approvalThreshold > 0 && Number(w.quoteAmount) >= approvalThreshold && !w.approvedBy && w.status !== "rejected" && w.status !== "completed";
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState(String(approvalThreshold || ""));
   const [statusFilter, setStatusFilter] = useState("open"); // 'open' | 'requested' | 'all' | 'closed'
   const [tradeFilter, setTradeFilter] = useState("");
+  const [sortBy, setSortBy] = useState("priority");
+  const [chaseOpen, setChaseOpen] = useState(false);
+  const overdueWorks = works.filter((w) => !["completed", "rejected", "on_hold"].includes(w.status) && workSla(w)?.breached && w.supplierId);
   const [openWorkId, setOpenWorkId] = useState(null);
   const [layout, setLayout] = useState("list"); // 'list' | 'board'
   const [selecting, setSelecting] = useState(false);
@@ -30,7 +33,7 @@ export function WorksTab({ invoices = [], locationName = "", onConvertToProject,
   const filtered = works
     .filter((w) => !tradeFilter || w.category === tradeFilter)
     .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : !isClosed(w))
-    .sort((a, b) => (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || ""));
+    .sort((a, b) => sortBy === "newest" ? (b.dateRaised || "").localeCompare(a.dateRaised || "") : sortBy === "oldest" ? (a.dateRaised || "").localeCompare(b.dateRaised || "") : sortBy === "target" ? String(workSla(a)?.deadline || "9999").localeCompare(String(workSla(b)?.deadline || "9999")) : sortBy === "value" ? (Number(b.quoteAmount) || 0) - (Number(a.quoteAmount) || 0) : (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || ""));
   const openWork = openWorkId ? works.find((w) => w.id === openWorkId) : null;
   const csvRows = [
     ["Service", "Description", "Priority", "Assigned to", "Amount", "Status", "Budget type", "Date raised", "Raised by", "Comments"],
@@ -119,11 +122,21 @@ export function WorksTab({ invoices = [], locationName = "", onConvertToProject,
       )}
       {layout === "board" && <div style={{ fontSize: 10.5, color: "var(--faint)", marginBottom: 12 }}>Use the arrows to move a job along. Completed shows the last 30 days.</div>}
       {layout === "list" && <>
+      {ACTIVE_CAN_EDIT && onLogChase && overdueWorks.length > 0 && (
+        <button onClick={() => setChaseOpen(true)} style={{ width: "100%", marginBottom: 10, background: "var(--danger-soft)", color: "var(--danger)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Mail size={14} /> Chase {overdueWorks.length} overdue job{overdueWorks.length === 1 ? "" : "s"} — one email per supplier
+        </button>
+      )}
+      {(() => { const rated = works.filter((w) => w.satisfaction); return rated.length ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>Requester satisfaction: <b style={{ color: "#D97706" }}>{(rated.reduce((t, w) => t + w.satisfaction, 0) / rated.length).toFixed(1)} ★</b> from {rated.length} job{rated.length === 1 ? "" : "s"}</div> : null; })()}
+      {chaseOpen && <ChaseWorksModal works={overdueWorks} suppliers={suppliers} deviceById={deviceById} locationName={locationName} onClose={() => setChaseOpen(false)} onSent={onLogChase} />}
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
         <ToggleButton active={statusFilter === "open"} onClick={() => setStatusFilter("open")}>Open</ToggleButton>
         <ToggleButton active={statusFilter === "requested"} onClick={() => setStatusFilter("requested")}>New requests{requestedCount ? ` (${requestedCount})` : ""}</ToggleButton>
         <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Closed</ToggleButton>
         <ToggleButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All</ToggleButton>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "7px 8px", fontSize: 12.5 }}>
+          <option value="priority">Priority first</option><option value="target">Target date</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="value">Highest value</option>
+        </select>
         {works.some((w) => w.category) && (
           <select value={tradeFilter} onChange={(e) => setTradeFilter(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "7px 8px", fontSize: 12.5 }}>
             <option value="">All trades</option>
@@ -161,6 +174,7 @@ export function WorksTab({ invoices = [], locationName = "", onConvertToProject,
                 {w.poNumber && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>PO {w.poNumber}</span>}
                 {w.finalCost != null && Number(w.quoteAmount) > 0 && (() => { const v = Number(w.finalCost) - Number(w.quoteAmount); const pct = Math.round((v / Number(w.quoteAmount)) * 100); return <span style={{ fontSize: 11, fontWeight: 700, color: v > 0 ? "var(--danger)" : "var(--ok)", background: v > 0 ? "var(--danger-soft)" : "var(--ok-soft)", padding: "3px 8px", borderRadius: 20 }}>Final {gbp(w.finalCost)} ({v > 0 ? "+" : ""}{pct}%)</span>; })()}
                 {w.eta && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: daysUntil(w.eta) < 0 ? "var(--danger)" : "var(--accent)", background: daysUntil(w.eta) < 0 ? "var(--danger-soft)" : "var(--accent-soft)", padding: "3px 8px", borderRadius: 20 }}>Supplier ETA {fmtDate(w.eta)}</span>}
+                {w.warranty && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", background: "var(--ok-soft)", padding: "3px 8px", borderRadius: 20 }}>Warranty claim</span>}
                 {w.category && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>{w.category}</span>}
                 {(w.links || []).length > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>📎 {w.links.length}</span>}
                 {w.incidentId && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>From incident</span>}
@@ -200,7 +214,7 @@ export function WorksTab({ invoices = [], locationName = "", onConvertToProject,
         </div>
       )}
       {openWork && (
-        <WorkDetailModal locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
+        <WorkDetailModal onRepeat={onRepeat ? () => { const w = openWork; setOpenWorkId(null); onRepeat(w); } : null} locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
           approvalThreshold={approvalThreshold} needsApproval={needsApproval(openWork)}
           onConvertToProject={onConvertToProject ? () => { onConvertToProject(openWork); setOpenWorkId(null); } : null}
           onConvertToPlan={() => onConvertToPlan?.(openWork)} onConvertToService={() => onConvertToService?.(openWork)}
@@ -211,7 +225,7 @@ export function WorksTab({ invoices = [], locationName = "", onConvertToProject,
   );
 }
 
-export function WorkDetailModal({ locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
+export function WorkDetailModal({ onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
   const [po, setPo] = useState(work.poNumber || "");
   const [statusMsg, setStatusMsg] = useState("");
   const [comment, setComment] = useState("");
@@ -289,6 +303,19 @@ export function WorkDetailModal({ locationName = "", invoicedTotal = 0, onConver
         <WorkLinks links={work.links || []} onChange={ACTIVE_CAN_EDIT ? (links) => onUpdate({ links }) : null} />
         {onConvertToProject && ACTIVE_CAN_EDIT && !work.projectId && !["completed", "rejected"].includes(work.status) && (
           <button type="button" onClick={onConvertToProject} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}><FolderKanban size={13} /> Too big for a work? Turn it into a project</button>
+        )}
+        {work.status === "completed" && (work.source === "request" || work.requestedBy) && (
+          <Field label="Requester's satisfaction (ask them)">
+            <div style={{ display: "flex", gap: 4 }}>{[1, 2, 3, 4, 5].map((n) => <button key={n} type="button" disabled={!ACTIVE_CAN_EDIT} onClick={() => onUpdate({ satisfaction: work.satisfaction === n ? null : n })} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: (work.satisfaction || 0) >= n ? "#D97706" : "#C0C6CC", padding: 0 }}>★</button>)}</div>
+          </Field>
+        )}
+        {work.status === "on_hold" && (
+          <Field label="Why is it on hold? (the target date is paused)">
+            <TextInput value={work.holdReason || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ holdReason: e.target.value })} placeholder="e.g. Waiting for parts / access / landlord approval" />
+          </Field>
+        )}
+        {ACTIVE_CAN_EDIT && onRepeat && (
+          <button type="button" onClick={onRepeat} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}><Repeat size={13} /> Raise this job again (repeat)</button>
         )}
         {work.projectId && <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 650 }}>✓ Being handled as a project</div>}
         <div style={{ display: "flex", gap: 8 }}>
@@ -430,9 +457,11 @@ export function ProjectsView({ projects, devices, suppliers, onSave, onDelete })
       </div>
       {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ marginBottom: 10, width: "100%" }}><FolderKanban size={15} /> New project</PrimaryButton>}
       {projects.length > 0 && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center" }}>
           <ToggleButton active={mode === "list"} onClick={() => setMode("list")}>List</ToggleButton>
           <ToggleButton active={mode === "timeline"} onClick={() => setMode("timeline")}>Timeline</ToggleButton>
+          <button onClick={() => openPrintReport("Projects summary", new Date().toLocaleDateString("en-GB"), tableHtml(["Project", "Status", "Start", "Target", "Budget", "Spent", "Milestones", "Open snags"], projects.map((p) => [`<b>${escapeHtml(p.name)}</b>`, escapeHtml(PROJECT_STATUSES.find((x) => x.key === p.status)?.label || ""), p.start ? fmtDate(p.start) : "", p.target ? fmtDate(p.target) : "", gbp(p.budget || 0), gbp(p.spent || 0), `${(p.milestones || []).filter((m) => m.done).length}/${(p.milestones || []).length}`, String((p.snags || []).filter((x) => !x.done).length)])))} title="Print summary" style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer", display: "flex" }}><Printer size={14} color="#2B4562" /></button>
+          <ExportButton label="CSV" filename="projects.csv" rows={[["Project", "Status", "Start", "Target", "Budget", "Spent", "Supplier", "Milestones done", "Milestones", "Open snags", "Notes"], ...projects.map((p) => [p.name, p.status, p.start || "", p.target || "", p.budget || 0, p.spent || 0, suppliers.find((s) => s.id === p.supplierId)?.name || "", (p.milestones || []).filter((m) => m.done).length, (p.milestones || []).length, (p.snags || []).filter((x) => !x.done).length, p.notes || ""])]} />
         </div>
       )}
       {mode === "timeline" && <ProjectTimeline projects={list} onOpen={setEditing} />}
@@ -675,5 +704,33 @@ function ProjectTimeline({ projects, onOpen }) {
         <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4, marginLeft: 110 }}>Red line = today. Colours show status.</div>
       </div>
     </div>
+  );
+}
+
+function ChaseWorksModal({ works, suppliers, deviceById, locationName, onClose, onSent }) {
+  const groups = {}; works.forEach((w) => { (groups[w.supplierId] = groups[w.supplierId] || []).push(w); });
+  const [sent, setSent] = useState([]);
+  function send(sid) {
+    const sup = suppliers.find((s) => s.id === sid); const list = groups[sid];
+    const lines = list.map((w) => `- ${deviceById[w.deviceId]?.name || "Service"}: ${w.description}${w.poNumber ? ` (PO ${w.poNumber})` : ""} — target was ${fmtDate(workSla(w).deadline)}`);
+    const body = `Hi${sup?.managerName ? ` ${sup.managerName.split(" ")[0]}` : ""},\n\nThe following job${list.length === 1 ? " is" : "s are"} past the agreed completion date at ${locationName}:\n\n${lines.join("\n")}\n\nPlease confirm when ${list.length === 1 ? "it" : "they"} will be completed.\n\nKind regards`;
+    window.location.href = `mailto:${encodeURIComponent(sup?.managerEmail || "")}?subject=${encodeURIComponent(`Overdue jobs — ${locationName}`)}&body=${encodeURIComponent(body)}`;
+    onSent?.(list.map((w) => w.id), sup?.name); setSent((p) => [...p, sid]);
+  }
+  return (
+    <Modal title="Chase overdue jobs" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>One email per supplier listing their jobs past target. Each chase is noted on the job.</div>
+        {Object.entries(groups).map(([sid, list]) => (
+          <div key={sid} style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>{suppliers.find((s) => s.id === sid)?.name || "Supplier"}</div>
+              <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{list.length} overdue: {list.map((w) => String(w.description).slice(0, 30)).join(", ")}</div>
+            </div>
+            <button onClick={() => send(sid)} style={{ background: sent.includes(sid) ? "var(--ok-soft)" : "var(--accent)", color: sent.includes(sid) ? "var(--ok)" : "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{sent.includes(sid) ? "Sent ✓" : "Email"}</button>
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }

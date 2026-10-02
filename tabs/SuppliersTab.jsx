@@ -1,11 +1,12 @@
 // Suppliers, supplier form and scorecard.
 import { useState } from "react";
-import { CheckCircle2, FileSpreadsheet, Gauge, Link2, Mail, Merge, MessageSquare, Pencil, Phone, Plus, Printer, Star, Trash2, Users as UsersIcon, X } from "lucide-react";
-import { CategoryOptions, ConfirmDeleteButton, EmptyState, Field, Modal, PrimaryButton, Select, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { CONTACT_TYPES, ONBOARDING_ITEMS, SUPPLIER_STATUSES } from "../lib/constants.js";
+import { CheckCircle2, FileSpreadsheet, Gauge, Link2, Mail, Merge, MessageSquare, Pencil, Phone, Plus, Printer, Star, Trash2, Upload, Users as UsersIcon, X } from "lucide-react";
+import { CategoryOptions, ConfirmDeleteButton, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
+import { CONTACT_TYPES, ONBOARDING_ITEMS, RENEWAL_STEPS, SUPPLIER_STATUSES, WORK_CATEGORIES } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
-import { daysUntil, fmtDate, gbp, isMirrored, parseDelimited, supplierStats, toISO, uid } from "../lib/utils.js";
+import { computeCompliance, daysUntil, fmtDate, gbp, isMirrored, parseDelimited, supplierStats, toISO, uid } from "../lib/utils.js";
 import { buildSupplierPack, openPrintReport } from "../lib/reports.js";
+import { xlsxToText } from "../lib/excelTemplate.js";
 
 /* ---------------------------------------------------------
    Suppliers Tab
@@ -36,6 +37,7 @@ export function SuppliersTab({ onImport, packData = null, locationName = "", onF
           </select>
         </div>
       )}
+      {suppliers.length > 0 && <div style={{ order: 97, display: "flex", justifyContent: "center" }}><ExportButton label="Export suppliers (CSV)" filename="suppliers.csv" rows={[["Name", "Category", "Status", "Trades", "Contact", "Email", "Phone", "Out of hours", "Contract value", "Per", "Contract end", "Payment terms", "Insurance expiry", "Accreditation", "Accreditation expiry", "Waste carrier reg.", "Rating"], ...suppliers.map((x) => [x.name, CATEGORY_META[x.category]?.label || x.category, SUPPLIER_STATUSES[x.status || "approved"]?.label || "", (x.trades || []).join("; "), x.managerName || "", x.managerEmail || "", x.managerPhone || "", x.oohPhone || "", x.costAmount || 0, x.costFrequency || "", x.contractEnd || "", x.paymentDays ?? "", x.insuranceExpiry || "", x.accreditation || "", x.accreditationExpiry || "", x.wasteLicence || "", ratingOf(x) >= 0 ? ratingOf(x).toFixed(1) : ""])]} /></div>}
       {importOpen && <SupplierImportModal existing={suppliers} onClose={() => setImportOpen(false)} onImport={(rows) => { onImport(rows); setImportOpen(false); }} />}
       {ACTIVE_CAN_EDIT && onImport && <button onClick={() => setImportOpen(true)} style={{ order: 98, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><FileSpreadsheet size={14} /> Import suppliers from a spreadsheet</button>}
       {contactFor && <ContactLogModal onFollowUpDone={(cid) => onFollowUpDone?.(contactFor.id, cid)} supplier={suppliers.find((x) => x.id === contactFor.id) || contactFor} userName={userName} onClose={() => setContactFor(null)} onAdd={(entry) => onAddContact(contactFor.id, entry)} />}
@@ -84,8 +86,12 @@ export function SuppliersTab({ onImport, packData = null, locationName = "", onF
                         })}
                       </div>
                     )}
+                    {s.wasteLicence && <div style={{ fontSize: 11.5, color: s.wasteLicenceExpiry && daysUntil(s.wasteLicenceExpiry) < 0 ? "var(--danger)" : "var(--muted)", marginTop: 3, fontWeight: 600 }}>♻ Carrier reg. {s.wasteLicence}{s.wasteLicenceExpiry ? ` · ${daysUntil(s.wasteLicenceExpiry) < 0 ? "expired" : "to"} ${fmtDate(s.wasteLicenceExpiry)}` : ""}</div>}
+                    {s.contractEnd && daysUntil(s.contractEnd) >= 0 && daysUntil(s.contractEnd) <= 180 && <div style={{ fontSize: 11.5, color: "var(--warn)", marginTop: 3, fontWeight: 650 }}>Renewal: {Object.keys(s.renewal || {}).filter((k) => RENEWAL_STEPS.includes(k)).length}/{RENEWAL_STEPS.length} steps · ends {fmtDate(s.contractEnd)}</div>}
                     {s.oohPhone && <a href={`tel:${s.oohPhone.replace(/[^+0-9]/g, "")}`} onClick={(e) => e.stopPropagation()} style={{ display: "inline-block", fontSize: 11.5, fontWeight: 700, color: "var(--danger)", marginTop: 3, textDecoration: "none" }}>☎ 24h: {s.oohPhone}</a>}
-                    {s.status && s.status !== "approved" && <div style={{ fontSize: 11.5, fontWeight: 800, color: SUPPLIER_STATUSES[s.status].color, marginTop: 3 }}>{s.status === "blocked" ? "⛔ " : "⚠ "}{SUPPLIER_STATUSES[s.status].label}</div>}
+                    {s.status && s.status !== "approved" && <div style={{ fontSize: 11.5, fontWeight: 800, color: SUPPLIER_STATUSES[s.status].color, marginTop: 3 }}>{s.status === "blocked" ? "⛔ " : "⚠ "}{SUPPLIER_STATUSES[s.status].label}{s.statusReason ? ` — ${s.statusReason}` : ""}</div>}
+                    {Number(s.targetOnTime) > 0 && (() => { const comp = computeCompliance(devices.filter((d) => d.supplierId === s.id), visitBudgets || [], services); if (comp.pct == null) return null; const t = Number(s.targetOnTime); const col = comp.pct >= t ? "var(--ok)" : comp.pct >= t - 10 ? "var(--warn)" : "var(--danger)"; return <div style={{ fontSize: 11.5, fontWeight: 700, color: col, marginTop: 3 }}>● On time {comp.pct}% (target {t}%)</div>; })()}
+                    {(s.trades || []).length > 0 && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>{s.trades.join(" · ")}</div>}
                     {(() => {
                       const yr = String(new Date().getFullYear());
                       const visits = services.filter((v) => String(v.date).startsWith(yr) && (v.supplierId === s.id || (!v.supplierId && devices.find((d) => d.id === v.deviceId)?.supplierId === s.id))).reduce((t, v) => t + (Number(v.cost) || 0), 0);
@@ -169,6 +175,13 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
   const [outOfHours, setOutOfHours] = useState(existing?.rates?.outOfHours != null ? String(existing.rates.outOfHours) : "");
   const [markup, setMarkup] = useState(existing?.rates?.materialsMarkup != null ? String(existing.rates.materialsMarkup) : "");
   const [status, setStatus] = useState(existing?.status || "approved");
+  const [statusReason, setStatusReason] = useState(existing?.statusReason || "");
+  const [trades, setTrades] = useState(existing?.trades || []);
+  const [targetOnTime, setTargetOnTime] = useState(existing?.targetOnTime != null ? String(existing.targetOnTime) : "");
+  const [paymentDays, setPaymentDays] = useState(existing?.paymentDays != null ? String(existing.paymentDays) : "30");
+  const [wasteLicence, setWasteLicence] = useState(existing?.wasteLicence || "");
+  const [wasteLicenceExpiry, setWasteLicenceExpiry] = useState(existing?.wasteLicenceExpiry || "");
+  const [renewal, setRenewal] = useState(existing?.renewal || {});
   const [insuranceExpiry, setInsuranceExpiry] = useState(existing?.insuranceExpiry || "");
   const [accreditation, setAccreditation] = useState(existing?.accreditation || "");
   const [accreditationExpiry, setAccreditationExpiry] = useState(existing?.accreditationExpiry || "");
@@ -178,13 +191,14 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
 
   function submit() {
     if (!name.trim()) return;
-    onSave({ status, rates: { hourly: hourlyRate === "" ? null : Number(hourlyRate), callout: calloutFee === "" ? null : Number(calloutFee), outOfHours: outOfHours === "" ? null : Number(outOfHours), materialsMarkup: markup === "" ? null : Number(markup) }, id: existing?.id, category, subCategory: subCategory.trim(), name: name.trim(), contact: contact.trim(),
+    onSave({ status, statusReason: status === "approved" ? "" : statusReason.trim(), trades, paymentDays: Number(paymentDays) || 30, targetOnTime: targetOnTime === "" ? null : Number(targetOnTime), rates: { hourly: hourlyRate === "" ? null : Number(hourlyRate), callout: calloutFee === "" ? null : Number(calloutFee), outOfHours: outOfHours === "" ? null : Number(outOfHours), materialsMarkup: markup === "" ? null : Number(markup) }, id: existing?.id, category, subCategory: subCategory.trim(), name: name.trim(), contact: contact.trim(),
       managerName: managerName.trim(), managerEmail: managerEmail.trim(), managerPhone: managerPhone.trim(), oohPhone: oohPhone.trim(),
       contractStart: contractStart || null, contractEnd: contractEnd || null, noticeDays: noticeDays ? Number(noticeDays) : 60, contractRef: contractRef.trim(),
       priceHistory: existing && Number(existing.costAmount) !== (costAmount ? Number(costAmount) : 0)
         ? [...(existing.priceHistory || []), { amount: Number(existing.costAmount) || 0, frequency: existing.costFrequency, until: new Date().toISOString().slice(0, 10) }]
         : (existing?.priceHistory || []),
       costAmount: costAmount ? Number(costAmount) : 0, costFrequency,
+      wasteLicence: wasteLicence.trim(), wasteLicenceExpiry: wasteLicenceExpiry || null, renewal,
       insuranceExpiry: insuranceExpiry || null, accreditation: accreditation.trim(), accreditationExpiry: accreditationExpiry || null, onboarding,
       links: supLinks.filter((l) => l.url.trim()).map((l) => ({ label: l.label.trim() || "Document", url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : `https://${l.url.trim()}` })) });
   }
@@ -220,7 +234,24 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
           </div>
         </div>
         <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Compliance documents — you'll be alerted 30 days before expiry</div>
+          {category === "cleaning" || /waste|recycl|skip/i.test(`${name} ${subCategory}`) || wasteLicence ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            <Field label="Waste carrier registration no."><TextInput value={wasteLicence} onChange={(e) => setWasteLicence(e.target.value)} placeholder="e.g. CBDU123456" /></Field>
+            <Field label="Registration expires"><TextInput type="date" value={wasteLicenceExpiry} onChange={(e) => setWasteLicenceExpiry(e.target.value)} /></Field>
+          </div>
+        ) : null}
+        {contractEnd && daysUntil(contractEnd) <= 180 && (
+          <div style={{ background: "var(--warn-soft)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warn)" }}>Contract renewal — ends {fmtDate(contractEnd)} ({Object.keys(renewal).filter((k) => RENEWAL_STEPS.includes(k)).length}/{RENEWAL_STEPS.length} steps done)</div>
+            {RENEWAL_STEPS.map((st) => (
+              <label key={st} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, cursor: "pointer" }}>
+                <input type="checkbox" checked={!!renewal[st]} onChange={(e) => setRenewal((p) => { const n = { ...p }; if (e.target.checked) n[st] = new Date().toISOString().slice(0, 10); else delete n[st]; return n; })} style={{ margin: 0 }} />
+                <span style={{ flex: 1 }}>{st}</span>{renewal[st] && <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{fmtDate(renewal[st])}</span>}
+              </label>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Compliance documents — you'll be alerted 30 days before expiry</div>
           <Field label="Public liability insurance expires"><TextInput type="date" value={insuranceExpiry} onChange={(e) => setInsuranceExpiry(e.target.value)} /></Field>
           <div style={{ display: "flex", gap: 8 }}>
             <Field label="Accreditation"><TextInput value={accreditation} onChange={(e) => setAccreditation(e.target.value)} placeholder="e.g. Gas Safe, SafeContractor" /></Field>
@@ -249,6 +280,12 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
         <Field label="Status">
           <div style={{ display: "flex", gap: 5 }}>{Object.entries(SUPPLIER_STATUSES).map(([k, v]) => <ToggleButton key={k} active={status === k} onClick={() => setStatus(k)}>{v.label}</ToggleButton>)}</div>
         </Field>
+        {status !== "approved" && <Field label="Reason"><TextInput value={statusReason} onChange={(e) => setStatusReason(e.target.value)} placeholder="e.g. Repeated no-shows in 2026; failed audit" /></Field>}
+        <Field label="Trades they cover (used to suggest suppliers for new jobs)">
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{WORK_CATEGORIES.map((c) => <ToggleButton key={c} active={trades.includes(c)} onClick={() => setTrades((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c])}>{c}</ToggleButton>)}</div>
+        </Field>
+        <Field label="Target: visits on time (%) — shown red/amber/green on the card"><TextInput type="number" min="0" max="100" value={targetOnTime} onChange={(e) => setTargetOnTime(e.target.value)} placeholder="e.g. 95" /></Field>
+        <Field label="Payment terms (days) — sets invoice due dates"><TextInput type="number" min="0" value={paymentDays} onChange={(e) => setPaymentDays(e.target.value)} /></Field>
         <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Rate card (optional) — to check quotes and invoices against</div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -424,7 +461,11 @@ export function SupplierImportModal({ existing, onClose, onImport }) {
     <Modal title="Import suppliers" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Copy your supplier list from Excel (with a header row) and paste it below. Recognised columns: Name, Category, Subcategory, Contact, Email, Phone, Out of hours, Cost, Frequency, Contract end.</div>
-        <TextArea value={text} onChange={(e) => setText(e.target.value)} placeholder="Paste cells here" style={{ minHeight: 100, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }} />
+        <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "var(--accent)", color: "var(--on-accent)", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+          <Upload size={14} /> Upload an Excel or CSV file
+          <input type="file" accept=".xlsx,.csv,.txt" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { setText(/\.xlsx$/i.test(f.name) ? await xlsxToText(f) : await f.text()); } catch (x) { alert("Couldn't read that file — try copying the cells and pasting them instead."); } }} style={{ display: "none" }} />
+        </label>
+        <TextArea value={text} onChange={(e) => setText(e.target.value)} placeholder="…or paste cells here" style={{ minHeight: 100, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }} />
         {rows.length > 0 && ix.name < 0 && <div style={{ fontSize: 12, color: "var(--danger)" }}>No "Name" column found in the header row.</div>}
         {parsed.length > 0 && <div style={{ fontSize: 12, color: "var(--muted)" }}>{fresh.length} new · {parsed.length - fresh.length} already in the list (skipped)</div>}
         {fresh.slice(0, 8).map((p, i) => <div key={i} style={{ fontSize: 12, background: "var(--card-hi)", borderRadius: 7, padding: "5px 8px" }}><b>{p.name}</b> <span style={{ color: "var(--faint)" }}>· {CATEGORY_META[p.category]?.label}{p.managerEmail ? ` · ${p.managerEmail}` : ""}</span></div>)}

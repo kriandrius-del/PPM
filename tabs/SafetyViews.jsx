@@ -1,11 +1,11 @@
 // Site tab safety records: legionella water temperatures, training & competency, fire drills.
 import { useMemo, useState } from "react";
-import { DOC_TYPES, DRILL_TYPES, LOG_TEMPLATES, TRAINING_COURSES, WATER_LIMITS } from "../lib/constants.js";
+import { ASBESTOS_MATERIALS, DOC_TYPES, DRILL_TYPES, LOG_TEMPLATES, TRAINING_COURSES, WATER_LIMITS } from "../lib/constants.js";
 import { addMonths, daysUntil, escapeHtml, fmtDate, uid } from "../lib/utils.js";
-import { openPrintReport, tableHtml } from "../lib/reports.js";
-import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
+import { buildAsbestosRegister, openPrintReport, tableHtml } from "../lib/reports.js";
+import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
-import { CheckCircle2, ClipboardList, Droplets, FileText, Flame, GraduationCap, Link2, Plus, Printer, X } from "lucide-react";
+import { CheckCircle2, ClipboardList, Droplets, FileText, Flame, GraduationCap, Link2, Plus, Printer, ShieldAlert, X } from "lucide-react";
 
 /* ---------- Water temperatures (legionella control) ---------- */
 export function WaterTempsView({ outlets, readings, areas, locationName, onSaveOutlet, onDeleteOutlet, onAddReadings }) {
@@ -50,7 +50,10 @@ export function WaterTempsView({ outlets, readings, areas, locationName, onSaveO
               </button>
             );
           })}
-          <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4 }}><Printer size={14} /> Print temperature log</button>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button onClick={print} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print temperature log</button>
+            <ExportButton label="CSV" filename="water-temperatures.csv" rows={[["Date", "Outlet", "Type", "Area", "Sentinel", "Temperature °C", "In range", "By"], ...[...readings].sort((a, b) => String(b.date).localeCompare(String(a.date))).map((r) => { const o = outlets.find((x) => x.id === r.outletId); return [r.date, o?.name || "", WATER_LIMITS[o?.type]?.label || "", o?.area || "", o?.sentinel ? "Yes" : "", r.temp, o && WATER_LIMITS[o.type]?.ok(Number(r.temp)) ? "Yes" : "No", r.by || ""]; })]} />
+          </div>
         </div>
       )}
       {editing && <OutletModal existing={editing.id ? editing : null} areas={areas} onClose={() => setEditing(null)} onSave={(o) => { onSaveOutlet(o); setEditing(null); }} onDelete={(id) => { onDeleteOutlet(id); setEditing(null); }} />}
@@ -105,7 +108,7 @@ function WaterReadingsModal({ outlets, onClose, onSave }) {
 }
 
 /* ---------- Training & competency ---------- */
-export function TrainingView({ records, locationName, onSave, onDelete }) {
+export function TrainingView({ required = [], onSaveRequired, records, locationName, onSave, onDelete }) {
   const [editing, setEditing] = useState(null);
   const [mode, setMode] = useState("list");
   const current = (course) => records.filter((r) => r.course === course && (!r.expiry || daysUntil(r.expiry) >= 0));
@@ -122,6 +125,12 @@ export function TrainingView({ records, locationName, onSave, onDelete }) {
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><GraduationCap size={15} /> Add training record</PrimaryButton>}
         {records.length > 0 && <ExportButton label="CSV" filename="training-register.csv" rows={[["Person", "Course", "Completed", "Expires", "Provider"], ...records.map((r) => [r.person, r.course, r.date || "", r.expiry || "", r.provider || ""])]} />}
       </div>
+      {ACTIVE_CAN_EDIT && onSaveRequired && (
+        <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: "8px 10px", marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 5 }}>Required for everyone at this site</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{TRAINING_COURSES.filter((c) => c !== "Other").map((c) => <ToggleButton key={c} active={required.includes(c)} onClick={() => onSaveRequired(required.includes(c) ? required.filter((x) => x !== c) : [...required, c])}>{c}</ToggleButton>)}</div>
+        </div>
+      )}
       {records.length > 0 && (
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
           <ToggleButton active={mode === "list"} onClick={() => setMode("list")}>List</ToggleButton>
@@ -129,7 +138,7 @@ export function TrainingView({ records, locationName, onSave, onDelete }) {
         </div>
       )}
       {mode === "matrix" && records.length > 0 && (() => {
-        const courses = [...new Set(records.map((r) => r.course))];
+        const courses = [...new Set([...required, ...records.map((r) => r.course)])];
         const cell = (person, course) => records.filter((r) => r.person === person && r.course === course).sort((a, b) => String(b.expiry || "9999").localeCompare(String(a.expiry || "9999")))[0];
         return (
           <div style={{ overflowX: "auto", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, marginBottom: 10 }}>
@@ -138,7 +147,7 @@ export function TrainingView({ records, locationName, onSave, onDelete }) {
               <tbody>{people.map((p) => (
                 <tr key={p} style={{ borderTop: "1px solid var(--border)" }}>
                   <td style={{ padding: 6, fontWeight: 650, position: "sticky", left: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{p}</td>
-                  {courses.map((c) => { const r = cell(p, c); const n = r?.expiry ? daysUntil(r.expiry) : null; const [bg, fg, t] = !r ? ["#fff", "#C0C6CC", "—"] : n === null ? ["#EAF4EE", "#2F6B4A", "✓"] : n < 0 ? ["#FBEAEA", "#9B2C2C", "Expired"] : n <= 45 ? ["#FDF1E0", "#8A5A0B", fmtDate(r.expiry)] : ["#EAF4EE", "#2F6B4A", fmtDate(r.expiry)];
+                  {courses.map((c) => { const r = cell(p, c); const n = r?.expiry ? daysUntil(r.expiry) : null; const [bg, fg, t] = !r ? (required.includes(c) ? ["var(--danger-soft)", "var(--danger)", "Needed"] : ["var(--card)", "#C0C6CC", "—"]) : n === null ? ["#EAF4EE", "#2F6B4A", "✓"] : n < 0 ? ["#FBEAEA", "#9B2C2C", "Expired"] : n <= 45 ? ["#FDF1E0", "#8A5A0B", fmtDate(r.expiry)] : ["#EAF4EE", "#2F6B4A", fmtDate(r.expiry)];
                     return <td key={c} onClick={() => r && ACTIVE_CAN_EDIT && setEditing(r)} style={{ padding: 6, textAlign: "center", background: bg, color: fg, fontWeight: 650, cursor: r ? "pointer" : "default", whiteSpace: "nowrap" }}>{t}</td>; })}
                 </tr>
               ))}</tbody>
@@ -170,6 +179,7 @@ function TrainingModal({ existing, people, onClose, onSave, onDelete }) {
   const [person, setPerson] = useState(existing?.person || "");
   const [course, setCourse] = useState(existing?.course || TRAINING_COURSES[0]);
   const [other, setOther] = useState(existing && !TRAINING_COURSES.includes(existing.course) ? existing.course : "");
+  const [certPhotos, setCertPhotos] = useState(existing?.certPhoto ? [existing.certPhoto] : []);
   const [date, setDate] = useState(existing?.date || new Date().toISOString().slice(0, 10));
   const [expiry, setExpiry] = useState(existing?.expiry || addMonths(new Date().toISOString().slice(0, 10), 36));
   const [provider, setProvider] = useState(existing?.provider || "");
@@ -188,7 +198,8 @@ function TrainingModal({ existing, people, onClose, onSave, onDelete }) {
           <Field label="Expires"><TextInput type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
         </div>
         <Field label="Provider (optional)"><TextInput value={provider} onChange={(e) => setProvider(e.target.value)} /></Field>
-        <PrimaryButton onClick={() => person.trim() && onSave({ id: existing?.id, person: person.trim(), course: course === "Other" ? (other.trim() || "Other") : course, date: date || null, expiry: expiry || null, provider: provider.trim() })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <PhotoStrip photos={certPhotos} onChange={setCertPhotos} max={1} label="Certificate photo (optional)" />
+        <PrimaryButton onClick={() => person.trim() && onSave({ id: existing?.id, person: person.trim(), course: course === "Other" ? (other.trim() || "Other") : course, date: date || null, expiry: expiry || null, provider: provider.trim(), certPhoto: certPhotos[0] || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this record" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -196,7 +207,7 @@ function TrainingModal({ existing, people, onClose, onSave, onDelete }) {
 }
 
 /* ---------- Fire drills ---------- */
-export function DrillsView({ drills, locationName, onSave, onDelete }) {
+export function DrillsView({ nextDrill = "", onSaveNextDrill, drills, locationName, onSave, onDelete }) {
   const [editing, setEditing] = useState(null);
   const sorted = [...drills].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const lastFire = sorted.find((d) => d.type === "Fire evacuation");
@@ -208,6 +219,12 @@ export function DrillsView({ drills, locationName, onSave, onDelete }) {
         <MetricBlock label="Last evacuation time" value={times[0] ? `${times[0].minutes} min` : "—"} />
         <MetricBlock label="Drills this year" value={drills.filter((d) => String(d.date).startsWith(String(new Date().getFullYear()))).length} />
       </div>
+      {ACTIVE_CAN_EDIT && onSaveNextDrill && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, background: "var(--card-hi)", borderRadius: 10, padding: "8px 10px" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 650, flex: 1 }}>Next drill planned for</span>
+          <TextInput type="date" value={nextDrill} onChange={(e) => onSaveNextDrill(e.target.value)} style={{ width: 150 }} />
+        </div>
+      )}
       {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ width: "100%", marginBottom: 10 }}><Flame size={15} /> Record a drill</PrimaryButton>}
       {sorted.length === 0 ? (
         <EmptyState icon={Flame} title="No drills recorded" body="Hold a fire evacuation drill at least once a year (twice is common practice). Record the time taken, how many people took part and any issues to follow up." />
@@ -441,6 +458,82 @@ function LogBuilderModal({ onClose, onSave }) {
         ))}
         <button onClick={() => setFields((p) => [...p, { label: "", type: "text", options: "" }])} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>+ Add column</button>
         <PrimaryButton onClick={() => { const fs = fields.filter((f) => f.label.trim()).map((f, i) => ({ key: `f${i}`, label: f.label.trim(), type: f.type, options: f.type === "select" ? f.options.split(",").map((x) => x.trim()).filter(Boolean) : undefined })); if (!name.trim() || !fs.length) return; onSave({ id: `log_${uid()}`, name: name.trim(), everyDays: Number(everyDays) || 0, fields: fs }); }}><CheckCircle2 size={15} /> Create log</PrimaryButton>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- Asbestos register ---------- */
+export function AsbestosView({ items, areas, locationName, onSave, onDelete }) {
+  const [editing, setEditing] = useState(null);
+  const sorted = [...items].sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.risk] ?? 3) - ({ high: 0, medium: 1, low: 2 }[b.risk] ?? 3) || String(a.location).localeCompare(String(b.location)));
+  const overdue = items.filter((i) => i.nextInspection && daysUntil(i.nextInspection) < 0).length;
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+        <MetricBlock label="Items on register" value={items.length} />
+        <MetricBlock label="High risk" value={items.filter((i) => i.risk === "high" && i.action !== "Removed").length} tone={items.some((i) => i.risk === "high" && i.action !== "Removed") ? "danger" : "ok"} />
+        <MetricBlock label="Re-inspection overdue" value={overdue} tone={overdue ? "danger" : "ok"} />
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Plus size={15} /> Add an item</PrimaryButton>}
+        {items.length > 0 && <button onClick={() => openPrintReport("Asbestos register", locationName, buildAsbestosRegister(sorted, locationName))} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}><Printer size={14} color="#2B4562" /></button>}
+        {items.length > 0 && <ExportButton label="CSV" filename="asbestos-register.csv" rows={[["Location", "Material", "Status", "Condition", "Risk", "Sample ref", "Last inspected", "Next inspection", "Action", "Notes"], ...sorted.map((i) => [i.location, i.material, i.status || "", i.condition || "", i.risk || "", i.sampleRef || "", i.lastInspection || "", i.nextInspection || "", i.action || "", i.notes || ""])]} />}
+      </div>
+      {items.length === 0 ? (
+        <EmptyState icon={ShieldAlert} title="No asbestos items recorded" body="If your building was built before 2000, record known or presumed asbestos from your survey: where it is, its condition, risk and when it's next inspected. Show the register to contractors before they work." />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {sorted.map((i) => {
+            const n = i.nextInspection ? daysUntil(i.nextInspection) : null;
+            const col = i.risk === "high" ? "var(--danger)" : i.risk === "medium" ? "var(--warn)" : "var(--ok)";
+            return (
+              <button key={i.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(i)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${col}`, borderRadius: 10, padding: "8px 10px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", opacity: i.action === "Removed" ? 0.6 : 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ fontSize: 13, fontWeight: 650 }}>{i.location}</span><span style={{ fontSize: 11, fontWeight: 800, color: col, textTransform: "uppercase" }}>{i.risk || ""} risk</span></div>
+                <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{i.material} · {i.status}{i.condition ? ` · ${i.condition}` : ""}{i.action ? ` · ${i.action}` : ""}</div>
+                {n !== null && <div style={{ fontSize: 11.5, fontWeight: n <= 30 ? 700 : 500, color: n < 0 ? "var(--danger)" : n <= 30 ? "var(--warn)" : "var(--muted)" }}>Next inspection {fmtDate(i.nextInspection)}</div>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {editing && <AsbestosModal existing={editing.id ? editing : null} areas={areas} onClose={() => setEditing(null)} onSave={(x) => { onSave(x); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
+    </div>
+  );
+}
+function AsbestosModal({ existing, areas, onClose, onSave, onDelete }) {
+  const [location, setLocation] = useState(existing?.location || "");
+  const [material, setMaterial] = useState(existing?.material || ASBESTOS_MATERIALS[0]);
+  const [status, setStatus] = useState(existing?.status || "Presumed");
+  const [condition, setCondition] = useState(existing?.condition || "Good");
+  const [risk, setRisk] = useState(existing?.risk || "low");
+  const [sampleRef, setSampleRef] = useState(existing?.sampleRef || "");
+  const [lastInspection, setLastInspection] = useState(existing?.lastInspection || new Date().toISOString().slice(0, 10));
+  const [nextInspection, setNextInspection] = useState(existing?.nextInspection || addMonths(new Date().toISOString().slice(0, 10), 12));
+  const [action, setAction] = useState(existing?.action || "Manage in place");
+  const [notes, setNotes] = useState(existing?.notes || "");
+  const listId = useMemo(() => `asb-${uid()}`, []);
+  return (
+    <Modal title={existing ? "Asbestos item" : "Add an asbestos item"} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Field label="Location"><TextInput list={listId} autoFocus value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Basement plant room, pipe runs" /><datalist id={listId}>{areas.map((a) => <option key={a} value={a} />)}</datalist></Field>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Field label="Material"><Select value={material} onChange={(e) => setMaterial(e.target.value)}>{ASBESTOS_MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
+          <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value)}>{["Presumed", "Strongly presumed", "Confirmed (sampled)", "No asbestos detected"].map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Field label="Condition"><Select value={condition} onChange={(e) => setCondition(e.target.value)}>{["Good", "Minor damage", "Poor / damaged"].map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
+          <Field label="Sample ref"><TextInput value={sampleRef} onChange={(e) => setSampleRef(e.target.value)} /></Field>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>{[["low", "Low risk"], ["medium", "Medium"], ["high", "High risk"]].map(([k, l]) => <ToggleButton key={k} active={risk === k} onClick={() => setRisk(k)}>{l}</ToggleButton>)}</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Field label="Last inspected"><TextInput type="date" value={lastInspection} onChange={(e) => { setLastInspection(e.target.value); if (e.target.value) setNextInspection(addMonths(e.target.value, 12)); }} /></Field>
+          <Field label="Next inspection"><TextInput type="date" value={nextInspection} onChange={(e) => setNextInspection(e.target.value)} /></Field>
+        </div>
+        <Field label="Action"><Select value={action} onChange={(e) => setAction(e.target.value)}>{["Manage in place", "Label & monitor", "Encapsulate / seal", "Remove", "Removed"].map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
+        <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+        <PrimaryButton onClick={() => location.trim() && onSave({ id: existing?.id, location: location.trim(), material, status, condition, risk, sampleRef: sampleRef.trim(), lastInspection: lastInspection || null, nextInspection: nextInspection || null, action, notes: notes.trim() })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        {existing && <ConfirmTextDelete label="Delete this item" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
   );

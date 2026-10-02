@@ -1,16 +1,17 @@
 // Services list: filters, bulk actions, booking, chase emails, quick log, QR scanner.
-import { useState, useMemo, useEffect, useRef } from "react";
-import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, FileSpreadsheet, HardHat, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, Send, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, FileSpreadsheet, HardHat, LayoutGrid, List, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, Send, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
 import { Badge, CategoryBadge, ConfirmDeleteButton, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SignOffSection, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
 import { buildChaseEmail, printBulkStickers, printStickers } from "../lib/reports.js";
 import { addMonths, appBaseUrl, compressImage, currentBooking, daysUntil, downloadBlob, dueStatus, fmtDate, gbp, loadJsQR, missingRequiredFields, qrImageUrl, relativeDays, replacementYear, uid } from "../lib/utils.js";
 import { CONDITION_GRADES, CRITICALITY } from "../lib/constants.js";
+import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
 /* ---------------------------------------------------------
    Devices Tab
 --------------------------------------------------------- */
-export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
+export function DevicesTab({ onBookTogether, history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
   const [chaseFocus, setChaseFocus] = useState(null); // null = closed, "all" or a deviceId
   const overdueList = chaseDevices.filter((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n < 0; });
   const [qrFor, setQrFor] = useState(null);
@@ -48,6 +49,10 @@ export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierL
     condition: (a, b) => (b.condition || "").localeCompare(a.condition || "") || byDue(a, b),
   };
   const mineOnly = !!prefs.mine;
+  const groupBy = prefs.groupBy || "none";
+  const compact = !!prefs.compact;
+  const lastVisitOf = (id) => history.filter((v) => v.deviceId === id && !v.aborted && !v.skipped).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  const groupOf = (d) => groupBy === "area" ? (d.area || "No area") : groupBy === "category" ? (CATEGORY_META[d.serviceCategory]?.label || "Other") : groupBy === "supplier" ? (supplierById[d.supplierId]?.name || "No supplier") : "";
   const tagFilter = prefs.tag || "";
   const allTags = [...new Set(devices.flatMap((d) => d.tags || []))].sort();
   const filteredDevices = (dueFilter === "archived" ? archivedDevices : devices).filter((d) => !mineOnly || d.assignee === currentUserName).filter((d) => !tagFilter || (d.tags || []).includes(tagFilter)).filter((d) => catFilter === "all" || (d.serviceCategory || "maintenance") === catFilter).filter((d) => {
@@ -111,6 +116,11 @@ export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierL
           <ToggleButton active={selecting} onClick={() => { setSelecting((v) => !v); setSelected([]); }}>{selecting ? "Cancel select" : "Select…"}</ToggleButton>
         )}
       </div>
+      {ACTIVE_CAN_EDIT && onBookTogether && dueFilter !== "archived" && (() => { const g = {}; devices.forEach((d) => { const n = daysUntil(d.nextServiceDate); if (d.supplierId && n !== null && n <= 45 && !currentBooking(d)) g[d.supplierId] = (g[d.supplierId] || 0) + 1; }); return Object.values(g).some((n) => n >= 2) ? (
+        <button onClick={onBookTogether} style={{ width: "100%", marginTop: -6, marginBottom: 10, background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <CalendarCheck size={14} /> Book a supplier's due visits together on one day
+        </button>
+      ) : null; })()}
       {ACTIVE_CAN_EDIT && onChaseAll && (() => { const od = devices.filter((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n < 0 && d.supplierId; }); return od.length > 1 ? (
         <button onClick={() => setChaseAllOpen(true)} style={{ width: "100%", marginTop: -6, marginBottom: 10, background: "var(--danger-soft)", color: "var(--danger)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <Mail size={14} /> Chase all {od.length} overdue — one email per supplier
@@ -136,6 +146,10 @@ export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierL
             <option value="condition">Sort: worst condition first</option>
           </select>
         </label>
+        <select value={groupBy} onChange={(e) => onPrefs({ groupBy: e.target.value })} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, background: groupBy !== "none" ? "var(--accent-soft)" : "var(--card)", fontSize: 12.5, padding: "7px 8px", fontFamily: "inherit", color: "var(--text)", outline: "none" }}>
+          <option value="none">No grouping</option><option value="area">Group by area</option><option value="category">Group by category</option><option value="supplier">Group by supplier</option>
+        </select>
+        <button onClick={() => onPrefs({ compact: !compact })} title={compact ? "Card view" : "Compact list"} style={{ border: "1px solid var(--border)", borderRadius: 8, background: compact ? "var(--accent-soft)" : "var(--card)", padding: "0 10px", cursor: "pointer", display: "flex", alignItems: "center" }}>{compact ? <LayoutGrid size={15} color="var(--text-2)" /> : <List size={15} color="var(--text-2)" />}</button>
         {allTags.length > 0 && (
           <select value={tagFilter} onChange={(e) => onPrefs({ tag: e.target.value })} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, background: tagFilter ? "var(--accent-soft)" : "var(--card)", fontSize: 12.5, padding: "7px 8px", fontFamily: "inherit", color: "var(--text)", outline: "none" }}>
             <option value="">All tags</option>
@@ -155,10 +169,26 @@ export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierL
         <EmptyState icon={Wrench} title={dueFilter === "done" ? "Nothing done this month yet" : dueFilter === "todo" ? "All done for this month" : "Nothing matches this filter"} body={dueFilter === "done" ? "Services show here once this month's visit is logged, plus finished one-off jobs." : dueFilter === "todo" ? "Every service has had its visit logged this month. Tap Done or All to see them." : "Try a different filter or clear it to see everything."} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {filteredDevices.map((d) => {
+          {(groupBy !== "none" ? [...filteredDevices].sort((a, b) => groupOf(a).localeCompare(groupOf(b))) : filteredDevices).map((d, di, arr) => {
             const status = dueStatus(d.nextServiceDate, !!d.lastServiceDate);
+            const heading = groupBy !== "none" && (di === 0 || groupOf(arr[di - 1]) !== groupOf(d)) ? <div key={`h-${groupOf(d)}`} style={{ fontSize: 12, fontWeight: 750, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".05em", margin: di ? "10px 0 0" : 0 }}>{groupOf(d)} <span style={{ fontWeight: 600 }}>({arr.filter((x) => groupOf(x) === groupOf(d)).length})</span></div> : null;
+            const lv = lastVisitOf(d.id); const lvFails = lv ? (lv.checklistResults || []).filter((r) => r.result === "fail").length : 0;
+            if (compact) return (
+              <Fragment key={d.id}>{heading}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px" }}>
+                  {selecting && <button onClick={() => toggleSel(d.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex" }}>{selected.includes(d.id) ? <CheckSquare size={18} color="#2B4562" /> : <Square size={18} color="#A3ABB4" />}</button>}
+                  <span style={{ width: 8, height: 8, borderRadius: 4, flexShrink: 0, background: status.key === "overdue" ? "var(--danger)" : status.key === "soon" ? "var(--warn)" : "var(--ok)" }} />
+                  <button onClick={() => onHistory(d.id)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+                    <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{d.nextServiceDate ? `Next ${fmtDate(d.nextServiceDate)}` : "No date"}{d.area ? ` · ${d.area}` : ""}</div>
+                  </button>
+                  {ACTIVE_CAN_EDIT && <button onClick={() => onLogService(d.id)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Log</button>}
+                </div>
+              </Fragment>
+            );
             return (
-              <div key={d.id} style={{ background: "var(--card)", borderRadius: 12, padding: 14, border: "1px solid var(--border)" }}>
+              <Fragment key={d.id}>{heading}
+              <div style={{ background: "var(--card)", borderRadius: 12, padding: 14, border: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                   {selecting && (
                     <button onClick={() => toggleSel(d.id)} title="Select" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", marginTop: 1 }}>
@@ -217,6 +247,7 @@ export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierL
                     <CategoryBadge category={d.serviceCategory} subCategory={d.subCategory} />
                   </div>
                   <span style={{ fontSize: 12, color: "var(--faint)", display: "flex", alignItems: "center", gap: 8 }}>
+                    {lv && <span style={{ color: lvFails ? "var(--danger)" : "var(--ok)", fontWeight: 650 }}>{lvFails ? `✗ ${lvFails} failed` : "✓ checks passed"} {fmtDate(lv.date)}{lv.verifiedBy ? " · verified" : ""}</span>}
                     {d.archived ? <span>Archived {d.archivedAt ? fmtDate(d.archivedAt.slice(0, 10)) : ""}</span> : <>Next: {fmtDate(d.nextServiceDate)}</>}
                     {!d.archived && d.nextServiceDate && onBook && ACTIVE_CAN_EDIT && (() => {
                       const b = currentBooking(d); const n = daysUntil(d.nextServiceDate);
@@ -253,6 +284,7 @@ export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierL
                 </div>
                 )}
               </div>
+              </Fragment>
             );
           })}
         </div>
@@ -286,6 +318,10 @@ export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierL
       )}
       {devices.length > 0 && dueFilter !== "archived" && (
         <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+          <button onClick={async () => { const rows = devices.map((d) => [d.name, CATEGORY_META[d.serviceCategory]?.label || "", d.area || "", supplierById[d.supplierId]?.name || "", Number(d.serviceIntervalMonths) || null, d.lastServiceDate ? new Date(d.lastServiceDate + "T00:00:00") : null, d.nextServiceDate ? new Date(d.nextServiceDate + "T00:00:00") : null, Number(d.budgetPerVisit) || null, CRITICALITY[d.criticality || "normal"]?.label || "", d.condition || "", d.assetTag || "", d.manufacturer || "", d.model || "", d.serialNumber || ""]);
+            const buf = await buildStyledSheet({ title: "Services register", subtitle: `${locationName} · ${new Date().toLocaleDateString("en-GB")} · ${devices.length} services`, sheetName: "Services", headers: ["Service", "Category", "Area / room", "Supplier", "Interval (months)", "Last visit", "Next due", "Budget per visit", "Criticality", "Condition", "Asset tag", "Make", "Model", "Serial"], rows, widths: [34, 16, 18, 24, 12, 13, 13, 14, 12, 10, 12, 14, 14, 16], numFmts: { 5: "dd/mm/yyyy", 6: "dd/mm/yyyy", 7: "£#,##0.00" },
+              cellStyle: (c, v, ri, ci) => { if (ci === 6 && v instanceof Date && v < new Date()) excelColour(c, "FBEAEA", "C53030"); if (ci === 8 && v === "Critical") c.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFC53030" } }; } });
+            downloadBlob(xlsxBlob(buf), "services-register.xlsx"); }} style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, marginRight: 6 }}><FileSpreadsheet size={13} /> Excel</button>
           <ExportButton label="Export services register (CSV)" filename="services-register.csv" rows={[["Service", "Category", "Area", "Asset tag", "Make", "Model", "Serial", "Supplier", "Interval (months)", "Last visit", "Next due", "Budget per visit", "Condition", "Criticality", "Tags", "Responsible", "Installed", "Warranty ends", "Replacement year"], ...devices.map((d) => [d.name, CATEGORY_META[d.serviceCategory]?.label || "", d.area || "", d.assetTag || "", d.manufacturer || "", d.model || "", d.serialNumber || "", supplierById[d.supplierId]?.name || "", d.serviceIntervalMonths || "", d.lastServiceDate || "", d.nextServiceDate || "", d.budgetPerVisit || "", d.condition || "", d.criticality || "normal", (d.tags || []).join("; "), d.assignee || "", d.installDate || "", d.warrantyEnd || "", replacementYear(d) || ""])]} />
         </div>
       )}

@@ -1,12 +1,13 @@
 // Site tab: meters, spares, keys, audits, incidents, permits to work, waste.
 import { useState, useMemo } from "react";
-import { Activity, CheckCircle2, ClipboardCheck, Flame, Key, Leaf as LeafIcon, Mail, Package, Pencil, Plus, Printer, Recycle, Siren, Trash2, Upload, Wrench } from "lucide-react";
+import { Activity, CheckCircle2, ClipboardCheck, FileSignature, Flame, Key, Leaf as LeafIcon, ListChecks, Mail, Megaphone, Package, Pencil, Plus, Printer, Recycle, Siren, Trash2, Upload, Wrench } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ConfirmDeleteButton, ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
-import { DEFAULT_CO2, INCIDENT_TYPES, METER_TYPES, MONTH_LABELS, PERMIT_PRECAUTIONS, PERMIT_TYPES, WASTE_STREAMS } from "../lib/constants.js";
+import { DEFAULT_CO2, INCIDENT_TYPES, INVESTIGATION_STEPS, METER_TYPES, MONTH_LABELS, PERMIT_PRECAUTIONS, PERMIT_TYPES, WASTE_STREAMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE } from "../lib/globals.js";
 import { buildKeyRegister, openPrintReport, printPermit, tableHtml } from "../lib/reports.js";
 import { daysUntil, escapeHtml, fmtDate, gbp, meterStats, parseDelimited, scoreTone, toISO, uid } from "../lib/utils.js";
+import { xlsxToText } from "../lib/excelTemplate.js";
 
 export function MetersTab({ onImportReadings, meters, readings, suppliers, onSaveMeter, onArchiveMeter, onAddReading, onDeleteReading }) {
   const [editing, setEditing] = useState(null);
@@ -78,6 +79,7 @@ export function MetersTab({ onImportReadings, meters, readings, suppliers, onSav
               })()}
               <div style={{ fontSize: 11, color: since != null && since > (Number(m.readEveryDays) || 31) ? "var(--warn)" : "var(--faint)", marginTop: 6 }}>
                 {st.last ? `Read ${fmtDate(st.last.date)} (${since === 0 ? "today" : `${since} days ago`})` : "No readings yet"} · read every {Number(m.readEveryDays) || 31} days
+                {(() => { const now = new Date(); const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1); const k = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, "0")}`; const ly = `${lm.getFullYear() - 1}-${String(lm.getMonth() + 1).padStart(2, "0")}`; const a = st.monthly[k], b = st.monthly[ly]; if (a == null || !b) return null; const pct = Math.round(((a - b) / b) * 100); return <span style={{ color: pct > 5 ? "var(--danger)" : pct < -5 ? "var(--ok)" : "var(--muted)", fontWeight: 650 }}> · {lm.toLocaleDateString("en-GB", { month: "short" })} {fmt(a)} vs {fmt(b)} last year ({pct > 0 ? "+" : ""}{pct}%)</span>; })()}
                 {st.spike && <span style={{ color: "var(--danger)", fontWeight: 700 }}> · Usage up {Math.round((st.lastDaily / st.avgDaily - 1) * 100)}% on average — check for leaks or plant left running</span>}
               </div>
               {openId === m.id && chart.length > 0 && (
@@ -97,6 +99,7 @@ export function MetersTab({ onImportReadings, meters, readings, suppliers, onSav
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
                   {[...st.rs].reverse().slice(0, 12).map((r) => (
                     <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, background: "var(--card-hi)", borderRadius: 7, padding: "5px 8px" }}>
+                      {r.photo && <img src={r.photo} alt="" style={{ width: 28, height: 28, borderRadius: 5, objectFit: "cover" }} />}
                       <span style={{ flex: 1 }}>{fmtDate(r.date)}{r.reset ? " · new meter" : ""}{r.by ? <span style={{ color: "var(--faint)" }}> · {r.by}</span> : null}</span>
                       <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(r.value)}</b>
                       <ConfirmDeleteButton onConfirm={() => onDeleteReading(r.id)} size={12} />
@@ -170,12 +173,13 @@ export function ReadingModal({ meter, last, onClose, onSave }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [value, setValue] = useState("");
   const [reset, setReset] = useState(false);
+  const [photos, setPhotos] = useState([]);
   const [err, setErr] = useState("");
   function submit() {
     const v = Number(value);
     if (value === "" || isNaN(v)) { setErr("Enter the number shown on the meter."); return; }
     if (last && !reset && v < Number(last.value)) { setErr(`That's lower than the last reading (${last.value}). If the meter was replaced, tick the box below.`); return; }
-    onSave({ meterId: meter.id, date, value: v, reset: reset || undefined });
+    onSave({ meterId: meter.id, date, value: v, reset: reset || undefined, photo: photos[0] || undefined });
   }
   return (
     <Modal title={`Reading — ${meter.name}`} onClose={onClose}>
@@ -191,6 +195,7 @@ export function ReadingModal({ meter, last, onClose, onSave }) {
         <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
           <input type="checkbox" checked={reset} onChange={(e) => setReset(e.target.checked)} style={{ margin: 0 }} /> New / replaced meter (starts a fresh count)
         </label>
+        <PhotoStrip photos={photos} onChange={setPhotos} max={1} label="Photo of the meter (optional, proof of reading)" />
         {err && <div style={{ fontSize: 12, color: "var(--danger)" }}>{err}</div>}
         <PrimaryButton onClick={submit}><CheckCircle2 size={15} /> Save reading</PrimaryButton>
       </div>
@@ -201,7 +206,7 @@ export function ReadingModal({ meter, last, onClose, onSave }) {
 /* ---------------------------------------------------------
    Site tab: meters, spares and keys
 --------------------------------------------------------- */
-export function SiteTab({ logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
+export function SiteTab({ actions, spaces, walkrounds, asbestos, logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
   const [view, setView] = useState("meters");
   return (
     <div>
@@ -222,6 +227,10 @@ export function SiteTab({ logs, docs, meters, spares, keys, audits, incidents, p
         <ToggleButton active={view === "drills"} onClick={() => setView("drills")}>Fire drills</ToggleButton>
         <ToggleButton active={view === "docs"} onClick={() => setView("docs")}>Documents</ToggleButton>
         <ToggleButton active={view === "logs"} onClick={() => setView("logs")}>Logs</ToggleButton>
+        <ToggleButton active={view === "asbestos"} onClick={() => setView("asbestos")}>Asbestos</ToggleButton>
+        <ToggleButton active={view === "actions"} onClick={() => setView("actions")}>Actions</ToggleButton>
+        <ToggleButton active={view === "spaces"} onClick={() => setView("spaces")}>Spaces</ToggleButton>
+        <ToggleButton active={view === "walkrounds"} onClick={() => setView("walkrounds")}>Walk-rounds</ToggleButton>
       </div>
       {view === "meters" && meters}
       {view === "spares" && spares}
@@ -235,11 +244,15 @@ export function SiteTab({ logs, docs, meters, spares, keys, audits, incidents, p
       {view === "drills" && drills}
       {view === "docs" && docs}
       {view === "logs" && logs}
+      {view === "asbestos" && asbestos}
+      {view === "actions" && actions}
+      {view === "spaces" && spaces}
+      {view === "walkrounds" && walkrounds}
     </div>
   );
 }
 
-export function SparesView({ onStockTake, spares, suppliers, devices, senderName, onSave, onAdjust, onDelete }) {
+export function SparesView({ onRaisePO, onStockTake, spares, suppliers, devices, senderName, onSave, onAdjust, onDelete }) {
   const [editing, setEditing] = useState(null);
   const [adjusting, setAdjusting] = useState(null); // { spare, dir }
   const [taking, setTaking] = useState(false);
@@ -268,6 +281,7 @@ export function SparesView({ onStockTake, spares, suppliers, devices, senderName
         <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
           <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }}>{spares.length} items · stock value {gbp(value)}{lowList.length ? <b style={{ color: "var(--warn)" }}> · {lowList.length} low</b> : null}</span>
           {ACTIVE_CAN_EDIT && onStockTake && <button onClick={() => setTaking(true)} style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Stock take</button>}
+          {lowList.length > 0 && ACTIVE_CAN_EDIT && onRaisePO && <button onClick={() => onRaisePO(lowList)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Raise PO</button>}
           {lowList.length > 0 && ACTIVE_CAN_EDIT && <button onClick={reorderEmail} style={{ background: "var(--warn-soft)", color: "var(--warn)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Mail size={12} /> Reorder</button>}
           <ExportButton label="CSV" filename="spares.csv" rows={[["Item", "Part no.", "Qty", "Unit", "Reorder at", "Store", "Unit cost", "Supplier"], ...spares.map((sp) => [sp.name, sp.partNo || "", sp.qty, sp.unit || "", sp.minQty ?? "", sp.store || "", sp.unitCost || "", suppliers.find((x) => x.id === sp.supplierId)?.name || ""])]} />
         </div>
@@ -282,6 +296,7 @@ export function SparesView({ onStockTake, spares, suppliers, devices, senderName
                 <div style={{ fontSize: 13.5, fontWeight: 700 }}>{sp.name}</div>
                 <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{[sp.partNo && `#${sp.partNo}`, sp.store, sp.deviceIds?.length ? `for ${sp.deviceIds.map((id) => devices.find((d) => d.id === id)?.name).filter(Boolean).join(", ")}` : null].filter(Boolean).join(" · ") || "—"}</div>
                 {low(sp) && <div style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)" }}>Reorder — at or below {sp.minQty}</div>}
+                {(() => { const since = Date.now() - 90 * 86400000; const used = (sp.log || []).filter((l) => l.delta < 0 && l.note !== "Stock take" && new Date(l.at).getTime() >= since).reduce((t, l) => t - l.delta, 0); if (!used) return null; const perWeek = used / 13; const weeks = Number(sp.qty) / perWeek; return <div style={{ fontSize: 11, color: weeks < 4 ? "var(--warn)" : "var(--faint)", fontWeight: weeks < 4 ? 700 : 500 }}>Using ~{perWeek < 1 ? perWeek.toFixed(1) : Math.round(perWeek)}/week · {Number(sp.qty) <= 0 ? "out of stock" : `lasts ~${weeks < 1 ? "under a week" : `${Math.round(weeks)} week${Math.round(weeks) === 1 ? "" : "s"}`}`}</div>; })()}
               </button>
               <div style={{ textAlign: "center", minWidth: 44 }}>
                 <div style={{ fontSize: 18, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace", color: Number(sp.qty) <= 0 ? "var(--danger)" : "var(--text)" }}>{sp.qty}</div>
@@ -385,8 +400,9 @@ export function AdjustStockModal({ spare, dir, devices, onClose, onSave }) {
   );
 }
 
-export function KeysView({ onLost, locationName = "", keys, onSave, onIssue, onReturn, onDelete }) {
+export function KeysView({ onAudit, onLost, locationName = "", keys, onSave, onIssue, onReturn, onDelete }) {
   const [editing, setEditing] = useState(null);
+  const [auditing, setAuditing] = useState(false);
   const [issuing, setIssuing] = useState(null);
   const [filter, setFilter] = useState("all");
   const list = keys.filter((k) => filter === "all" || (filter === "out" ? !!k.holder : !k.holder)).sort((a, b) => a.label.localeCompare(b.label));
@@ -396,6 +412,7 @@ export function KeysView({ onLost, locationName = "", keys, onSave, onIssue, onR
         <ToggleButton active={filter === "all"} onClick={() => setFilter("all")}>All ({keys.length})</ToggleButton>
         <ToggleButton active={filter === "out"} onClick={() => setFilter("out")}>Issued ({keys.filter((k) => k.holder).length})</ToggleButton>
         <ToggleButton active={filter === "in"} onClick={() => setFilter("in")}>In</ToggleButton>
+        {keys.length > 0 && ACTIVE_CAN_EDIT && onAudit && <button onClick={() => setAuditing(true)} title="Key audit" style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>Audit</button>}
         {keys.length > 0 && <button onClick={() => openPrintReport("Key & access card register", locationName, buildKeyRegister(keys))} title="Print key register" style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer", display: "flex" }}><Printer size={14} /></button>}
         {ACTIVE_CAN_EDIT && <button onClick={() => setEditing({})} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Plus size={14} /></button>}
       </div>
@@ -415,6 +432,7 @@ export function KeysView({ onLost, locationName = "", keys, onSave, onIssue, onR
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: late ? "var(--danger)" : "var(--warn)" }}>With {k.holder}{k.holderCompany ? ` (${k.holderCompany})` : ""} since {fmtDate(k.issuedAt?.slice(0, 10))}{k.dueBack ? ` · ${late ? "was due" : "due"} back ${fmtDate(k.dueBack)}` : ""}</div>
                   ) : <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>In</div>}
                 </button>
+                {k.holder && <button onClick={() => openPrintReport("Key holder agreement", locationName, `${tableHtml(["", ""], [["Key / card", `<b>${escapeHtml(k.label)}</b>${k.number ? ` #${escapeHtml(k.number)}` : ""}`], ["Opens", escapeHtml(k.opens || "")], ["Issued to", escapeHtml(k.holder)], ["Company", escapeHtml(k.holderCompany || "")], ["Issued", k.issuedAt ? fmtDate(k.issuedAt.slice(0, 10)) : ""], ["Return by", k.dueBack ? fmtDate(k.dueBack) : "On request / end of contract"]])}<h2>Agreement</h2><ol><li>I will keep this key / card safe and not copy, lend or give it to anyone else.</li><li>I will report its loss to the facilities team immediately.</li><li>I will return it by the date above, or when asked, or when I leave.</li><li>I understand I may be charged for replacement keys or lock changes if it is lost through carelessness.</li></ol><table style="margin-top:30px"><tr><td>Signed (holder) ______________________</td><td>Date __________</td></tr><tr><td style="padding-top:24px">Issued by ______________________</td><td style="padding-top:24px">Date __________</td></tr></table>`)} title="Print holder agreement" style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "7px 8px", cursor: "pointer", display: "flex" }}><FileSignature size={14} color="#2B4562" /></button>}
                 {ACTIVE_CAN_EDIT && (k.holder ? (<>
                   <button onClick={() => { const note = window.prompt(`Mark "${k.label}" as lost? Add a note (who lost it / when):`, k.holder ? `Lost by ${k.holder}` : ""); if (note !== null) onLost?.(k.id, note); }} title="Mark lost" style={{ background: "var(--danger-soft)", color: "var(--danger)", border: "none", borderRadius: 8, padding: "7px 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Lost</button>
                   <button onClick={() => onReturn(k.id)} style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Returned</button></>
@@ -426,6 +444,7 @@ export function KeysView({ onLost, locationName = "", keys, onSave, onIssue, onR
           })}
         </div>
       )}
+      {auditing && <KeyAuditModal keys={keys} onClose={() => setAuditing(false)} onSave={(r) => { onAudit(r); setAuditing(false); }} />}
       {editing && <KeyModal existing={editing.id ? editing : null} onClose={() => setEditing(null)} onSave={(k) => { onSave(k); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
       {issuing && <IssueKeyModal k={issuing} onClose={() => setIssuing(null)} onSave={(h, c, d) => { onIssue(issuing.id, h, c, d); setIssuing(null); }} />}
     </div>
@@ -483,7 +502,7 @@ export function IssueKeyModal({ k, onClose, onSave }) {
   );
 }
 
-export function AuditsView({ audits, templates, suppliers, areas, locationName, senderName, onSave, onDelete, onSaveTemplates }) {
+export function AuditsView({ onAddAction, audits, templates, suppliers, areas, locationName, senderName, onSave, onDelete, onSaveTemplates }) {
   const [editing, setEditing] = useState(null);
   const [editTemplates, setEditTemplates] = useState(false);
   const sorted = [...audits].sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -531,13 +550,13 @@ export function AuditsView({ audits, templates, suppliers, areas, locationName, 
           })}
         </div>
       )}
-      {editing && <AuditModal existing={editing.id ? editing : null} templates={templates} suppliers={suppliers} areas={areas} locationName={locationName} senderName={senderName} onClose={() => setEditing(null)} onSave={(a) => { onSave(a); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
+      {editing && <AuditModal onAddAction={onAddAction} existing={editing.id ? editing : null} templates={templates} suppliers={suppliers} areas={areas} locationName={locationName} senderName={senderName} onClose={() => setEditing(null)} onSave={(a) => { onSave(a); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
       {editTemplates && <AuditTemplatesModal templates={templates} onClose={() => setEditTemplates(false)} onSave={(t) => { onSaveTemplates(t); setEditTemplates(false); }} />}
     </div>
   );
 }
 
-export function AuditModal({ existing, templates, suppliers, areas, locationName, senderName, onClose, onSave, onDelete }) {
+export function AuditModal({ onAddAction, existing, templates, suppliers, areas, locationName, senderName, onClose, onSave, onDelete }) {
   const [templateId, setTemplateId] = useState(existing?.templateId || templates[0]?.id || "");
   const tpl = templates.find((t) => t.id === templateId);
   const [items, setItems] = useState(existing?.items || (tpl?.items || []).map((item) => ({ item, score: null, note: "" })));
@@ -586,6 +605,7 @@ export function AuditModal({ existing, templates, suppliers, areas, locationName
               <button onClick={() => setItems((p) => p.map((x, j) => j === i ? { ...x, score: null } : x))} style={{ flex: 1.3, background: it.score === null ? "#5B6672" : "var(--card)", color: it.score === null ? "#fff" : "var(--muted)", border: "1px solid var(--border)", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>N/A</button>
             </div>
             {it.score !== null && it.score <= 2 && <TextInput value={it.note} onChange={(e) => setItems((p) => p.map((x, j) => j === i ? { ...x, note: e.target.value } : x))} placeholder="What's wrong?" style={{ width: "100%", marginTop: 6, fontSize: 12.5 }} />}
+            {it.score !== null && it.score <= 2 && onAddAction && ACTIVE_CAN_EDIT && <button type="button" onClick={() => onAddAction({ source: "Site audit", sourceRef: `${templates.find((t) => t.id === templateId)?.name || "Audit"} ${fmtDate(date)}`, finding: `${area ? `${area}: ` : ""}${it.item}${it.note ? ` — ${it.note}` : ""}`, action: "", priority: it.score <= 1 ? "high" : "medium" })} style={{ background: "none", border: "none", padding: 0, marginTop: 4, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>+ Add to action tracker</button>}
           </div>
         ))}
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
@@ -599,6 +619,7 @@ export function AuditModal({ existing, templates, suppliers, areas, locationName
 }
 
 export function AuditTemplatesModal({ templates, onClose, onSave }) {
+  // everyDays: optional reminder frequency for each audit type
   const [list, setList] = useState(templates.map((t) => ({ ...t, text: t.items.join("\n") })));
   return (
     <Modal title="Audit templates" onClose={onClose}>
@@ -608,6 +629,7 @@ export function AuditTemplatesModal({ templates, onClose, onSave }) {
           <div key={t.id} style={{ background: "var(--card-hi)", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", gap: 6 }}>
               <TextInput value={t.name} onChange={(e) => setList((p) => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} style={{ flex: 1, fontWeight: 700 }} />
+              <TextInput type="number" min="0" value={t.everyDays || ""} onChange={(e) => setList((p) => p.map((x, j) => j === i ? { ...x, everyDays: Number(e.target.value) || 0 } : x))} placeholder="every … days" title="Remind me if not done for this many days" style={{ width: 96, fontSize: 12 }} />
               {list.length > 1 && <button onClick={() => setList((p) => p.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color="#C0C6CC" /></button>}
             </div>
             <TextArea value={t.text} onChange={(e) => setList((p) => p.map((x, j) => j === i ? { ...x, text: e.target.value } : x))} style={{ minHeight: 90, fontSize: 12.5 }} />
@@ -623,7 +645,7 @@ export function AuditTemplatesModal({ templates, onClose, onSave }) {
 /* ---------------------------------------------------------
    Incident & near-miss log
 --------------------------------------------------------- */
-export function IncidentsView({ onRaiseWork, incidents, areas, locationName, onSave, onDelete }) {
+export function IncidentsView({ onAddAction, onShareLesson, onRaiseWork, incidents, areas, locationName, onSave, onDelete }) {
   const [editing, setEditing] = useState(null);
   const [filter, setFilter] = useState("open");
   const list = incidents.filter((i) => filter === "all" || (filter === "open" ? i.status !== "closed" : i.status === "closed")).sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -658,12 +680,12 @@ export function IncidentsView({ onRaiseWork, incidents, areas, locationName, onS
           ))}
         </div>
       )}
-      {editing && <IncidentModal onRaiseWork={onRaiseWork ? (inc) => { setEditing(null); onRaiseWork(inc); } : null} existing={editing.id ? editing : null} areas={areas} locationName={locationName} onClose={() => setEditing(null)} onSave={(x) => { onSave(x); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
+      {editing && <IncidentModal onAddAction={onAddAction} onShareLesson={onShareLesson} onRaiseWork={onRaiseWork ? (inc) => { setEditing(null); onRaiseWork(inc); } : null} existing={editing.id ? editing : null} areas={areas} locationName={locationName} onClose={() => setEditing(null)} onSave={(x) => { onSave(x); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
     </div>
   );
 }
 
-export function IncidentModal({ onRaiseWork, existing, areas, locationName, onClose, onSave, onDelete }) {
+export function IncidentModal({ onAddAction, onShareLesson, onRaiseWork, existing, areas, locationName, onClose, onSave, onDelete }) {
   const [type, setType] = useState(existing?.type || "near_miss");
   const [date, setDate] = useState(existing?.date || new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState(existing?.time || new Date().toTimeString().slice(0, 5));
@@ -675,6 +697,8 @@ export function IncidentModal({ onRaiseWork, existing, areas, locationName, onCl
   const [riddorReported, setRiddorReported] = useState(!!existing?.riddorReported);
   const [status, setStatus] = useState(existing?.status || "open");
   const [rootCause, setRootCause] = useState(existing?.rootCause || "");
+  const [investigation, setInvestigation] = useState(existing?.investigation || {});
+  const [witnesses, setWitnesses] = useState(existing?.witnesses || "");
   const [claimRef, setClaimRef] = useState(existing?.claimRef || "");
   const [claimStatus, setClaimStatus] = useState(existing?.claimStatus || "");
   const [incPhotos, setIncPhotos] = useState(existing?.photos || []);
@@ -698,6 +722,16 @@ export function IncidentModal({ onRaiseWork, existing, areas, locationName, onCl
         <Field label="What happened"><TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the incident and any immediate cause" /></Field>
         {type === "injury" && <Field label="Person involved (name / company)"><TextInput value={person} onChange={(e) => setPerson(e.target.value)} /></Field>}
         <PhotoStrip photos={incPhotos} onChange={ACTIVE_CAN_EDIT ? setIncPhotos : null} label="Photos" />
+        <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Investigation — {INVESTIGATION_STEPS.filter((s) => investigation[s]).length}/{INVESTIGATION_STEPS.length} done</div>
+          {INVESTIGATION_STEPS.map((st) => (
+            <label key={st} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!investigation[st]} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => setInvestigation((p) => { const n = { ...p }; if (e.target.checked) n[st] = new Date().toISOString().slice(0, 10); else delete n[st]; return n; })} style={{ margin: 0 }} />
+              <span style={{ flex: 1 }}>{st}</span>{investigation[st] && <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{fmtDate(investigation[st])}</span>}
+            </label>
+          ))}
+          <TextInput value={witnesses} onChange={(e) => setWitnesses(e.target.value)} placeholder="Witness names & contact" style={{ fontSize: 12.5 }} />
+        </div>
         <Field label="Root cause (optional)">
           <Select value={rootCause} onChange={(e) => setRootCause(e.target.value)}>
             <option value="">— Not yet known —</option>
@@ -718,6 +752,12 @@ export function IncidentModal({ onRaiseWork, existing, areas, locationName, onCl
             </Select>
           </div>
         )}
+        {existing && onAddAction && ACTIVE_CAN_EDIT && (
+          <button type="button" onClick={() => onAddAction({ source: "Incident", sourceRef: `${INCIDENT_TYPES[type]} ${fmtDate(date)}`, finding: `${area ? `${area}: ` : ""}${description}`, action: "", priority: type === "injury" || riddor ? "high" : "medium" })} style={{ background: "var(--accent-soft)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><ListChecks size={14} /> Add a follow-up action to the tracker</button>
+        )}
+        {existing && onShareLesson && ACTIVE_CAN_EDIT && actions.trim() && (
+          <button type="button" onClick={() => { onShareLesson(`Safety lesson (${INCIDENT_TYPES[type].toLowerCase()}${area ? `, ${area}` : ""}): ${actions.trim()}`); onClose(); }} style={{ background: "var(--warn-soft)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--warn)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Megaphone size={14} /> Share the lesson on the team noticeboard</button>
+        )}
         {existing && onRaiseWork && ACTIVE_CAN_EDIT && (
           existing.workId ? <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 650 }}>✓ Work request raised for this incident</div>
           : <button type="button" onClick={() => onRaiseWork(existing)} style={{ background: "var(--accent-soft)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Wrench size={14} /> Raise a work request to fix this</button>
@@ -733,7 +773,7 @@ export function IncidentModal({ onRaiseWork, existing, areas, locationName, onCl
           <ToggleButton active={status === "open"} onClick={() => setStatus("open")}>Open</ToggleButton>
           <ToggleButton active={status === "closed"} onClick={() => setStatus("closed")}>Closed</ToggleButton>
         </div>
-        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => description.trim() && onSave({ id: existing?.id, type, date, time, area: area.trim(), description: description.trim(), person: person.trim(), actions: actions.trim(), riddor, riddorReported, status, rootCause, claimRef: claimRef.trim(), claimStatus, claimAmount: claimAmount === "" ? null : Number(claimAmount), photos: incPhotos })}><CheckCircle2 size={15} /> Save</PrimaryButton>}
+        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => description.trim() && onSave({ id: existing?.id, type, date, time, area: area.trim(), description: description.trim(), person: person.trim(), actions: actions.trim(), riddor, riddorReported, status, rootCause, investigation, witnesses: witnesses.trim(), claimRef: claimRef.trim(), claimStatus, claimAmount: claimAmount === "" ? null : Number(claimAmount), photos: incPhotos })}><CheckCircle2 size={15} /> Save</PrimaryButton>}
         {existing && <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print incident report</button>}
         {existing && <ConfirmTextDelete label="Delete this incident" onConfirm={() => onDelete(existing.id)} />}
       </div>
@@ -961,7 +1001,11 @@ export function ReadingsImportModal({ meters, onClose, onImport }) {
     <Modal title="Import meter readings" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Paste three columns — <b>meter name (or serial), date, reading</b> — from a spreadsheet or your energy supplier's export.</div>
-        <TextArea value={text} onChange={(e) => setText(e.target.value)} placeholder={`Main electricity\t01/09/2026\t15230\nMain electricity\t01/10/2026\t16010`} style={{ minHeight: 110, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }} />
+        <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "var(--accent)", color: "var(--on-accent)", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+          <Upload size={14} /> Upload an Excel or CSV file
+          <input type="file" accept=".xlsx,.csv,.txt" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { setText(/\.xlsx$/i.test(f.name) ? await xlsxToText(f) : await f.text()); } catch (x) { alert("Couldn't read that file — try copying the cells and pasting them instead."); } }} style={{ display: "none" }} />
+        </label>
+        <TextArea value={text} onChange={(e) => setText(e.target.value)} placeholder={`…or paste: Main electricity\t01/09/2026\t15230`} style={{ minHeight: 110, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }} />
         {parsed.length > 0 && <div style={{ fontSize: 12, color: good.length === parsed.length ? "var(--ok)" : "var(--warn)", fontWeight: 600 }}>{good.length} of {parsed.length} rows ready{parsed.length > good.length ? " — rows with an unknown meter or bad date are skipped" : ""}</div>}
         <PrimaryButton onClick={() => good.length && onImport(good.map((p) => ({ meterId: p.meter.id, date: p.date, value: p.value })))}><Upload size={15} /> Import {good.length} reading{good.length === 1 ? "" : "s"}</PrimaryButton>
       </div>
@@ -987,6 +1031,26 @@ export function StockTakeModal({ spares, onClose, onSave }) {
           );
         })}
         <PrimaryButton onClick={() => onSave(counts)}><CheckCircle2 size={15} /> Save stock take{changed.length ? ` (${changed.length} change${changed.length === 1 ? "" : "s"})` : ""}</PrimaryButton>
+      </div>
+    </Modal>
+  );
+}
+
+export function KeyAuditModal({ keys, onClose, onSave }) {
+  const [res, setRes] = useState(Object.fromEntries(keys.map((k) => [k.id, k.holder ? true : null])));
+  const checked = Object.values(res).filter((v) => v !== null).length;
+  return (
+    <Modal title="Key audit" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Check each key or card is where it should be. Keys signed out to someone count as present.</div>
+        {keys.map((k) => (
+          <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--card-hi)", borderRadius: 9, padding: "7px 9px" }}>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 650 }}>{k.label}{k.number ? ` #${k.number}` : ""}</div><div style={{ fontSize: 11, color: "var(--faint)" }}>{k.holder ? `With ${k.holder}` : k.kept || ""}</div></div>
+            <ToggleButton active={res[k.id] === true} onClick={() => setRes((p) => ({ ...p, [k.id]: true }))}>Present</ToggleButton>
+            <ToggleButton active={res[k.id] === false} onClick={() => setRes((p) => ({ ...p, [k.id]: false }))}>Missing</ToggleButton>
+          </div>
+        ))}
+        <PrimaryButton onClick={() => onSave(Object.fromEntries(Object.entries(res).filter(([, v]) => v !== null)))}><CheckCircle2 size={15} /> Save audit ({checked}/{keys.length} checked)</PrimaryButton>
       </div>
     </Modal>
   );

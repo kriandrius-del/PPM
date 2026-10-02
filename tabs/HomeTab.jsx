@@ -1,17 +1,18 @@
 // Home dashboard: KPIs, reminders, contractor sign-in, emergency contacts, statutory register.
-import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Building2, CalendarCheck, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, Flame, HardHat, History, ListTodo, LogIn, LogOut, Megaphone, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, Sun, UserCheck, Wrench, X } from "lucide-react";
-import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput } from "../components/ui.jsx";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowUpRight, Building2, CalendarCheck, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, CloudSun, Flame, HardHat, History, ListTodo, LogIn, LogOut, Mail, Megaphone, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, Sun, UserCheck, Wrench, X } from "lucide-react";
+import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
 import { DEFAULT_EMERGENCY, REPEAT_OPTIONS, STATUTORY_ITEMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
 import { openPrintReport, tableHtml } from "../lib/reports.js";
-import { computeCompliance, currentBooking, daysUntil, escapeHtml, fmtDate, gbp, matchStatutory, relativeDays, uid, workSla } from "../lib/utils.js";
+import { appBaseUrl, computeCompliance, currentBooking, daysUntil, escapeHtml, fmtDate, gbp, matchStatutory, qrImageUrl, relativeDays, uid, workSla } from "../lib/utils.js";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { OnCallCard } from "./MoreViews.jsx";
 
 /* ---------------------------------------------------------
    Home dashboard
 --------------------------------------------------------- */
-export function HomeTab({ notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
+export function HomeTab({ complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
   const today = new Date().toISOString().slice(0, 10);
   const hour = new Date().getHours();
   const comp = useMemo(() => computeCompliance(devices, visitBudgets, services), [devices, visitBudgets, services]);
@@ -84,6 +85,8 @@ export function HomeTab({ notices = [], onSaveNotice, onDeleteNotice, recentDevi
       </div>
       {ACTIVE_CAN_EDIT && onQuick && (
         <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto" }}>
+          {onPrintBriefing && <button className="bbtn" onClick={onPrintBriefing} style={{ flexShrink: 0 }}><Printer size={16} color="var(--accent)" /> Today's briefing</button>}
+          {onWeeklyEmail && <button className="bbtn" onClick={onWeeklyEmail} style={{ flexShrink: 0 }}><Mail size={16} color="var(--accent)" /> Weekly update email</button>}
           {[["visit", "Log a visit", CheckCircle2], ["work", "Raise a job", Wrench], ["service", "Add service", Plus], ["incident", "Report incident", Siren]].map(([k, l, I]) => (
             <button key={k} className="bbtn" onClick={() => onQuick(k)} style={{ flexShrink: 0 }}><I size={16} color="var(--accent)" /> {l}</button>
           ))}
@@ -125,7 +128,7 @@ export function HomeTab({ notices = [], onSaveNotice, onDeleteNotice, recentDevi
           </section>
         )}
 
-        <BigKpi label="PPM on time" icon={CheckCircle2} value={comp.pct === null ? "—" : `${comp.pct}%`} sub={comp.total ? `${comp.totals.onTime} of ${comp.total} planned visits` : "No planned visits due yet"} color={comp.pct === null ? "var(--text)" : comp.pct >= 90 ? "var(--ok)" : comp.pct >= 70 ? "var(--warn)" : "var(--danger)"} bar={comp.pct} onClick={() => onGo("certificates")} />
+        <BigKpi label="PPM on time" icon={CheckCircle2} value={comp.pct === null ? "—" : `${comp.pct}%`} sub={comp.total ? `${comp.totals.onTime} of ${comp.total} planned visits${comp.pct != null && complianceMonthAgo != null && comp.pct !== complianceMonthAgo ? ` · ${comp.pct > complianceMonthAgo ? "▲" : "▼"} ${Math.abs(comp.pct - complianceMonthAgo)} pts vs a month ago` : ""}` : "No planned visits due yet"} color={comp.pct === null ? "var(--text)" : comp.pct >= 90 ? "var(--ok)" : comp.pct >= 70 ? "var(--warn)" : "var(--danger)"} bar={comp.pct} onClick={() => onGo("certificates")} />
         <BigKpi label="Overdue" icon={Clock} value={overdue.length} sub={overdue.length ? "services past due — tap to see" : "nothing overdue"} color={overdue.length ? "var(--danger)" : "var(--ok)"} onClick={() => onGo("schedule")} />
 
         {show("spend") && (
@@ -143,6 +146,7 @@ export function HomeTab({ notices = [], onSaveNotice, onDeleteNotice, recentDevi
           </button>
         )}
 
+        {show("weather") && <WeatherTile place={siteInfo?.weatherTown || (locationName || "").split("·").pop().trim()} />}
         <BigKpi label="Due next 7 days" icon={CalendarCheck} value={next7.length} sub={notBooked.length ? `${notBooked.length} due in 14 days not booked` : "all booked"} color={notBooked.length ? "var(--warn)" : "var(--text)"} onClick={() => onGo("devices")} />
         <BigKpi label="Open works" icon={Wrench} value={openWorks.length} sub={slaBreached.length ? `${slaBreached.length} past target date` : "all within target"} color={slaBreached.length ? "var(--danger)" : "var(--text)"} onClick={() => onGo("works")} />
 
@@ -225,7 +229,8 @@ export function HomeTab({ notices = [], onSaveNotice, onDeleteNotice, recentDevi
           </section>
         )}
 
-        {show("contractors") && <div className="wrap c2"><SiteRegister signins={signins} suppliers={suppliers} devices={devices} locationName={locationName} onSignIn={onSignIn} onSignOut={onSignOut} /></div>}
+        {show("contractors") && <div className="wrap c2"><SiteRegister locationId={locationId} expected={expectedToday} onSignOutAll={onSignOutAll} signins={signins} suppliers={suppliers} devices={devices} locationName={locationName} onSignIn={onSignIn} onSignOut={onSignOut} /></div>}
+        {show("oncall") && (onCall.length > 0 || ACTIVE_CAN_EDIT) && <div className="wrap c2"><OnCallCard rota={onCall} onSave={onSaveOnCall} /></div>}
         {show("emergency") && <div className="wrap c2"><EmergencyContacts suppliers={suppliers} contacts={emergency} onSave={onSaveEmergency} /></div>}
         {show("statutory") && <div className="wrap c2"><StatutoryRegister custom={customStatutory} onSaveCustom={onSaveCustomStatutory} devices={devices} na={statutoryNA} onNA={onStatutoryNA} onAdd={onAddStatutory} onOpenDevice={onOpenDevice} locationName={locationName} /></div>}
         {show("siteinfo") && <div className="wrap c2"><SiteInfoCard info={siteInfo} onSave={onSaveSiteInfo} /></div>}
@@ -345,7 +350,7 @@ export function StatutoryRegister({ custom = [], onSaveCustom, devices, na = [],
 /* ---------------------------------------------------------
    Contractor sign-in register
 --------------------------------------------------------- */
-export function SiteRegister({ signins, suppliers, devices, locationName, onSignIn, onSignOut }) {
+export function SiteRegister({ locationId = null, expected = [], onSignOutAll, signins, suppliers, devices, locationName, onSignIn, onSignOut }) {
   const [adding, setAdding] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const onSite = signins.filter((x) => !x.outAt);
@@ -366,12 +371,23 @@ export function SiteRegister({ signins, suppliers, devices, locationName, onSign
         </div>
         {ACTIVE_CAN_EDIT && <button onClick={() => setAdding(true)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><LogIn size={13} /> Sign in</button>}
       </div>
+      {ACTIVE_CAN_EDIT && expected.filter((d) => !signins.some((x) => !x.outAt && (x.purpose || "").includes(d.name))).length > 0 && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)" }}>Expected today</div>
+          {expected.filter((d) => !signins.some((x) => !x.outAt && (x.purpose || "").includes(d.name))).map((d) => (
+            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--accent-soft)", borderRadius: 9, padding: "6px 9px" }}>
+              <span style={{ flex: 1, fontSize: 12.5 }}><b>{d.booking?.time ? `${d.booking.time} · ` : ""}{d.supplierName || "Supplier"}</b> — {d.name}</span>
+              <button onClick={() => setAdding({ supplierId: d.supplierId || "", company: d.supplierName || "", purpose: d.name })} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign in</button>
+            </div>
+          ))}
+        </div>
+      )}
       {onSite.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
           {onSite.map((x) => (
             <div key={x.id} style={{ background: "var(--card-hi)", borderRadius: 9, padding: "7px 9px", display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.8, fontWeight: 700 }}>{x.name}{x.company ? <span style={{ color: "var(--faint)", fontWeight: 600 }}> · {x.company}</span> : null}</div>
+                <div style={{ fontSize: 12.8, fontWeight: 700 }}>{x.name}{x.kind === "visitor" && <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--accent)" }}> VISITOR{x.host ? ` · visiting ${x.host}` : ""}</span>}{x.selfService && <span style={{ fontSize: 10.5, color: "var(--faint)" }}> · self sign-in</span>}{x.company ? <span style={{ color: "var(--faint)", fontWeight: 600 }}> · {x.company}</span> : null}</div>
                 <div style={{ fontSize: 11, color: "var(--faint)" }}>In {time(x.inAt)}{x.purpose ? ` · ${x.purpose}` : ""}{x.ramsChecked ? " · RAMS ✓" : ""}{x.inducted ? " · inducted ✓" : <b style={{ color: "var(--danger)" }}> · no induction</b>}{x.badge ? ` · pass ${x.badge}` : ""}</div>
               </div>
               {ACTIVE_CAN_EDIT && <button onClick={() => onSignOut(x.id)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><LogOut size={12} /> Out</button>}
@@ -380,10 +396,12 @@ export function SiteRegister({ signins, suppliers, devices, locationName, onSign
         </div>
       )}
       <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+        {onSite.length > 1 && ACTIVE_CAN_EDIT && onSignOutAll && <button onClick={() => { if (window.confirm(`Sign out all ${onSite.length} contractors now?`)) onSignOutAll(); }} style={{ background: "none", border: "none", padding: 0, color: "var(--muted)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Sign everyone out</button>}
+        {locationId && ACTIVE_CAN_EDIT && <button onClick={() => { const url = `${appBaseUrl()}?signin=${locationId}`; openPrintReport("Sign in here", locationName, `<div style="text-align:center;margin-top:30px"><div style="font-size:28px;font-weight:800;margin-bottom:6px">Contractors & visitors</div><div style="font-size:18px;margin-bottom:24px">Scan with your phone camera to sign in and out</div><img src="${qrImageUrl(url, 420)}" style="width:300px;height:300px"><div class="muted" style="margin-top:16px">${escapeHtml(url)}</div><div style="margin-top:28px;font-size:14px">No app needed · please sign out when you leave</div></div>`); }} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Print self sign-in QR</button>}
         {onSite.length > 0 && <button onClick={rollCall} style={{ background: "none", border: "none", padding: 0, color: "var(--danger)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Print fire roll call</button>}
         {signins.length > 0 && <button onClick={() => setShowLog(true)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Full register ({signins.length})</button>}
       </div>
-      {adding && <SignInModal signins={signins} suppliers={suppliers} devices={devices} onClose={() => setAdding(false)} onSave={(e) => { onSignIn(e); setAdding(false); }} />}
+      {adding && <SignInModal prefill={adding === true ? null : adding} signins={signins} suppliers={suppliers} devices={devices} onClose={() => setAdding(false)} onSave={(e) => { onSignIn(e); setAdding(false); }} />}
       {showLog && (
         <Modal title="Contractor register" onClose={() => setShowLog(false)}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -403,14 +421,16 @@ export function SiteRegister({ signins, suppliers, devices, locationName, onSign
   );
 }
 
-export function SignInModal({ signins = [], suppliers, devices, onClose, onSave }) {
-  const [supplierId, setSupplierId] = useState("");
-  const [company, setCompany] = useState("");
+export function SignInModal({ prefill = null, signins = [], suppliers, devices, onClose, onSave }) {
+  const [supplierId, setSupplierId] = useState(prefill?.supplierId || "");
+  const [company, setCompany] = useState(prefill?.company || "");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [purpose, setPurpose] = useState("");
+  const [purpose, setPurpose] = useState(prefill?.purpose || "");
   const [ramsChecked, setRamsChecked] = useState(false);
   const [inducted, setInducted] = useState(false);
+  const [kind, setKind] = useState(prefill?.kind || "contractor");
+  const [host, setHost] = useState("");
   const priorInduction = signins.filter((x) => x.inducted && x.name.trim().toLowerCase() === name.trim().toLowerCase() && name.trim()).sort((a, b) => String(b.inAt).localeCompare(String(a.inAt)))[0];
   const inductionValid = priorInduction && (Date.now() - new Date(priorInduction.inductedAt || priorInduction.inAt).getTime()) < 365 * 86400000;
   const [badge, setBadge] = useState("");
@@ -418,6 +438,12 @@ export function SignInModal({ signins = [], suppliers, devices, onClose, onSave 
   return (
     <Modal title="Sign in a contractor" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {(() => { const sp = suppliers.find((x) => x.id === supplierId); if (!sp) return null; const warn = [sp.status === "blocked" && "marked Do not use", sp.status === "probation" && "on probation", sp.insuranceExpiry && daysUntil(sp.insuranceExpiry) < 0 && `insurance expired ${fmtDate(sp.insuranceExpiry)}`, sp.accreditationExpiry && daysUntil(sp.accreditationExpiry) < 0 && "accreditation expired"].filter(Boolean); return warn.length ? <div style={{ background: "var(--danger-soft)", color: "var(--danger)", borderRadius: 9, padding: "8px 10px", fontSize: 12.5, fontWeight: 700 }}>⚠ {sp.name}: {warn.join(" · ")} — check before letting them work.</div> : null; })()}
+        <div style={{ display: "flex", gap: 6 }}>
+          <ToggleButton active={kind === "contractor"} onClick={() => setKind("contractor")}>Contractor</ToggleButton>
+          <ToggleButton active={kind === "visitor"} onClick={() => setKind("visitor")}>Visitor</ToggleButton>
+        </div>
+        {kind === "visitor" && <Field label="Visiting (host)"><TextInput value={host} onChange={(e) => setHost(e.target.value)} placeholder="Who are they here to see?" /></Field>}
         <Field label="Company">
           <Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setCompany(suppliers.find((s) => s.id === e.target.value)?.name || ""); }}>
             <option value="">— Other / not a listed supplier —</option>
@@ -446,7 +472,7 @@ export function SignInModal({ signins = [], suppliers, devices, onClose, onSave 
             <input type="checkbox" checked={inducted} onChange={(e) => setInducted(e.target.checked)} style={{ margin: 0 }} /> Site induction given (fire exits, assembly point, first aid, sign-out)
           </label>
         )}
-        <PrimaryButton onClick={() => name.trim() && onSave({ name: name.trim(), company: company.trim(), supplierId: supplierId || null, phone: phone.trim(), purpose: purpose.trim(), ramsChecked, badge: badge.trim(), inducted: inducted || !!inductionValid, inductedAt: inducted ? new Date().toISOString() : inductionValid ? (priorInduction.inductedAt || priorInduction.inAt) : null })}><LogIn size={15} /> Sign in</PrimaryButton>
+        <PrimaryButton onClick={() => name.trim() && onSave({ name: name.trim(), company: company.trim(), supplierId: supplierId || null, phone: phone.trim(), purpose: purpose.trim(), ramsChecked, badge: badge.trim(), kind, host: kind === "visitor" ? host.trim() : undefined, inducted: inducted || !!inductionValid, inductedAt: inducted ? new Date().toISOString() : inductionValid ? (priorInduction.inductedAt || priorInduction.inAt) : null })}><LogIn size={15} /> Sign in</PrimaryButton>
       </div>
     </Modal>
   );
@@ -649,7 +675,7 @@ function CustomRequirementForm({ onSave, onCancel }) {
 export function SiteInfoCard({ info, onSave }) {
   const [open, setOpen] = useState(false); const [editing, setEditing] = useState(false);
   const [d, setD] = useState(info || {});
-  const fields = [["address", "Address"], ["hours", "Opening hours"], ["access", "Contractor access"], ["parking", "Parking"], ["contactName", "Site contact"], ["contactPhone", "Contact phone"], ["notes", "Other notes"]];
+  const fields = [["weatherTown", "Town for weather"], ["address", "Address"], ["hours", "Opening hours"], ["access", "Contractor access"], ["parking", "Parking"], ["contactName", "Site contact"], ["contactPhone", "Contact phone"], ["notes", "Other notes"]];
   const filled = fields.filter(([k]) => (info || {})[k]);
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8 }}>
@@ -700,7 +726,8 @@ export function WeekAheadCard({ days, onOpenDevice }) {
 
 export function NoticeBoard({ notices, onSave, onDelete }) {
   const [text, setText] = useState("");
-  const list = [...notices].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(b.at).localeCompare(String(a.at))).slice(0, 8);
+  const [until, setUntil] = useState("");
+  const list = [...notices].filter((n) => !n.until || n.until >= new Date().toISOString().slice(0, 10)).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(b.at).localeCompare(String(a.at))).slice(0, 8);
   if (!ACTIVE_CAN_EDIT && !list.length) return null;
   return (
     <div style={{ background: "var(--warn-soft)", border: "1px solid #F5E1A4", borderRadius: 12, padding: 12, marginTop: 8 }}>
@@ -709,7 +736,7 @@ export function NoticeBoard({ notices, onSave, onDelete }) {
         <div key={n.id} style={{ borderTop: "1px solid #F5E1A4", padding: "6px 0", display: "flex", gap: 6, alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 12.8, whiteSpace: "pre-wrap" }}>{n.pinned && "📌 "}{n.text}</div>
-            <div style={{ fontSize: 10.8, color: "var(--faint)" }}>{n.by} · {relativeDays(n.at)}</div>
+            <div style={{ fontSize: 10.8, color: "var(--faint)" }}>{n.by} · {relativeDays(n.at)}{n.until ? ` · until ${fmtDate(n.until)}` : ""}</div>
           </div>
           {ACTIVE_CAN_EDIT && <button onClick={() => onSave({ ...n, pinned: !n.pinned })} title={n.pinned ? "Unpin" : "Pin"} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Pin size={12} color={n.pinned ? "#D97706" : "#C0C6CC"} /></button>}
           {ACTIVE_CAN_EDIT && <ConfirmDeleteButton onConfirm={() => onDelete(n.id)} size={12} />}
@@ -717,10 +744,53 @@ export function NoticeBoard({ notices, onSave, onDelete }) {
       ))}
       {ACTIVE_CAN_EDIT && (
         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-          <TextInput value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { onSave({ text: text.trim() }); setText(""); } }} placeholder="Post a note for the team, e.g. Lift 2 out until Thursday" style={{ flex: 1, fontSize: 12.5 }} />
-          <button onClick={() => { if (text.trim()) { onSave({ text: text.trim() }); setText(""); } }} style={{ background: "#B7791F", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Post</button>
+          <TextInput value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { onSave({ text: text.trim(), until: until || null }); setText(""); setUntil(""); } }} placeholder="Post a note for the team, e.g. Lift 2 out until Thursday" style={{ flex: 1, fontSize: 12.5 }} />
+          <TextInput type="date" value={until} onChange={(e) => setUntil(e.target.value)} title="Show until (optional)" style={{ width: 130, fontSize: 12 }} />
+          <button onClick={() => { if (text.trim()) { onSave({ text: text.trim(), until: until || null }); setText(""); setUntil(""); } }} style={{ background: "#B7791F", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Post</button>
         </div>
       )}
     </div>
+  );
+}
+
+// Today & tomorrow's weather for the site (Open-Meteo, no account needed), with FM prompts:
+// frost → grit paths, heavy rain → check gutters/roof drains, high wind → secure external items.
+const WEATHER_TEXT = { 0: "Clear", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog", 48: "Freezing fog", 51: "Drizzle", 53: "Drizzle", 55: "Heavy drizzle", 61: "Light rain", 63: "Rain", 65: "Heavy rain", 66: "Freezing rain", 67: "Freezing rain", 71: "Light snow", 73: "Snow", 75: "Heavy snow", 80: "Showers", 81: "Showers", 82: "Heavy showers", 95: "Thunderstorm", 96: "Thunderstorm", 99: "Thunderstorm" };
+export function WeatherTile({ place }) {
+  const [w, setW] = useState(null); const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!place) return;
+    const key = `ppm:weather:${place.toLowerCase()}`;
+    try { const c = JSON.parse(localStorage.getItem(key) || "null"); if (c && Date.now() - c.at < 3 * 3600000) { setW(c.data); return; } } catch (e) { /* ignore */ }
+    let cancelled = false;
+    (async () => {
+      try {
+        const g = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1&language=en&format=json`)).json();
+        const loc = g.results?.[0]; if (!loc) { if (!cancelled) setErr(`Couldn't find "${place}"`); return; }
+        const f = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,wind_speed_10m_max,weather_code&timezone=auto&forecast_days=2`)).json();
+        const d = f.daily; if (!d) return;
+        const data = { name: loc.name, days: [0, 1].map((i) => ({ min: Math.round(d.temperature_2m_min[i]), max: Math.round(d.temperature_2m_max[i]), rain: d.precipitation_sum[i], wind: Math.round(d.wind_speed_10m_max[i]), code: d.weather_code[i] })) };
+        localStorage.setItem(key, JSON.stringify({ at: Date.now(), data }));
+        if (!cancelled) setW(data);
+      } catch (e) { if (!cancelled) setErr("Weather unavailable offline"); }
+    })();
+    return () => { cancelled = true; };
+  }, [place]);
+  const warn = w ? [
+    w.days.some((d) => d.min <= 1) && ["Frost risk — grit paths & car park", "var(--accent)"],
+    w.days.some((d) => d.rain >= 10) && ["Heavy rain — check gutters & roof drains", "var(--warn)"],
+    w.days.some((d) => d.wind >= 50) && ["High winds — secure outside items, no roof work", "var(--danger)"],
+  ].filter(Boolean) : [];
+  return (
+    <section className="bcard c1" aria-label="Weather">
+      <div className="blabel"><CloudSun size={14} /><span>Weather{w ? ` · ${w.name}` : ""}</span></div>
+      {!w ? <div className="bsub">{err || (place ? "Loading…" : "Add a town in Site information")}</div> : (
+        <>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span className="bbig" style={{ fontSize: 34 }}>{w.days[0].max}°</span><span className="bsub">low {w.days[0].min}° · {WEATHER_TEXT[w.days[0].code] || ""}</span></div>
+          <div className="bsub">Tomorrow {w.days[1].min}–{w.days[1].max}° · {WEATHER_TEXT[w.days[1].code] || ""}{w.days[1].rain >= 1 ? ` · ${Math.round(w.days[1].rain)}mm` : ""}</div>
+          {warn.map(([t, c]) => <div key={t} style={{ fontSize: 12, fontWeight: 700, color: c }}>{t}</div>)}
+        </>
+      )}
+    </section>
   );
 }

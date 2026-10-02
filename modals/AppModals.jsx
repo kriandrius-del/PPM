@@ -1,13 +1,14 @@
 // App-wide pop-ups: people, locations, search, activity/backup/sharing, alerts, reports, settings.
 import { useState, useMemo, useRef } from "react";
-import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, ChevronRight, Cloud, CloudOff, Download, FileText, Globe2, HardDrive, LayoutDashboard, Lock, Mail, Moon, Plus, Printer, Search, Smartphone, Sparkles, Trash2, Type, Upload } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, ChevronRight, Cloud, CloudOff, Download, FileText, Globe2, HardDrive, LayoutDashboard, Lock, Mail, Moon, Palette, Plus, Printer, Search, Smartphone, Sparkles, Trash2, Type, Upload } from "lucide-react";
 import { Badge, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, WHATS_NEW, authSql } from "../lib/constants.js";
+import { ACCENTS, ALERT_GROUPS, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, START_TABS, WHATS_NEW, authSql } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, BUILTIN_CATEGORY_META, CATEGORY_ICONS, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
-import { buildAssetRegister, buildComplianceReport, buildConditionReport, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildPortfolioReport, buildSlaReport, buildSpendReport, buildSupplierReport, buildWallPlanner, downloadWorkbook, openPrintReport } from "../lib/reports.js";
-import { addDays, daysUntil, fmtDate, gbp, relativeDays, replacementYear, uid } from "../lib/utils.js";
+import { buildAssetRegister, buildCarbonReport, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractorHours, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMonthCalendar, buildPortfolioReport, buildSlaReport, buildSpendReport, buildSupplierReport, buildSupplierSpend, buildWallPlanner, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
+import { addDays, compressImage, daysUntil, downloadBlob, fmtDate, gbp, relativeDays, replacementYear, uid } from "../lib/utils.js";
 import { AccountingExport } from "../tabs/BudgetTab.jsx";
 import { THEMES } from "../lib/theme.js";
+import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
 /* ---------------------------------------------------------
    User & Location setup modals
@@ -28,7 +29,7 @@ export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreat
               <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--accent)", color: "var(--on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>
                 {u.name.slice(0, 1).toUpperCase()}
               </div>
-              <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{u.name}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{u.name}{u.lastActive && <span style={{ display: "block", fontSize: 11, fontWeight: 500, color: "var(--faint)" }}>Last active {u.lastActive === new Date().toISOString().slice(0, 10) ? "today" : relativeDays(u.lastActive)}</span>}</span>
               {u.role === "viewer" && <Badge tone="muted">Viewer</Badge>}
             </button>
           ))}
@@ -209,7 +210,7 @@ export function GlobalSearchModal({ extra = {}, onGoTab, devices, services, work
 /* ---------------------------------------------------------
    Activity log, backup & restore, storage usage
 --------------------------------------------------------- */
-export function DataModal({ trash = [], onRestoreDeleted, alertCount = 0, pendingCount = 0, remote = false, display = { scale: 1 }, onDisplay, activity, storageInfo, saveErrors, lastBackupAt, canEdit, onBackup, onRestore, onClose }) {
+export function DataModal({ branding = {}, onSaveBranding, trash = [], onRestoreDeleted, alertCount = 0, pendingCount = 0, remote = false, display = { scale: 1 }, onDisplay, activity, storageInfo, saveErrors, lastBackupAt, canEdit, onBackup, onRestore, onClose }) {
   const [view, setView] = useState("activity");
   const [filter, setFilter] = useState("");
   const [who, setWho] = useState("");
@@ -291,6 +292,21 @@ export function DataModal({ trash = [], onRestoreDeleted, alertCount = 0, pendin
                 <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{Notification.permission === "denied" ? "Notifications are blocked for this site in your browser settings." : `When you open the app, get one notification a day summarising urgent items${alertCount ? ` (currently ${alertCount})` : ""}. Works best when the app is installed on your phone.`}</div>
               </>
             )}
+            <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}><Bell size={14} /> Alerts to show</div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {Object.entries(ALERT_GROUPS).map(([k, g]) => { const on = !(display.hiddenAlertGroups || []).includes(k); return <ToggleButton key={k} active={on} onClick={() => onDisplay?.({ ...display, hiddenAlertGroups: on ? [...(display.hiddenAlertGroups || []), k] : (display.hiddenAlertGroups || []).filter((x) => x !== k) })}>{g.label}</ToggleButton>; })}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Turn off groups you don't look after. Urgent (red) alerts always show.</div>
+            <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}><LayoutDashboard size={14} /> Open the app on</div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{Object.entries(START_TABS).map(([k, l]) => <ToggleButton key={k} active={(display.startTab || "last") === k} onClick={() => onDisplay?.({ ...display, startTab: k })}>{l}</ToggleButton>)}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}><Palette size={14} /> Accent colour</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {Object.entries(ACCENTS).map(([k, a]) => {
+                const on = (display.accent || "navy") === k;
+                return <button key={k} onClick={() => onDisplay?.({ ...display, accent: k })} title={a.label} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--card)", border: `2px solid ${on ? a.light : "var(--border)"}`, borderRadius: 18, padding: "5px 10px 5px 6px", fontSize: 12, fontWeight: 650, color: "var(--text)", cursor: "pointer", fontFamily: "inherit" }}><span style={{ width: 16, height: 16, borderRadius: 8, background: a.light }} />{a.label}</button>;
+              })}
+            </div>
+            {onSaveBranding && canEdit && <BrandingEditor branding={branding} onSave={onSaveBranding} />}
             <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}><Moon size={14} /> Theme</div>
             <div style={{ display: "flex", gap: 6 }}>
               {Object.entries(THEMES).map(([k, label]) => {
@@ -569,6 +585,23 @@ export function ReportsModal({ data, locationName, onClose }) {
     { title: "Works on-time (SLA) performance", desc: "Reactive works completed within target, by priority, supplier and trade, for the selected year.", go: () => run("Works on-time performance", `${locationName} · ${year}`, buildSlaReport(data, year)) },
     { title: "Incident trends", desc: "Incidents by type and month, root causes and hot-spot areas for the selected year.", go: () => run("Incident trends", `${locationName} · ${year}`, buildIncidentTrend(data, year)) },
     { title: "Wall planner", desc: "Year-at-a-glance grid of every service by month — planned and done — to print A4 landscape.", go: () => run(`PPM wall planner ${year}`, locationName, buildWallPlanner(data, year)) },
+    { title: "Contractor hours on site", desc: "Hours each company spent on site this year, from the sign-in register — check time-and-materials invoices against it.", go: () => run(`Contractor hours ${year}`, locationName, buildContractorHours(data.signins, year, data.suppliers)) },
+    { title: "Energy & carbon", desc: "Consumption, cost and CO₂e by meter and month, for carbon reporting.", go: () => run(`Energy & carbon ${year}`, locationName, buildCarbonReport(data.meters || [], data.readings || [], year)) },
+    { title: "Committed spend", desc: "Approved jobs not yet invoiced — money already promised that will hit the budget.", go: () => run("Committed spend", locationName, buildCommittedSpend(data)) },
+    { title: "Annual planner (Excel)", desc: "Every service with ○ planned / ● done for each month, as a colour-coded Excel sheet you can filter and share.", go: async () => {
+      const yrS = String(year);
+      const rows = [...data.devices].sort((a, b) => (a.area || "~").localeCompare(b.area || "~") || a.name.localeCompare(b.name)).map((d) => {
+        const planned = new Set([...(data.visitBudgets || []).filter((v) => v.deviceId === d.id).map((v) => v.date), d.nextServiceDate].filter((x) => x && String(x).startsWith(yrS)).map((x) => new Date(x).getMonth()));
+        const done = new Set(data.services.filter((v) => v.deviceId === d.id && String(v.date).startsWith(yrS) && !v.aborted && !v.skipped).map((v) => new Date(v.date).getMonth()));
+        return [d.name, d.area || "", data.supplierById[d.supplierId]?.name || "", ...MONTH_LABELS.map((_, i) => (done.has(i) ? "●" : planned.has(i) ? "○" : ""))];
+      });
+      const buf = await buildStyledSheet({ title: `PPM annual planner ${yrS}`, subtitle: `${locationName} · ● done  ○ planned`, sheetName: `Planner ${yrS}`, headers: ["Service", "Area", "Supplier", ...MONTH_LABELS], rows, widths: [34, 16, 22, ...MONTH_LABELS.map(() => 6)],
+        cellStyle: (c, v, ri, ci) => { if (ci >= 3) { c.alignment = { horizontal: "center", vertical: "middle" }; if (v === "●") excelColour(c, "E6F4EC", "1F7A4D"); else if (v === "○") { const past = Number(yrS) < new Date().getFullYear() || (Number(yrS) === new Date().getFullYear() && ci - 3 < new Date().getMonth()); excelColour(c, past ? "FBEAEA" : "E6EEF6", past ? "C53030" : "2B5D8A"); } } } });
+      downloadBlob(xlsxBlob(buf), `ppm-planner-${yrS}.xlsx`);
+    } },
+    { title: "Year in review", desc: "Annual summary for your manager: visits, on-time %, works, spend vs budget, savings, incidents, audits, recycling and top suppliers.", go: () => run(`Year in review ${year}`, locationName, buildYearReview(data, year)) },
+    { title: "Spend by supplier", desc: "What you've spent with each supplier this year — visits, works and contract — against the plan.", go: () => run(`Spend by supplier ${year}`, locationName, buildSupplierSpend(data, year)) },
+    { title: "Monthly calendar", desc: "A printable month view with every booked visit (with times), due services and recurring tasks.", go: () => run(`${MONTH_LABELS[month]} ${year}`, locationName, buildMonthCalendar(data, year, month)) },
     { title: "Condition survey", desc: "Every asset's condition grade (A–D) and criticality, with an 'act now' list of failing or poor critical assets.", go: () => run("Condition survey", `${locationName} · ${data.devices.length} assets`, buildConditionReport(data)) },
     { title: "5-year replacement forecast", desc: "Assets reaching end of life each year with estimated replacement costs — for capital budget planning.", go: () => run("5-year replacement forecast", `${locationName} · ${now.getFullYear()}–${now.getFullYear() + 4}`, buildLifecycleReport(data)) },
     { title: "Supplier performance", desc: "Score, on-time %, checklist pass rate, cost variance, chases and contract dates.", go: () => run("Supplier performance", `${locationName} · ${year}`, buildSupplierReport(data, year)) },
@@ -845,5 +878,23 @@ export function HelpModal({ onClose }) {
         ))}
       </div>
     </Modal>
+  );
+}
+
+function BrandingEditor({ branding, onSave }) {
+  const [name, setName] = useState(branding.companyName || ""); const [logo, setLogo] = useState(branding.logo || null);
+  async function pick(e) { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { setLogo(await compressImage(f, 360, 0.8)); } catch (x) { /* ignore */ } }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Building2 size={14} /> Report branding (everyone)</div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {logo && <img src={logo} alt="" style={{ height: 40, maxWidth: 110, objectFit: "contain", background: "#fff", borderRadius: 6, padding: 3, border: "1px solid var(--border)" }} />}
+        <label style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer" }}>{logo ? "Change logo" : "Upload logo"}<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
+        {logo && <button onClick={() => setLogo(null)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Remove</button>}
+      </div>
+      <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Company name on reports" />
+      <button onClick={() => onSave({ companyName: name.trim(), logo })} style={{ alignSelf: "flex-start", background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Save branding</button>
+      <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Your logo and company name appear at the top of every printed report, permit and work order.</div>
+    </div>
   );
 }

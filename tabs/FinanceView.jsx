@@ -102,7 +102,7 @@ export function FinanceView({ savings = [], onSaveSaving, onDeleteSaving, userNa
       )}
       {view === "savings" && <SavingsView savings={savings} suppliers={suppliers} onSave={onSaveSaving} onDelete={onDeleteSaving} />}
       {editPO && <POModal existing={editPO.id ? editPO : null} suppliers={suppliers} existingNumbers={pos.map((p) => p.number)} onClose={() => setEditPO(null)} onSave={(p) => { onSavePO(p); setEditPO(null); }} onDelete={(id) => { onDeletePO(id); setEditPO(null); }} />}
-      {editInv && <InvoiceModal works={works} deviceById={deviceById} existing={editInv.id ? editInv : null} suppliers={suppliers} pos={pos} invoicedFor={invoicedFor} onClose={() => setEditInv(null)} onSave={(i) => { onSaveInvoice(i); setEditInv(null); }} onDelete={(id) => { onDeleteInvoice(id); setEditInv(null); }} />}
+      {editInv && <InvoiceModal allInvoices={invoices} works={works} deviceById={deviceById} existing={editInv.id ? editInv : null} suppliers={suppliers} pos={pos} invoicedFor={invoicedFor} onClose={() => setEditInv(null)} onSave={(i) => { onSaveInvoice(i); setEditInv(null); }} onDelete={(id) => { onDeleteInvoice(id); setEditInv(null); }} />}
     </div>
   );
 }
@@ -138,7 +138,7 @@ function POModal({ existing, suppliers, existingNumbers, onClose, onSave, onDele
     </Modal>
   );
 }
-function InvoiceModal({ works = [], deviceById = {}, existing, suppliers, pos, invoicedFor, onClose, onSave, onDelete }) {
+function InvoiceModal({ allInvoices = [], works = [], deviceById = {}, existing, suppliers, pos, invoicedFor, onClose, onSave, onDelete }) {
   const [number, setNumber] = useState(existing?.number || "");
   const [supplierId, setSupplierId] = useState(existing?.supplierId || "");
   const [poId, setPoId] = useState(existing?.poId || "");
@@ -158,7 +158,7 @@ function InvoiceModal({ works = [], deviceById = {}, existing, suppliers, pos, i
   return (
     <Modal title={existing ? `Invoice ${existing.number}` : "Record an invoice"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <Field label="Supplier"><Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPoId(""); }}><option value="">—</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+        <Field label="Supplier"><Select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPoId(""); const sp = suppliers.find((x) => x.id === e.target.value); if (sp && !existing) setDueDate(addDays(date, Number(sp.paymentDays) || 30)); }}><option value="">—</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
         <div style={{ display: "flex", gap: 8 }}>
           <Field label="Invoice number"><TextInput value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
           <Field label={`Net amount (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
@@ -169,6 +169,7 @@ function InvoiceModal({ works = [], deviceById = {}, existing, suppliers, pos, i
           </Field>
           <Field label="Cost code (optional)"><TextInput value={costCode} onChange={(e) => setCostCode(e.target.value)} placeholder="e.g. 6120-FM" /></Field>
         </div>
+        {number.trim() && allInvoices.some((x) => x.id !== existing?.id && String(x.number).trim().toLowerCase() === number.trim().toLowerCase() && (!supplierId || x.supplierId === supplierId)) && <div style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 8, padding: "7px 10px" }}>Invoice {number.trim()} is already recorded for this supplier — check it isn't a duplicate.</div>}
         {net > 0 && <div style={{ fontSize: 12, color: "var(--muted)" }}>Net {gbp(net)} + VAT {gbp(vat)} = <b>{gbp(gross)}</b> gross</div>}
         <div style={{ display: "flex", gap: 8 }}>
           <Field label="Invoice date"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
