@@ -1,6 +1,6 @@
 // Home dashboard: KPIs, reminders, contractor sign-in, emergency contacts, statutory register.
 import { useMemo, useState } from "react";
-import { Building2, CalendarCheck, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, Flame, HardHat, ListTodo, LogIn, LogOut, Phone, PhoneCall, Pin, Printer, RefreshCw, Rocket, ScrollText, Square, Sun, UserCheck, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Building2, CalendarCheck, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, Flame, HardHat, History, ListTodo, LogIn, LogOut, Megaphone, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, Sun, UserCheck, Wrench, X } from "lucide-react";
 import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput } from "../components/ui.jsx";
 import { DEFAULT_EMERGENCY, REPEAT_OPTIONS, STATUTORY_ITEMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
@@ -11,7 +11,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 /* ---------------------------------------------------------
    Home dashboard
 --------------------------------------------------------- */
-export function HomeTab({ weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
+export function HomeTab({ notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
   const today = new Date().toISOString().slice(0, 10);
   const hour = new Date().getHours();
   const comp = useMemo(() => computeCompliance(devices, visitBudgets, services), [devices, visitBudgets, services]);
@@ -25,198 +25,239 @@ export function HomeTab({ weekAhead = null, siteInfo = null, onSaveSiteInfo, cus
   const yr = new Date().getFullYear();
   const lateByReason = {};
   services.filter((v) => v.lateReason && String(v.date).startsWith(String(yr))).forEach((v) => { lateByReason[v.lateReason] = (lateByReason[v.lateReason] || 0) + 1; });
-  const card = { background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12 };
-  const Kpi = ({ label, value, sub, tone = "muted", onClick }) => {
-    const c = { danger: "#C53030", warn: "#B7791F", ok: "#2F855A", muted: "#1B2430" }[tone];
-    return (
-      <button onClick={onClick} style={{ ...card, textAlign: "left", cursor: onClick ? "pointer" : "default", fontFamily: "inherit", display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ fontSize: 11, fontWeight: 650, color: "#8A94A0" }}>{label}</span>
-        <span style={{ fontSize: 22, fontWeight: 750, color: c, fontFamily: "'IBM Plex Mono', monospace" }}>{value}</span>
-        {sub && <span style={{ fontSize: 10.5, color: "#8A94A0" }}>{sub}</span>}
-      </button>
-    );
-  };
-  const H = ({ children, action, onAction }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "18px 0 8px" }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: "#3A4451" }}>{children}</span>
-      {action && <button onClick={onAction} style={{ background: "none", border: "none", color: "#2B4562", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{action}</button>}
+  const greeting = `${hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}${userName ? `, ${userName.split(" ")[0]}` : ""}`;
+  const toneVar = (t) => (t === "danger" ? "var(--danger)" : t === "warn" ? "var(--warn)" : "var(--accent)");
+  const toneSoft = (t) => (t === "danger" ? "var(--danger-soft)" : t === "warn" ? "var(--warn-soft)" : "var(--accent-soft)");
+  const Label = ({ icon: I, children, right }) => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <div className="blabel">{I && <I size={14} />}<span>{children}</span></div>
+      {right}
     </div>
   );
+  const linkBtn = { background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" };
+  const BigKpi = ({ label, icon, value, sub, color, onClick, bar }) => (
+    <button className="bcard c1" onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
+      <Label icon={icon}>{label}</Label>
+      <div className="bbig" style={{ color }}>{value}</div>
+      {sub && <div className="bsub">{sub}</div>}
+      {bar != null && <div style={{ height: 6, borderRadius: 3, background: "var(--card-hi)", overflow: "hidden", marginTop: "auto" }}><div style={{ width: `${Math.max(0, Math.min(100, bar))}%`, height: "100%", background: color }} /></div>}
+    </button>
+  );
+  // Small chart of cumulative spend against plan for the spend tile.
+  const spark = (() => {
+    const c = spend.curve || []; if (!c.length) return null;
+    const W = 520, Hh = 80; const max = Math.max(1, ...c.map((x) => Math.max(x.plan || 0, x.actual || 0, x.budget || 0)));
+    const X = (i) => Math.round((i / (c.length - 1)) * W); const Y = (v) => Math.round(Hh - (v / max) * (Hh - 4));
+    const line = (key) => c.map((x, i) => (x[key] == null ? null : `${X(i)} ${Y(x[key])}`)).filter(Boolean);
+    const act = line("actual"); const plan = line("plan");
+    if (!plan.length) return null;
+    const lastI = c.reduce((m, x, i) => (x.actual != null ? i : m), -1);
+    return (
+      <svg width="100%" height={Hh} viewBox={`0 0 ${W} ${Hh}`} preserveAspectRatio="none" aria-label="Cumulative spend against plan" style={{ display: "block" }}>
+        {act.length > 1 && <path d={`M ${act.join(" L ")} L ${X(lastI)} ${Hh} L 0 ${Hh} Z`} fill="var(--chart-fill)" />}
+        <path d={`M ${plan.join(" L ")}`} fill="none" stroke="var(--chart-plan)" strokeWidth="2" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
+        {act.length > 1 && <path className="glow" d={`M ${act.join(" L ")}`} fill="none" stroke="var(--accent)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />}
+      </svg>
+    );
+  })();
+  const myDevices = myName ? devices.filter((d) => d.assignee === myName && d.nextServiceDate && daysUntil(d.nextServiceDate) <= 14).sort((a, b) => a.nextServiceDate.localeCompare(b.nextServiceDate)) : [];
+  const show = (k) => !hiddenCards.includes(k);
+  const setupSteps = setup ? [
+    ["Add your suppliers", setup.suppliers > 0, "suppliers"], ["Add services (or import a spreadsheet)", setup.devices > 0, "devices"],
+    ["Set a budget or plan", setup.budgets > 0, "budget"], ["Log your first visit", setup.visits > 0, "devices"],
+    ["Back up, or connect a shared database", setup.backup, null],
+  ] : [];
+  const setupDone = setupSteps.filter((x) => x[1]).length;
   return (
     <div>
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 18, fontWeight: 750 }}>{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}{userName ? `, ${userName.split(" ")[0]}` : ""}</div>
-        <div style={{ fontSize: 12.5, color: "#8A94A0" }}>{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <Kpi label="PPM on time" value={comp.pct === null ? "—" : `${comp.pct}%`} sub={comp.total ? `${comp.totals.onTime} of ${comp.total} planned visits` : "No planned visits due yet"} tone={comp.pct === null ? "muted" : comp.pct >= 90 ? "ok" : comp.pct >= 70 ? "warn" : "danger"} onClick={() => onGo("certificates")} />
-        <Kpi label="Overdue" value={overdue.length} sub="services past due" tone={overdue.length ? "danger" : "ok"} onClick={() => onGo("schedule")} />
-        <Kpi label="Due next 7 days" value={next7.length} sub={notBooked.length ? `${notBooked.length} due in 14 days not booked` : "all booked"} tone={notBooked.length ? "warn" : "muted"} onClick={() => onGo("devices")} />
-        <Kpi label="Open works" value={openWorks.length} sub={slaBreached.length ? `${slaBreached.length} past target date` : "all within target"} tone={slaBreached.length ? "danger" : "muted"} onClick={() => onGo("works")} />
-      </div>
-      {!hiddenCards.includes("spend") && <button onClick={() => onGo("budget")} style={{ ...card, width: "100%", marginTop: 8, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 650, color: "#8A94A0" }}>
-          <span>Spend {spend.yr} to date</span>
-          <span>{spendPct === null ? "No annual budget set" : `${spendPct}% of budget`}</span>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text)" }}>{greeting}</h1>
+          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
         </div>
-        <div style={{ fontSize: 18, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace", margin: "3px 0 6px" }}>
-          {gbp(spend.spent)}{spend.budget ? <span style={{ fontSize: 12.5, color: "#8A94A0", fontWeight: 600 }}> / {gbp(spend.budget)}</span> : null}
+        {syncInfo && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)" }}>
+            {pendingCount > 0 ? <CloudOff size={13} color="var(--warn)" /> : <Cloud size={13} color="var(--ok)" />} {pendingCount > 0 ? `${pendingCount} change${pendingCount === 1 ? "" : "s"} waiting to upload` : syncInfo.syncing ? "Syncing…" : syncInfo.lastSync ? `Shared · updated ${syncInfo.lastSync.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "Shared database"}
+            <button onClick={syncInfo.onRefresh} title="Refresh now" style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}><RefreshCw size={12} color="var(--accent)" /></button>
+          </div>
+        )}
+      </div>
+      {ACTIVE_CAN_EDIT && onQuick && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto" }}>
+          {[["visit", "Log a visit", CheckCircle2], ["work", "Raise a job", Wrench], ["service", "Add service", Plus], ["incident", "Report incident", Siren]].map(([k, l, I]) => (
+            <button key={k} className="bbtn" onClick={() => onQuick(k)} style={{ flexShrink: 0 }}><I size={16} color="var(--accent)" /> {l}</button>
+          ))}
         </div>
-        {spend.budget > 0 && (() => {
-          const expected = Math.round(((new Date().getMonth() + new Date().getDate() / 31) / 12) * 100);
-          return (
-            <>
-              <div style={{ position: "relative", height: 8, background: "#E1E4E8", borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ width: `${Math.min(100, spendPct)}%`, height: "100%", background: spendPct > 100 ? "#C53030" : spendPct > expected + 10 ? "#D97706" : "#2F855A" }} />
-                <div style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.min(100, expected)}%`, width: 2, background: "#1B2430" }} />
+      )}
+      <div className="bento">
+        {setup && !setup.hidden && ACTIVE_CAN_EDIT && setupDone < setupSteps.length && (
+          <section className="bcard c4" style={{ background: "var(--accent-soft)" }}>
+            <Label icon={Rocket} right={<button onClick={onHideSetup} title="Hide" style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}><X size={14} color="var(--muted)" /></button>}>Getting started — {setupDone}/{setupSteps.length}</Label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
+              {setupSteps.map(([label, ok, tab]) => (
+                <button key={label} onClick={() => tab && onGo(tab)} disabled={ok} style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", padding: "4px 0", cursor: ok || !tab ? "default" : "pointer", fontFamily: "inherit", fontSize: 13, color: ok ? "var(--muted)" : "var(--text)", textDecoration: ok ? "line-through" : "none" }}>
+                  {ok ? <CheckCircle2 size={15} color="var(--ok)" /> : <Square size={15} color="var(--muted)" />} {label}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {show("attention") && (
+          <section className="bcard c2 r2" aria-label="Needs attention">
+            <Label icon={AlertTriangle} right={alerts.length > 6 ? <button style={linkBtn} onClick={() => onGo("alerts")}>All {alerts.length}</button> : null}>Needs attention</Label>
+            {alerts.length === 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ok)", fontSize: 14, fontWeight: 600, padding: "18px 0" }}><CheckCircle2 size={18} /> All clear — nothing needs attention.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {alerts.slice(0, 6).map((a) => (
+                  <button key={a.key} className="brow" onClick={() => onGo(a.tab)} style={{ background: toneSoft(a.tone) }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 4, marginTop: 6, flexShrink: 0, background: toneVar(a.tone) }} />
+                    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flexGrow: 1 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 650 }}>{a.title}</span>
+                      {a.detail && <span style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.detail}</span>}
+                    </span>
+                    <ArrowUpRight className="nudge" size={15} color="var(--muted)" style={{ flexShrink: 0, marginTop: 2 }} />
+                  </button>
+                ))}
               </div>
-              <div style={{ fontSize: 10.5, color: "#8A94A0", marginTop: 4 }}>Black line = where spend would be if spread evenly across the year ({expected}%).</div>
-              {spend.curve && <SpendCurve curve={spend.curve} />}
-              {spend.forecast != null && (
-                <div style={{ fontSize: 12, fontWeight: 700, marginTop: 6, color: spend.forecast > spend.budget ? "#C53030" : "#2F855A" }}>
-                  Forecast year-end: {gbp(spend.forecast)} ({Math.round((spend.forecast / spend.budget) * 100)}% of budget){spend.forecast > spend.budget ? ` — ${gbp(spend.forecast - spend.budget)} over` : ""}
-                </div>
-              )}
-            </>
-          );
-        })()}
-      </button>}
+            )}
+          </section>
+        )}
 
-      {syncInfo && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "#5B6672", margin: "8px 0 0" }}>
-          {pendingCount > 0 ? <CloudOff size={13} color="#B7791F" /> : <Cloud size={13} color="#2F855A" />} Shared database · {pendingCount > 0 ? `${pendingCount} change${pendingCount === 1 ? "" : "s"} waiting to upload` : syncInfo.syncing ? "syncing…" : syncInfo.lastSync ? `updated ${syncInfo.lastSync.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "connected"}
-          <button onClick={syncInfo.onRefresh} title="Refresh now" style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}><RefreshCw size={12} color="#2B4562" /></button>
-        </div>
-      )}
-      {setup && !setup.hidden && ACTIVE_CAN_EDIT && (() => {
-        const steps = [
-          ["Add your suppliers", setup.suppliers > 0, "suppliers"], ["Add services (or import a spreadsheet)", setup.devices > 0, "devices"],
-          ["Set a budget or plan", setup.budgets > 0, "budget"], ["Log your first visit", setup.visits > 0, "devices"],
-          ["Back up, or connect a shared database", setup.backup, null],
-        ];
-        const done = steps.filter((x) => x[1]).length;
-        if (done === steps.length) return null;
-        return (
-          <div style={{ background: "#EAF1F8", border: "1px solid #C9D9EA", borderRadius: 12, padding: 12, marginTop: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <Rocket size={16} color="#2B4562" />
-              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "#2B4562" }}>Getting started — {done}/{steps.length}</span>
-              <button onClick={onHideSetup} title="Hide" style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}><X size={14} color="#5B6672" /></button>
+        <BigKpi label="PPM on time" icon={CheckCircle2} value={comp.pct === null ? "—" : `${comp.pct}%`} sub={comp.total ? `${comp.totals.onTime} of ${comp.total} planned visits` : "No planned visits due yet"} color={comp.pct === null ? "var(--text)" : comp.pct >= 90 ? "var(--ok)" : comp.pct >= 70 ? "var(--warn)" : "var(--danger)"} bar={comp.pct} onClick={() => onGo("certificates")} />
+        <BigKpi label="Overdue" icon={Clock} value={overdue.length} sub={overdue.length ? "services past due — tap to see" : "nothing overdue"} color={overdue.length ? "var(--danger)" : "var(--ok)"} onClick={() => onGo("schedule")} />
+
+        {show("spend") && (
+          <button className="bcard c2" onClick={() => onGo("budget")} style={{ cursor: "pointer" }}>
+            <Label icon={PoundSterling} right={<span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>{spendPct === null ? "No annual budget set" : `${spendPct}% of budget`}</span>}>Spend {spend.yr}</Label>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em" }}>{gbp(spend.spent)}</span>
+              {spend.budget ? <span className="bsub">of {gbp(spend.budget)}</span> : null}
             </div>
-            {steps.map(([label, ok, tab]) => (
-              <button key={label} onClick={() => tab && onGo(tab)} disabled={ok} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", background: "none", border: "none", padding: "4px 0", cursor: ok || !tab ? "default" : "pointer", fontFamily: "inherit", textAlign: "left", fontSize: 12.8, color: ok ? "#8A94A0" : "#1B2430", textDecoration: ok ? "line-through" : "none" }}>
-                {ok ? <CheckCircle2 size={15} color="#2F855A" /> : <Square size={15} color="#8A94A0" />} {label}
-              </button>
-            ))}
-          </div>
-        );
-      })()}
-      {!hiddenCards.includes("today") && todayItems && <TodayCard items={todayItems} onOpenDevice={onOpenDevice} onGo={onGo} />}
-      {!hiddenCards.includes("week") && weekAhead && <WeekAheadCard days={weekAhead} onOpenDevice={onOpenDevice} />}
-      {!hiddenCards.includes("pinned") && pinnedDevices.length > 0 && (
-        <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><Pin size={16} color="#D97706" /><span style={{ fontSize: 13.5, fontWeight: 700 }}>Pinned</span></div>
-          {pinnedDevices.map((d) => { const n = daysUntil(d.nextServiceDate); return (
-            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, borderTop: "1px solid #EEF0F2", padding: "6px 0" }}>
-              <button onClick={() => onOpenDevice(d.id)} style={{ flex: 1, display: "flex", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", fontSize: 12.8 }}>
-                <span style={{ flex: 1, fontWeight: 600 }}>{d.name}</span>
-                <span style={{ color: n !== null && n < 0 ? "#C53030" : "#8A94A0", fontWeight: n !== null && n < 0 ? 700 : 500 }}>{n === null ? "no date" : n < 0 ? `${-n}d overdue` : n === 0 ? "today" : `in ${n}d`}</span>
-              </button>
-              <button onClick={() => onUnpin(d.id)} title="Unpin" style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}><X size={13} color="#A3ABB4" /></button>
+            {spark}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 12.3 }}>
+              <span style={{ color: "var(--muted)" }}><b style={{ color: "var(--accent)" }}>━</b> Actual &nbsp; <b style={{ color: "var(--chart-plan)" }}>┅</b> Plan</span>
+              {spend.forecast != null && spend.budget > 0 && <span style={{ fontWeight: 650, color: spend.forecast > spend.budget ? "var(--danger)" : "var(--ok)" }}>Forecast {gbp(spend.forecast)}{spend.forecast > spend.budget ? ` — ${gbp(spend.forecast - spend.budget)} over` : " · on track"}</span>}
             </div>
-          ); })}
-        </div>
-      )}
-      {!hiddenCards.includes("assigned") && myName && (() => {
-        const myDevices = devices.filter((d) => d.assignee === myName && d.nextServiceDate && daysUntil(d.nextServiceDate) <= 14).sort((a, b) => a.nextServiceDate.localeCompare(b.nextServiceDate));
-        if (!myDevices.length && !myWorks.length) return null;
-        return (
-          <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><UserCheck size={17} color="#2B6CB0" /><span style={{ fontSize: 13.5, fontWeight: 700 }}>Assigned to you</span></div>
-            {myDevices.slice(0, 6).map((d) => { const n = daysUntil(d.nextServiceDate); return (
-              <button key={d.id} onClick={() => onOpenDevice(d.id)} style={{ display: "flex", width: "100%", gap: 8, background: "none", border: "none", borderTop: "1px solid #EEF0F2", padding: "6px 0", cursor: "pointer", fontFamily: "inherit", textAlign: "left", fontSize: 12.8 }}>
-                <span style={{ flex: 1, fontWeight: 600 }}>{d.name}</span><span style={{ color: n < 0 ? "#C53030" : "#8A94A0", fontWeight: n < 0 ? 700 : 500 }}>{n < 0 ? `${-n}d overdue` : n === 0 ? "today" : `in ${n}d`}</span>
-              </button>
+          </button>
+        )}
+
+        <BigKpi label="Due next 7 days" icon={CalendarCheck} value={next7.length} sub={notBooked.length ? `${notBooked.length} due in 14 days not booked` : "all booked"} color={notBooked.length ? "var(--warn)" : "var(--text)"} onClick={() => onGo("devices")} />
+        <BigKpi label="Open works" icon={Wrench} value={openWorks.length} sub={slaBreached.length ? `${slaBreached.length} past target date` : "all within target"} color={slaBreached.length ? "var(--danger)" : "var(--text)"} onClick={() => onGo("works")} />
+
+        {show("today") && todayItems && <div className="wrap c2"><TodayCard items={todayItems} onOpenDevice={onOpenDevice} onGo={onGo} /></div>}
+        {show("week") && weekAhead && <div className="wrap c2"><WeekAheadCard days={weekAhead} onOpenDevice={onOpenDevice} /></div>}
+        {show("notices") && (ACTIVE_CAN_EDIT || notices.length > 0) && <div className="wrap c2"><NoticeBoard notices={notices} onSave={onSaveNotice} onDelete={onDeleteNotice} /></div>}
+        {show("reminders") && <div className="wrap c2"><RemindersCard reminders={reminders} users={users} onAdd={onAddReminder} onToggle={onToggleReminder} onDelete={onDeleteReminder} /></div>}
+
+        {show("upcoming") && (
+          <section className="bcard c2" aria-label="Coming up">
+            <Label icon={CalendarDays} right={<button style={linkBtn} onClick={() => onGo("schedule")}>Schedule</button>}>Coming up</Label>
+            {upcoming.length === 0 ? <div className="bsub">Nothing scheduled.</div> : (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {upcoming.map((d, i) => {
+                  const n = daysUntil(d.nextServiceDate); const b = currentBooking(d);
+                  return (
+                    <button key={d.id} onClick={() => onOpenDevice(d.id)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", background: "none", border: "none", borderTop: i ? "1px solid var(--border)" : "none", padding: "8px 0", cursor: "pointer", fontFamily: "inherit", textAlign: "left", color: "var(--text)" }}>
+                      <div style={{ width: 40, textAlign: "center", flexShrink: 0 }}>
+                        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 17, fontWeight: 600, color: n < 0 ? "var(--danger)" : "var(--text)" }}>{new Date(d.nextServiceDate + "T00:00:00").getDate()}</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>{new Date(d.nextServiceDate + "T00:00:00").toLocaleDateString("en-GB", { month: "short" })}</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+                        <div style={{ fontSize: 12, color: n < 0 ? "var(--danger)" : "var(--muted)" }}>{n < 0 ? `${-n} days overdue` : n === 0 ? "Due today" : `In ${n} day${n === 1 ? "" : "s"}`}{b ? ` · ${b.status === "confirmed" ? "Confirmed" : "Booked"}${b.time ? ` ${b.time}` : ""}` : n >= 0 && n <= 14 ? " · not booked" : ""}</div>
+                      </div>
+                      <ChevronRight size={14} color="var(--muted)" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {show("assigned") && myName && (myDevices.length > 0 || myWorks.length > 0) && (
+          <section className="bcard c2" aria-label="Assigned to you">
+            <Label icon={UserCheck}>Assigned to you</Label>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {myDevices.slice(0, 6).map((d, i) => { const n = daysUntil(d.nextServiceDate); return (
+                <button key={d.id} onClick={() => onOpenDevice(d.id)} style={{ display: "flex", gap: 8, background: "none", border: "none", borderTop: i ? "1px solid var(--border)" : "none", padding: "7px 0", cursor: "pointer", fontFamily: "inherit", textAlign: "left", fontSize: 13, color: "var(--text)" }}>
+                  <span style={{ flex: 1, fontWeight: 600 }}>{d.name}</span><span style={{ color: n < 0 ? "var(--danger)" : "var(--muted)", fontWeight: n < 0 ? 700 : 500 }}>{n < 0 ? `${-n}d overdue` : n === 0 ? "today" : `in ${n}d`}</span>
+                </button>
+              ); })}
+              {myWorks.slice(0, 4).map((w) => (
+                <button key={w.id} onClick={() => onGo("works")} style={{ display: "flex", gap: 8, background: "none", border: "none", borderTop: "1px solid var(--border)", padding: "7px 0", cursor: "pointer", fontFamily: "inherit", textAlign: "left", fontSize: 13, color: "var(--text)" }}>
+                  <span style={{ flex: 1, fontWeight: 600 }}>{w.description}</span><span style={{ color: workSla(w)?.breached ? "var(--danger)" : "var(--muted)" }}>{w.status.replace("_", " ")}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {show("pinned") && pinnedDevices.length > 0 && (
+          <section className="bcard c2" aria-label="Pinned">
+            <Label icon={Pin}>Pinned</Label>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {pinnedDevices.map((d, i) => { const n = daysUntil(d.nextServiceDate); return (
+                <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, borderTop: i ? "1px solid var(--border)" : "none", padding: "7px 0" }}>
+                  <button onClick={() => onOpenDevice(d.id)} style={{ flex: 1, display: "flex", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", fontSize: 13, color: "var(--text)" }}>
+                    <span style={{ flex: 1, fontWeight: 600 }}>{d.name}</span>
+                    <span style={{ color: n !== null && n < 0 ? "var(--danger)" : "var(--muted)", fontWeight: n !== null && n < 0 ? 700 : 500 }}>{n === null ? "no date" : n < 0 ? `${-n}d overdue` : n === 0 ? "today" : `in ${n}d`}</span>
+                  </button>
+                  <button onClick={() => onUnpin(d.id)} title="Unpin" style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}><X size={13} color="var(--muted)" /></button>
+                </div>
+              ); })}
+            </div>
+          </section>
+        )}
+
+        {show("overdueSup") && overdueBySupplier.length > 0 && (
+          <section className="bcard c2" aria-label="Overdue by supplier">
+            <Label icon={Clock}>Overdue by supplier</Label>
+            {overdueBySupplier.slice(0, 6).map((r) => { const max = overdueBySupplier[0].n; return (
+              <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 120, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                <div style={{ flex: 1, height: 10, background: "var(--card-hi)", borderRadius: 5, overflow: "hidden" }}><div style={{ width: `${(r.n / max) * 100}%`, height: "100%", background: "var(--danger)", borderRadius: 5 }} /></div>
+                <b style={{ fontSize: 12.5, width: 22, textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}>{r.n}</b>
+              </div>
             ); })}
-            {myWorks.slice(0, 4).map((w) => (
-              <button key={w.id} onClick={() => onGo("works")} style={{ display: "flex", width: "100%", gap: 8, background: "none", border: "none", borderTop: "1px solid #EEF0F2", padding: "6px 0", cursor: "pointer", fontFamily: "inherit", textAlign: "left", fontSize: 12.8 }}>
-                <span style={{ flex: 1, fontWeight: 600 }}>{w.description}</span><span style={{ color: workSla(w)?.breached ? "#C53030" : "#8A94A0" }}>{w.status.replace("_", " ")}</span>
-              </button>
-            ))}
-          </div>
-        );
-      })()}
-      {!hiddenCards.includes("siteinfo") && <SiteInfoCard info={siteInfo} onSave={onSaveSiteInfo} />}
-      {!hiddenCards.includes("emergency") && <EmergencyContacts contacts={emergency} onSave={onSaveEmergency} />}
-      {!hiddenCards.includes("reminders") && <RemindersCard reminders={reminders} users={users} onAdd={onAddReminder} onToggle={onToggleReminder} onDelete={onDeleteReminder} />}
-      {!hiddenCards.includes("contractors") && <SiteRegister signins={signins} suppliers={suppliers} devices={devices} locationName={locationName} onSignIn={onSignIn} onSignOut={onSignOut} />}
+          </section>
+        )}
 
-      {!hiddenCards.includes("attention") && <>
-      <H action={alerts.length > 5 ? `All ${alerts.length}` : null} onAction={() => onGo("alerts")}>Needs attention</H>
-      {alerts.length === 0 ? (
-        <div style={{ ...card, fontSize: 12.5, color: "#2F855A", display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={15} /> All clear — nothing needs attention.</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {alerts.slice(0, 5).map((a) => (
-            <button key={a.key} onClick={() => onGo(a.tab)} style={{ ...card, padding: "9px 11px", borderLeft: `3px solid ${a.tone === "danger" ? "#C53030" : a.tone === "warn" ? "#D97706" : "#2B4562"}`, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
-              <div style={{ fontSize: 12.8, fontWeight: 700 }}>{a.title}</div>
-              {a.detail && <div style={{ fontSize: 11.3, color: "#8A94A0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.detail}</div>}
-            </button>
-          ))}
-        </div>
-      )}
+        {show("contractors") && <div className="wrap c2"><SiteRegister signins={signins} suppliers={suppliers} devices={devices} locationName={locationName} onSignIn={onSignIn} onSignOut={onSignOut} /></div>}
+        {show("emergency") && <div className="wrap c2"><EmergencyContacts suppliers={suppliers} contacts={emergency} onSave={onSaveEmergency} /></div>}
+        {show("statutory") && <div className="wrap c2"><StatutoryRegister custom={customStatutory} onSaveCustom={onSaveCustomStatutory} devices={devices} na={statutoryNA} onNA={onStatutoryNA} onAdd={onAddStatutory} onOpenDevice={onOpenDevice} locationName={locationName} /></div>}
+        {show("siteinfo") && <div className="wrap c2"><SiteInfoCard info={siteInfo} onSave={onSaveSiteInfo} /></div>}
 
-      </>}
-      {!hiddenCards.includes("upcoming") && <>
-      <H action="Schedule" onAction={() => onGo("schedule")}>Coming up</H>
-      {upcoming.length === 0 ? <div style={{ ...card, fontSize: 12.5, color: "#8A94A0" }}>Nothing scheduled.</div> : (
-        <div style={{ ...card, padding: 0 }}>
-          {upcoming.map((d, i) => {
-            const n = daysUntil(d.nextServiceDate); const b = currentBooking(d);
-            return (
-              <button key={d.id} onClick={() => onOpenDevice(d.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", borderTop: i ? "1px solid #EEF0F2" : "none", padding: "9px 12px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
-                <div style={{ width: 44, textAlign: "center", flexShrink: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 750, color: n < 0 ? "#C53030" : "#1B2430" }}>{new Date(d.nextServiceDate + "T00:00:00").getDate()}</div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#8A94A0", textTransform: "uppercase" }}>{new Date(d.nextServiceDate + "T00:00:00").toLocaleDateString("en-GB", { month: "short" })}</div>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
-                  <div style={{ fontSize: 11, color: n < 0 ? "#C53030" : "#8A94A0" }}>{n < 0 ? `${-n} days overdue` : n === 0 ? "Due today" : `In ${n} day${n === 1 ? "" : "s"}`}{b ? ` · ${b.status === "confirmed" ? "Confirmed" : "Booked"}${b.time ? ` ${b.time}` : ""}` : n >= 0 && n <= 14 ? " · not booked" : ""}</div>
-                </div>
-                <ChevronRight size={14} color="#A3ABB4" />
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      </>}
-      {!hiddenCards.includes("statutory") && <StatutoryRegister custom={customStatutory} onSaveCustom={onSaveCustomStatutory} devices={devices} na={statutoryNA} onNA={onStatutoryNA} onAdd={onAddStatutory} onOpenDevice={onOpenDevice} locationName={locationName} />}
-
-      {!hiddenCards.includes("late") && Object.keys(lateByReason).length > 0 && (
-        <>
-          <H>Late visits in {yr} — why</H>
-          <div style={{ ...card, display: "flex", flexDirection: "column", gap: 6 }}>
+        {show("late") && Object.keys(lateByReason).length > 0 && (
+          <section className="bcard c2" aria-label="Late visits">
+            <Label icon={Clock}>Late visits in {yr} — why</Label>
             {Object.entries(lateByReason).sort((a, b) => b[1] - a[1]).map(([r, n]) => (
-              <div key={r} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}><span>{r}</span><b>{n}</b></div>
+              <div key={r} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span>{r}</span><b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{n}</b></div>
             ))}
-          </div>
-        </>
-      )}
+          </section>
+        )}
 
-      {!hiddenCards.includes("activity") && <>
-      <H>Recent activity</H>
-      {activity.length === 0 ? <div style={{ ...card, fontSize: 12.5, color: "#8A94A0" }}>No activity yet.</div> : (
-        <div style={{ ...card, display: "flex", flexDirection: "column", gap: 8 }}>
-          {activity.slice(0, 5).map((a) => (
-            <div key={a.id}>
-              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.text}</div>
-              <div style={{ fontSize: 10.8, color: "#8A94A0" }}>{a.by} · {relativeDays(a.at)}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      </>}
+        {show("activity") && (
+          <section className="bcard c2" aria-label="Recent activity">
+            <Label icon={History}>Recent activity</Label>
+            {activity.length === 0 ? <div className="bsub">No activity yet.</div> : activity.slice(0, 5).map((a) => (
+              <div key={a.id}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{a.text}</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{a.by} · {relativeDays(a.at)}</div>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {show("recent") && recentDevices.length > 0 && (
+          <div className="c4" style={{ display: "flex", gap: 6, overflowX: "auto", alignItems: "center" }}>
+            <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 650, flexShrink: 0 }}>Recently viewed:</span>
+            {recentDevices.slice(0, 8).map((d) => <button key={d.id} onClick={() => onOpenDevice(d.id)} style={{ flexShrink: 0, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: "5px 11px", fontSize: 12, fontWeight: 650, color: "var(--text)", cursor: "pointer", fontFamily: "inherit" }}>{d.name}</button>)}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -247,12 +288,12 @@ export function StatutoryRegister({ custom = [], onSaveCustom, devices, na = [],
       ]))}<div class="muted">Matched by service name. Frequencies are typical UK guidance — confirm against your own risk assessments and insurer requirements.</div>`);
   }
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 18 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 18 }}>
       <button onClick={() => setOpen((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>
         <ScrollText size={18} color="#2B4562" />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>Statutory compliance</div>
-          <div style={{ fontSize: 11.5, color: "#8A94A0" }}>
+          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>
             {counts.ok} of {applicable} in place{counts.overdue ? ` · ${counts.overdue} overdue` : ""}{counts.missing ? ` · ${counts.missing} not set up` : ""}
           </div>
         </div>
@@ -263,25 +304,25 @@ export function StatutoryRegister({ custom = [], onSaveCustom, devices, na = [],
           {rows.map((r) => {
             const [fg, bg, label] = tone[r.status];
             return (
-              <div key={r.item.key} style={{ background: "#F7F8F9", borderRadius: 9, padding: "8px 10px", opacity: r.status === "na" ? 0.6 : 1 }}>
+              <div key={r.item.key} style={{ background: "var(--card-hi)", borderRadius: 9, padding: "8px 10px", opacity: r.status === "na" ? 0.6 : 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12.8, fontWeight: 700 }}>{r.item.label}</div>
-                    <div style={{ fontSize: 10.8, color: "#8A94A0" }}>{r.item.freq}</div>
+                    <div style={{ fontSize: 10.8, color: "var(--faint)" }}>{r.item.freq}</div>
                   </div>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: fg, background: bg, borderRadius: 10, padding: "2px 8px", flexShrink: 0 }}>{label}</span>
                 </div>
                 {r.matched.length > 0 && r.status !== "na" && (
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>
                     {r.matched.map((d) => (
-                      <button key={d.id} onClick={() => onOpenDevice(d.id)} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 6, padding: "2px 7px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", color: r.overdue.includes(d) ? "#C53030" : "#2B4562", fontWeight: 600 }}>{d.name}</button>
+                      <button key={d.id} onClick={() => onOpenDevice(d.id)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 7px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", color: r.overdue.includes(d) ? "var(--danger)" : "var(--accent)", fontWeight: 600 }}>{d.name}</button>
                     ))}
                   </div>
                 )}
                 {ACTIVE_CAN_EDIT && (r.status === "missing" || r.status === "na") && (
                   <div style={{ display: "flex", gap: 12, marginTop: 5 }}>
-                    {r.status === "missing" && <button onClick={() => onAdd(r.item)} style={{ background: "none", border: "none", padding: 0, color: "#2B4562", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Set up this service</button>}
-                    <button onClick={() => onNA(r.status === "na" ? na.filter((k) => k !== r.item.key) : [...na, r.item.key])} style={{ background: "none", border: "none", padding: 0, color: "#8A94A0", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{r.status === "na" ? "Mark as applicable" : "Not applicable here"}</button>
+                    {r.status === "missing" && <button onClick={() => onAdd(r.item)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Set up this service</button>}
+                    <button onClick={() => onNA(r.status === "na" ? na.filter((k) => k !== r.item.key) : [...na, r.item.key])} style={{ background: "none", border: "none", padding: 0, color: "var(--faint)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{r.status === "na" ? "Mark as applicable" : "Not applicable here"}</button>
                   </div>
                 )}
               </div>
@@ -290,11 +331,11 @@ export function StatutoryRegister({ custom = [], onSaveCustom, devices, na = [],
           {ACTIVE_CAN_EDIT && onSaveCustom && (addingReq ? (
             <CustomRequirementForm onCancel={() => setAddingReq(false)} onSave={(item) => { onSaveCustom([...custom, item]); setAddingReq(false); }} />
           ) : (
-            <button onClick={() => setAddingReq(true)} style={{ background: "none", border: "1px dashed #C7D0DA", borderRadius: 9, padding: 8, fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>+ Add your own requirement</button>
+            <button onClick={() => setAddingReq(true)} style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 9, padding: 8, fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>+ Add your own requirement</button>
           ))}
-          {custom.length > 0 && ACTIVE_CAN_EDIT && onSaveCustom && <div style={{ fontSize: 11, color: "#8A94A0" }}>Your requirements: {custom.map((c) => <span key={c.key}>{c.label} <button onClick={() => onSaveCustom(custom.filter((x) => x.key !== c.key))} style={{ background: "none", border: "none", color: "#9B2C2C", cursor: "pointer", fontSize: 11, padding: 0 }}>(remove)</button> </span>)}</div>}
-          <button onClick={print} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print register</button>
-          <div style={{ fontSize: 10.5, color: "#A3ABB4" }}>Services are matched by name (e.g. "Emergency lighting test"). Frequencies are typical UK guidance — always follow your own risk assessments.</div>
+          {custom.length > 0 && ACTIVE_CAN_EDIT && onSaveCustom && <div style={{ fontSize: 11, color: "var(--faint)" }}>Your requirements: {custom.map((c) => <span key={c.key}>{c.label} <button onClick={() => onSaveCustom(custom.filter((x) => x.key !== c.key))} style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 11, padding: 0 }}>(remove)</button> </span>)}</div>}
+          <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print register</button>
+          <div style={{ fontSize: 10.5, color: "var(--faint)" }}>Services are matched by name (e.g. "Emergency lighting test"). Frequencies are typical UK guidance — always follow your own risk assessments.</div>
         </div>
       )}
     </div>
@@ -316,31 +357,31 @@ export function SiteRegister({ signins, suppliers, devices, locationName, onSign
       `<div class="kpis"><div class="kpi">On site now<b>${onSite.length}</b></div></div>${tableHtml(["Accounted for", "Name", "Company", "Working on", "Signed in", "Phone"], onSite.map((x) => [box, `<b>${e(x.name)}</b>`, e(x.company || ""), e(x.purpose || ""), time(x.inAt), e(x.phone || "")]))}`);
   }
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 8 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <HardHat size={18} color="#D97706" />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>Contractors on site: {onSite.length}</div>
-          <div style={{ fontSize: 11.5, color: "#8A94A0" }}>Sign-in register and fire roll call</div>
+          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Sign-in register and fire roll call</div>
         </div>
-        {ACTIVE_CAN_EDIT && <button onClick={() => setAdding(true)} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><LogIn size={13} /> Sign in</button>}
+        {ACTIVE_CAN_EDIT && <button onClick={() => setAdding(true)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><LogIn size={13} /> Sign in</button>}
       </div>
       {onSite.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
           {onSite.map((x) => (
-            <div key={x.id} style={{ background: "#F7F8F9", borderRadius: 9, padding: "7px 9px", display: "flex", alignItems: "center", gap: 8 }}>
+            <div key={x.id} style={{ background: "var(--card-hi)", borderRadius: 9, padding: "7px 9px", display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.8, fontWeight: 700 }}>{x.name}{x.company ? <span style={{ color: "#8A94A0", fontWeight: 600 }}> · {x.company}</span> : null}</div>
-                <div style={{ fontSize: 11, color: "#8A94A0" }}>In {time(x.inAt)}{x.purpose ? ` · ${x.purpose}` : ""}{x.ramsChecked ? " · RAMS ✓" : ""}{x.inducted ? " · inducted ✓" : <b style={{ color: "#C53030" }}> · no induction</b>}{x.badge ? ` · pass ${x.badge}` : ""}</div>
+                <div style={{ fontSize: 12.8, fontWeight: 700 }}>{x.name}{x.company ? <span style={{ color: "var(--faint)", fontWeight: 600 }}> · {x.company}</span> : null}</div>
+                <div style={{ fontSize: 11, color: "var(--faint)" }}>In {time(x.inAt)}{x.purpose ? ` · ${x.purpose}` : ""}{x.ramsChecked ? " · RAMS ✓" : ""}{x.inducted ? " · inducted ✓" : <b style={{ color: "var(--danger)" }}> · no induction</b>}{x.badge ? ` · pass ${x.badge}` : ""}</div>
               </div>
-              {ACTIVE_CAN_EDIT && <button onClick={() => onSignOut(x.id)} style={{ background: "#fff", border: "1px solid #D7DCE1", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><LogOut size={12} /> Out</button>}
+              {ACTIVE_CAN_EDIT && <button onClick={() => onSignOut(x.id)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><LogOut size={12} /> Out</button>}
             </div>
           ))}
         </div>
       )}
       <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-        {onSite.length > 0 && <button onClick={rollCall} style={{ background: "none", border: "none", padding: 0, color: "#C53030", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Print fire roll call</button>}
-        {signins.length > 0 && <button onClick={() => setShowLog(true)} style={{ background: "none", border: "none", padding: 0, color: "#2B4562", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Full register ({signins.length})</button>}
+        {onSite.length > 0 && <button onClick={rollCall} style={{ background: "none", border: "none", padding: 0, color: "var(--danger)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Print fire roll call</button>}
+        {signins.length > 0 && <button onClick={() => setShowLog(true)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Full register ({signins.length})</button>}
       </div>
       {adding && <SignInModal signins={signins} suppliers={suppliers} devices={devices} onClose={() => setAdding(false)} onSave={(e) => { onSignIn(e); setAdding(false); }} />}
       {showLog && (
@@ -350,9 +391,9 @@ export function SiteRegister({ signins, suppliers, devices, locationName, onSign
               <ExportButton filename="contractor-register.csv" rows={[["Date", "Name", "Company", "Phone", "Working on", "RAMS checked", "Pass", "In", "Out", "Signed in by"], ...signins.map((x) => [fmtDate(x.inAt.slice(0, 10)), x.name, x.company || "", x.phone || "", x.purpose || "", x.ramsChecked ? "Yes" : "No", x.badge || "", time(x.inAt), x.outAt ? time(x.outAt) : "On site", x.by || ""])]} />
             </div>
             {signins.slice(0, 100).map((x) => (
-              <div key={x.id} style={{ background: "#F7F8F9", borderRadius: 9, padding: "7px 9px" }}>
+              <div key={x.id} style={{ background: "var(--card-hi)", borderRadius: 9, padding: "7px 9px" }}>
                 <div style={{ fontSize: 12.8, fontWeight: 700 }}>{x.name}{x.company ? ` · ${x.company}` : ""}</div>
-                <div style={{ fontSize: 11, color: "#8A94A0" }}>{fmtDate(x.inAt.slice(0, 10))} · {time(x.inAt)}–{x.outAt ? time(x.outAt) : "on site"}{x.purpose ? ` · ${x.purpose}` : ""}</div>
+                <div style={{ fontSize: 11, color: "var(--faint)" }}>{fmtDate(x.inAt.slice(0, 10))} · {time(x.inAt)}–{x.outAt ? time(x.outAt) : "on site"}{x.purpose ? ` · ${x.purpose}` : ""}</div>
               </div>
             ))}
           </div>
@@ -394,14 +435,14 @@ export function SignInModal({ signins = [], suppliers, devices, onClose, onSave 
         </Field>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
           <Field label="Visitor pass no. (optional)"><TextInput value={badge} onChange={(e) => setBadge(e.target.value)} placeholder="e.g. 14" /></Field>
-          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "#3A4451", cursor: "pointer", paddingBottom: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-2)", cursor: "pointer", paddingBottom: 10 }}>
             <input type="checkbox" checked={ramsChecked} onChange={(e) => setRamsChecked(e.target.checked)} style={{ margin: 0 }} /> RAMS checked
           </label>
         </div>
         {inductionValid ? (
-          <div style={{ fontSize: 12, color: "#2F6B4A", fontWeight: 650 }}>✓ Site induction done {fmtDate(String(priorInduction.inductedAt || priorInduction.inAt).slice(0, 10))} — valid for a year</div>
+          <div style={{ fontSize: 12, color: "var(--ok)", fontWeight: 650 }}>✓ Site induction done {fmtDate(String(priorInduction.inductedAt || priorInduction.inAt).slice(0, 10))} — valid for a year</div>
         ) : (
-          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: name.trim() && !inducted ? "#9B2C2C" : "#3A4451", cursor: "pointer", background: "#FDF1E0", borderRadius: 8, padding: "8px 10px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: name.trim() && !inducted ? "var(--danger)" : "var(--text-2)", cursor: "pointer", background: "var(--warn-soft)", borderRadius: 8, padding: "8px 10px" }}>
             <input type="checkbox" checked={inducted} onChange={(e) => setInducted(e.target.checked)} style={{ margin: 0 }} /> Site induction given (fire exits, assembly point, first aid, sign-out)
           </label>
         )}
@@ -424,7 +465,7 @@ export function RemindersCard({ reminders, users, onAdd, onToggle, onDelete }) {
   const done = reminders.filter((r) => r.done).sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)));
   function add() { if (!text.trim()) return; onAdd({ text: text.trim(), due: due || (repeat !== "none" ? new Date().toISOString().slice(0, 10) : null), assignee: assignee || null, repeat }); setText(""); setDue(""); setAssignee(""); setRepeat("none"); }
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 8 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <ListTodo size={18} color="#2B4562" />
         <div style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>Reminders{open.length ? ` (${open.length})` : ""}</div>
@@ -446,7 +487,7 @@ export function RemindersCard({ reminders, users, onAdd, onToggle, onDelete }) {
               <Select value={repeat} onChange={(e) => setRepeat(e.target.value)} style={{ flex: 1 }}>
                 {Object.entries(REPEAT_OPTIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </Select>
-              <button onClick={add} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "0 16px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Add</button>
+              <button onClick={add} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 16px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Add</button>
             </div>
           )}
         </div>
@@ -454,11 +495,11 @@ export function RemindersCard({ reminders, users, onAdd, onToggle, onDelete }) {
       {open.map((r) => {
         const n = r.due ? daysUntil(r.due) : null;
         return (
-          <div key={r.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", borderTop: "1px solid #EEF0F2" }}>
+          <div key={r.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
             <button onClick={() => ACTIVE_CAN_EDIT && onToggle(r.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", marginTop: 1 }}><Square size={17} color="#8A94A0" /></button>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12.8, fontWeight: 600 }}>{r.text}</div>
-              <div style={{ fontSize: 10.8, color: n !== null && n < 0 ? "#C53030" : n === 0 ? "#B7791F" : "#8A94A0", fontWeight: n !== null && n <= 0 ? 700 : 500 }}>
+              <div style={{ fontSize: 10.8, color: n !== null && n < 0 ? "var(--danger)" : n === 0 ? "var(--warn)" : "var(--faint)", fontWeight: n !== null && n <= 0 ? 700 : 500 }}>
                 {r.due ? (n < 0 ? `Overdue — ${fmtDate(r.due)}` : n === 0 ? "Today" : `Due ${fmtDate(r.due)}`) : "No date"}{r.assignee ? ` · ${r.assignee}` : ""}{r.repeat && r.repeat !== "none" ? ` · repeats ${REPEAT_OPTIONS[r.repeat].toLowerCase()}` : ""}
               </div>
             </div>
@@ -466,12 +507,12 @@ export function RemindersCard({ reminders, users, onAdd, onToggle, onDelete }) {
           </div>
         );
       })}
-      {done.length > 0 && <button onClick={() => setShowDone((v) => !v)} style={{ background: "none", border: "none", color: "#8A94A0", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: "4px 0" }}>{showDone ? "Hide" : "Show"} {done.length} done</button>}
+      {done.length > 0 && <button onClick={() => setShowDone((v) => !v)} style={{ background: "none", border: "none", color: "var(--faint)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: "4px 0" }}>{showDone ? "Hide" : "Show"} {done.length} done</button>}
       {showDone && done.slice(0, 20).map((r) => (
         <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", opacity: 0.65 }}>
           <button onClick={() => ACTIVE_CAN_EDIT && onToggle(r.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex" }}><CheckSquare size={17} color="#2F855A" /></button>
           <span style={{ flex: 1, fontSize: 12.5, textDecoration: "line-through" }}>{r.text}</span>
-          <span style={{ fontSize: 10.5, color: "#8A94A0" }}>{r.doneBy}</span>
+          <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{r.doneBy}</span>
         </div>
       ))}
     </div>
@@ -481,7 +522,7 @@ export function RemindersCard({ reminders, users, onAdd, onToggle, onDelete }) {
 /* ---------------------------------------------------------
    Emergency contacts on Home
 --------------------------------------------------------- */
-export function EmergencyContacts({ contacts, onSave }) {
+export function EmergencyContacts({ suppliers = [], contacts, onSave }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const list = contacts || DEFAULT_EMERGENCY;
@@ -491,31 +532,37 @@ export function EmergencyContacts({ contacts, onSave }) {
     openPrintReport("Emergency contacts", "Keep by reception, in the plant room and with key holders", tableHtml(["Who", "Name", "Phone", "Notes"], list.filter((c) => c.phone).map((c) => [`<b>${escapeHtml(c.label)}</b>`, escapeHtml(c.name || ""), `<b style="font-size:15px">${escapeHtml(c.phone)}</b>`, escapeHtml(c.notes || "")])));
   }
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 8 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8 }}>
       <button onClick={() => setOpen((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>
         <PhoneCall size={17} color="#C53030" />
-        <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>Emergency contacts <span style={{ color: "#8A94A0", fontWeight: 600, fontSize: 12 }}>({filled.length})</span></span>
+        <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>Emergency contacts <span style={{ color: "var(--faint)", fontWeight: 600, fontSize: 12 }}>({filled.length})</span></span>
         <ChevronDown size={16} color="#8A94A0" style={{ transform: open ? "rotate(180deg)" : "none" }} />
       </button>
       {open && !editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
           {filled.map((c, i) => (
-            <a key={i} href={`tel:${c.phone.replace(/[^+0-9]/g, "")}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F8F9", borderRadius: 8, padding: "8px 10px", textDecoration: "none", color: "#1B2430" }}>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 12.8, fontWeight: 650 }}>{c.label}</div>{(c.name || c.notes) && <div style={{ fontSize: 11, color: "#8A94A0" }}>{[c.name, c.notes].filter(Boolean).join(" · ")}</div>}</div>
-              <b style={{ fontSize: 13, color: "#2F855A", display: "flex", alignItems: "center", gap: 4 }}><Phone size={13} /> {c.phone}</b>
+            <a key={i} href={`tel:${c.phone.replace(/[^+0-9]/g, "")}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--card-hi)", borderRadius: 8, padding: "8px 10px", textDecoration: "none", color: "var(--text)" }}>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 12.8, fontWeight: 650 }}>{c.label}</div>{(c.name || c.notes) && <div style={{ fontSize: 11, color: "var(--faint)" }}>{[c.name, c.notes].filter(Boolean).join(" · ")}</div>}</div>
+              <b style={{ fontSize: 13, color: "var(--ok)", display: "flex", alignItems: "center", gap: 4 }}><Phone size={13} /> {c.phone}</b>
             </a>
           ))}
-          {filled.length === 0 && <div style={{ fontSize: 12, color: "#8A94A0" }}>Add your site's numbers so anyone can call in one tap.</div>}
+          {filled.length === 0 && <div style={{ fontSize: 12, color: "var(--faint)" }}>Add your site's numbers so anyone can call in one tap.</div>}
+          {suppliers.filter((s) => s.oohPhone).map((s) => (
+            <a key={s.id} href={`tel:${s.oohPhone.replace(/[^+0-9]/g, "")}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--danger-soft)", borderRadius: 8, padding: "8px 10px", textDecoration: "none", color: "var(--text)" }}>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 12.8, fontWeight: 650 }}>{s.name} — 24h</div><div style={{ fontSize: 11, color: "var(--faint)" }}>Supplier out-of-hours line</div></div>
+              <b style={{ fontSize: 13, color: "var(--danger)", display: "flex", alignItems: "center", gap: 4 }}><Phone size={13} /> {s.oohPhone}</b>
+            </a>
+          ))}
           <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
-            {ACTIVE_CAN_EDIT && <button onClick={() => { setDraft(list); setEditing(true); }} style={{ background: "none", border: "none", padding: 0, color: "#2B4562", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Edit</button>}
-            {filled.length > 0 && <button onClick={print} style={{ background: "none", border: "none", padding: 0, color: "#2B4562", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Print</button>}
+            {ACTIVE_CAN_EDIT && <button onClick={() => { setDraft(list); setEditing(true); }} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Edit</button>}
+            {filled.length > 0 && <button onClick={print} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Print</button>}
           </div>
         </div>
       )}
       {open && editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
           {draft.map((c, i) => (
-            <div key={i} style={{ background: "#F7F8F9", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+            <div key={i} style={{ background: "var(--card-hi)", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 5 }}>
               <div style={{ display: "flex", gap: 6 }}>
                 <TextInput value={c.label} onChange={(e) => setDraft((p) => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} style={{ flex: 1, fontWeight: 650, fontSize: 12.5 }} />
                 <button onClick={() => setDraft((p) => p.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={13} color="#A3ABB4" /></button>
@@ -527,7 +574,7 @@ export function EmergencyContacts({ contacts, onSave }) {
               <TextInput value={c.notes || ""} onChange={(e) => setDraft((p) => p.map((x, j) => j === i ? { ...x, notes: e.target.value } : x))} placeholder="Notes (account no., contract ref…)" style={{ fontSize: 12 }} />
             </div>
           ))}
-          <button onClick={() => setDraft((p) => [...p, { label: "New contact", phone: "" }])} style={{ background: "none", border: "1px dashed #C7D0DA", borderRadius: 8, padding: 7, fontSize: 12, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>+ Add contact</button>
+          <button onClick={() => setDraft((p) => [...p, { label: "New contact", phone: "" }])} style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 8, padding: 7, fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>+ Add contact</button>
           <PrimaryButton onClick={() => { onSave(draft.filter((c) => c.label.trim())); setEditing(false); }}><CheckCircle2 size={15} /> Save contacts</PrimaryButton>
         </div>
       )}
@@ -540,14 +587,14 @@ export function TodayCard({ items, onOpenDevice, onGo }) {
   const { bookings = [], permits = [], reminders = [], dueToday = [] } = items;
   const total = bookings.length + permits.length + reminders.length + dueToday.length;
   const row = (key, icon, main, sub, onClick) => (
-    <button key={key} onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", borderTop: "1px solid #EEF0F2", padding: "6px 0", cursor: onClick ? "pointer" : "default", fontFamily: "inherit", textAlign: "left" }}>
-      {icon}<div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12.8, fontWeight: 600 }}>{main}</div>{sub && <div style={{ fontSize: 11, color: "#8A94A0" }}>{sub}</div>}</div>
+    <button key={key} onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", borderTop: "1px solid var(--border)", padding: "6px 0", cursor: onClick ? "pointer" : "default", fontFamily: "inherit", textAlign: "left" }}>
+      {icon}<div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12.8, fontWeight: 600 }}>{main}</div>{sub && <div style={{ fontSize: 11, color: "var(--faint)" }}>{sub}</div>}</div>
     </button>
   );
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 8 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><Sun size={17} color="#D97706" /><span style={{ fontSize: 13.5, fontWeight: 700 }}>Today{total ? ` (${total})` : ""}</span></div>
-      {total === 0 && <div style={{ fontSize: 12, color: "#8A94A0" }}>Nothing booked or due today.</div>}
+      {total === 0 && <div style={{ fontSize: 12, color: "var(--faint)" }}>Nothing booked or due today.</div>}
       {[...bookings].sort((a, b) => String(a.time || "99").localeCompare(String(b.time || "99"))).map((d) => row(`b-${d.id}`, <CalendarCheck size={14} color="#2B6CB0" />, `${d.booking.time ? `${d.booking.time} · ` : ""}${d.name}`, `${d.supplierName || "Supplier"} ${d.booking.status === "confirmed" ? "confirmed" : "booked"}${d.booking.ref ? ` · ref ${d.booking.ref}` : ""}${d.accessNotes ? ` · ${d.accessNotes}` : ""}`, () => onOpenDevice(d.id)))}
       {dueToday.map((d) => row(`d-${d.id}`, <Clock size={14} color="#B7791F" />, d.name, "Due today — not booked", () => onOpenDevice(d.id)))}
       {permits.map((p) => row(`p-${p.id}`, <Flame size={14} color="#C53030" />, `${p.ref} · ${p.type}`, `${p.contractor || ""} · until ${new Date(p.validTo).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`, () => onGo("meters")))}
@@ -561,7 +608,7 @@ export function SpendCurve({ curve }) {
   const [open, setOpen] = useState(false);
   return (
     <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 6 }}>
-      <span role="button" onClick={() => setOpen((v) => !v)} style={{ fontSize: 11.5, fontWeight: 650, color: "#2B4562", cursor: "pointer" }}>{open ? "Hide" : "Show"} spend curve</span>
+      <span role="button" onClick={() => setOpen((v) => !v)} style={{ fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer" }}>{open ? "Hide" : "Show"} spend curve</span>
       {open && (
         <div style={{ height: 160, marginTop: 6 }}>
           <ResponsiveContainer width="100%" height="100%">
@@ -585,7 +632,7 @@ export function SpendCurve({ curve }) {
 function CustomRequirementForm({ onSave, onCancel }) {
   const [label, setLabel] = useState(""); const [freq, setFreq] = useState(""); const [kw, setKw] = useState(""); const [months, setMonths] = useState("12");
   return (
-    <div style={{ background: "#F7F8F9", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ background: "var(--card-hi)", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
       <TextInput value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Requirement, e.g. Dry riser test" />
       <div style={{ display: "flex", gap: 6 }}>
         <TextInput value={freq} onChange={(e) => setFreq(e.target.value)} placeholder="Frequency text, e.g. 6-monthly" style={{ flex: 1 }} />
@@ -594,7 +641,7 @@ function CustomRequirementForm({ onSave, onCancel }) {
       <TextInput value={kw} onChange={(e) => setKw(e.target.value)} placeholder="Words to match service names, comma separated (e.g. dry riser, riser)" />
       <div style={{ display: "flex", gap: 6 }}>
         <PrimaryButton onClick={() => label.trim() && onSave({ key: `c_${uid()}`, label: label.trim(), freq: freq.trim() || `Every ${months} months`, months: Number(months) || 12, keywords: (kw || label).split(",").map((x) => x.trim().toLowerCase()).filter(Boolean) })} style={{ flex: 1 }}>Add</PrimaryButton>
-        <button onClick={onCancel} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+        <button onClick={onCancel} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
       </div>
     </div>
   );
@@ -605,17 +652,17 @@ export function SiteInfoCard({ info, onSave }) {
   const fields = [["address", "Address"], ["hours", "Opening hours"], ["access", "Contractor access"], ["parking", "Parking"], ["contactName", "Site contact"], ["contactPhone", "Contact phone"], ["notes", "Other notes"]];
   const filled = fields.filter(([k]) => (info || {})[k]);
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 8 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8 }}>
       <button onClick={() => setOpen((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>
         <Building2 size={17} color="#2B4562" />
-        <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>Site information {!filled.length && <span style={{ fontSize: 11.5, color: "#B7791F", fontWeight: 600 }}>— not filled in</span>}</span>
+        <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>Site information {!filled.length && <span style={{ fontSize: 11.5, color: "var(--warn)", fontWeight: 600 }}>— not filled in</span>}</span>
         <ChevronDown size={16} color="#8A94A0" style={{ transform: open ? "rotate(180deg)" : "none" }} />
       </button>
       {open && !editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
-          {filled.map(([k, l]) => <div key={k} style={{ fontSize: 12.5 }}><span style={{ color: "#8A94A0", fontWeight: 600 }}>{l}: </span>{k === "contactPhone" ? <a href={`tel:${String(info[k]).replace(/[^+0-9]/g, "")}`}>{info[k]}</a> : info[k]}</div>)}
-          {!filled.length && <div style={{ fontSize: 12, color: "#8A94A0" }}>Add the address, hours, access arrangements and site contact. They're added to work orders and booking emails automatically.</div>}
-          {ACTIVE_CAN_EDIT && <button onClick={() => { setD(info || {}); setEditing(true); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "#2B4562", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>Edit</button>}
+          {filled.map(([k, l]) => <div key={k} style={{ fontSize: 12.5 }}><span style={{ color: "var(--faint)", fontWeight: 600 }}>{l}: </span>{k === "contactPhone" ? <a href={`tel:${String(info[k]).replace(/[^+0-9]/g, "")}`}>{info[k]}</a> : info[k]}{k === "address" && <> · <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info.address)}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 650 }}>Open in Maps</a></>}</div>)}
+          {!filled.length && <div style={{ fontSize: 12, color: "var(--faint)" }}>Add the address, hours, access arrangements and site contact. They're added to work orders and booking emails automatically.</div>}
+          {ACTIVE_CAN_EDIT && <button onClick={() => { setD(info || {}); setEditing(true); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>Edit</button>}
         </div>
       )}
       {open && editing && (
@@ -631,13 +678,13 @@ export function WeekAheadCard({ days, onOpenDevice }) {
   const total = days.reduce((t, d) => t + d.items.length, 0);
   const color = { booked: "#2B6CB0", due: "#B7791F", task: "#5B6672", reminder: "#2F855A" };
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, marginTop: 8 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><CalendarDays size={17} color="#2B4562" /><span style={{ fontSize: 13.5, fontWeight: 700 }}>Week ahead{total ? ` (${total})` : ""}</span></div>
       {days.map(({ day, items }, i) => (
-        <div key={day} style={{ display: "flex", gap: 8, borderTop: "1px solid #EEF0F2", padding: "5px 0", opacity: items.length ? 1 : 0.55 }}>
-          <div style={{ width: 52, flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: i === 0 ? "#D97706" : "#3A4451" }}>{i === 0 ? "Today" : new Date(day + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}</div>
+        <div key={day} style={{ display: "flex", gap: 8, borderTop: "1px solid var(--border)", padding: "5px 0", opacity: items.length ? 1 : 0.55 }}>
+          <div style={{ width: 52, flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: i === 0 ? "#D97706" : "var(--text-2)" }}>{i === 0 ? "Today" : new Date(day + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}</div>
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-            {items.length === 0 && <span style={{ fontSize: 11.5, color: "#A3ABB4" }}>—</span>}
+            {items.length === 0 && <span style={{ fontSize: 11.5, color: "var(--faint)" }}>—</span>}
             {items.map((it) => (
               <button key={it.k} onClick={() => it.id && onOpenDevice(it.id)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: it.id ? "pointer" : "default", fontFamily: "inherit", fontSize: 12, display: "flex", gap: 5, alignItems: "baseline" }}>
                 <span style={{ width: 6, height: 6, borderRadius: 3, background: color[it.kind], flexShrink: 0, marginTop: 4 }} />
@@ -647,6 +694,33 @@ export function WeekAheadCard({ days, onOpenDevice }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+export function NoticeBoard({ notices, onSave, onDelete }) {
+  const [text, setText] = useState("");
+  const list = [...notices].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(b.at).localeCompare(String(a.at))).slice(0, 8);
+  if (!ACTIVE_CAN_EDIT && !list.length) return null;
+  return (
+    <div style={{ background: "var(--warn-soft)", border: "1px solid #F5E1A4", borderRadius: 12, padding: 12, marginTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><Megaphone size={16} color="#B7791F" /><span style={{ fontSize: 13.5, fontWeight: 700 }}>Team noticeboard</span></div>
+      {list.map((n) => (
+        <div key={n.id} style={{ borderTop: "1px solid #F5E1A4", padding: "6px 0", display: "flex", gap: 6, alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12.8, whiteSpace: "pre-wrap" }}>{n.pinned && "📌 "}{n.text}</div>
+            <div style={{ fontSize: 10.8, color: "var(--faint)" }}>{n.by} · {relativeDays(n.at)}</div>
+          </div>
+          {ACTIVE_CAN_EDIT && <button onClick={() => onSave({ ...n, pinned: !n.pinned })} title={n.pinned ? "Unpin" : "Pin"} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Pin size={12} color={n.pinned ? "#D97706" : "#C0C6CC"} /></button>}
+          {ACTIVE_CAN_EDIT && <ConfirmDeleteButton onConfirm={() => onDelete(n.id)} size={12} />}
+        </div>
+      ))}
+      {ACTIVE_CAN_EDIT && (
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <TextInput value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { onSave({ text: text.trim() }); setText(""); } }} placeholder="Post a note for the team, e.g. Lift 2 out until Thursday" style={{ flex: 1, fontSize: 12.5 }} />
+          <button onClick={() => { if (text.trim()) { onSave({ text: text.trim() }); setText(""); } }} style={{ background: "#B7791F", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Post</button>
+        </div>
+      )}
     </div>
   );
 }

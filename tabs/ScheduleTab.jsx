@@ -80,28 +80,28 @@ export function ScheduleCalendarTab({ devices, services, tasks, onLogService, on
         <ToggleButton active={view === "month"} onClick={() => setView("month")}>Month</ToggleButton>
         <ToggleButton active={view === "year"} onClick={() => setView("year")}>Year</ToggleButton>
         <ToggleButton active={view === "capacity"} onClick={() => setView("capacity")}>Capacity</ToggleButton>
-        {ACTIVE_CAN_EDIT && <button onClick={() => setShowBlackouts(true)} title="Holidays & blackouts" style={{ display: "flex", alignItems: "center", gap: 5, background: blackouts.length ? "#FDF1E0" : "#EEF0F2", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: blackouts.length ? "#8A5A0B" : "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>Blackouts{blackouts.length ? ` (${blackouts.length})` : ""}</button>}
-        <button onClick={() => { const n = downloadIcs(devices, tasks, visitBudgets, suppliers, locationName); setIcsMsg(n ? `${n} visits exported — open the file to add them to your calendar` : "Nothing scheduled in the next 12 months"); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, background: "#EEF0F2", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>
+        {ACTIVE_CAN_EDIT && <button onClick={() => setShowBlackouts(true)} title="Holidays & blackouts" style={{ display: "flex", alignItems: "center", gap: 5, background: blackouts.length ? "var(--warn-soft)" : "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: blackouts.length ? "var(--warn)" : "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Blackouts{blackouts.length ? ` (${blackouts.length})` : ""}</button>}
+        <button onClick={() => { const n = downloadIcs(devices, tasks, visitBudgets, suppliers, locationName); setIcsMsg(n ? `${n} visits exported — open the file to add them to your calendar` : "Nothing scheduled in the next 12 months"); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>
           <Calendar size={13} /> Add to calendar
         </button>
       </div>
-      {icsMsg && <div style={{ fontSize: 11.5, color: "#2F6B4A", marginBottom: 8 }}>{icsMsg}</div>}
+      {icsMsg && <div style={{ fontSize: 11.5, color: "var(--ok)", marginBottom: 8 }}>{icsMsg}</div>}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
         {Object.entries(CATEGORY_META).map(([key, m]) => (
-          <span key={key} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#5B6672", fontWeight: 600 }}>
+          <span key={key} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--muted)", fontWeight: 600 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: m.color }} /> {m.label}
           </span>
         ))}
-        <span style={{ display: "flex", gap: 10, marginLeft: "auto", fontSize: 10.5, color: "#A3ABB4" }}>
+        <span style={{ display: "flex", gap: 10, marginLeft: "auto", fontSize: 10.5, color: "var(--faint)" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, border: "1.5px solid #8A94A0" }} /> due</span>
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: "#8A94A0" }} /> done</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 15, height: 15, borderRadius: 8, background: "#1B2430", color: "#fff", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>3</span> count</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 15, height: 15, borderRadius: 8, background: "var(--head)", color: "var(--on-accent)", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>3</span> count</span>
         </span>
       </div>
 
       {moving && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#2B4562", color: "#fff", borderRadius: 10, padding: "9px 12px", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--accent)", color: "var(--on-accent)", borderRadius: 10, padding: "9px 12px", marginBottom: 10 }}>
           <span style={{ flex: 1, fontSize: 12.5, fontWeight: 650 }}>Tap a day to move {moving.name}{moving.from ? ` (due ${fmtDate(moving.from)})` : ""}</span>
           <button onClick={() => setMoving(null)} style={{ background: "rgba(255,255,255,0.15)", color: "#fff", border: "none", borderRadius: 7, padding: "4px 10px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
         </div>
@@ -110,14 +110,14 @@ export function ScheduleCalendarTab({ devices, services, tasks, onLogService, on
         <CapacityView devices={devices} tasks={tasks} visitBudgets={visitBudgets} suppliers={suppliers} services={services} />
       ) : view === "month" ? (
         <>
-          <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12 }}>
+          <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <button onClick={() => goMonth(-1)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronLeft size={15} color="#5B6672" /></button>
+              <button onClick={() => goMonth(-1)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronLeft size={15} color="#5B6672" /></button>
               <span style={{ fontWeight: 700, fontSize: 14 }}>{new Date(cursorYear, cursorMonth, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</span>
-              <button onClick={() => goMonth(1)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronRight size={15} color="#5B6672" /></button>
+              <button onClick={() => goMonth(1)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronRight size={15} color="#5B6672" /></button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 4 }}>
-              {WEEKDAY_LABELS.map((w) => <div key={w} style={{ fontSize: 10, fontWeight: 700, color: "#A3ABB4", textAlign: "center" }}>{w}</div>)}
+              {WEEKDAY_LABELS.map((w) => <div key={w} style={{ fontSize: 10, fontWeight: 700, color: "var(--faint)", textAlign: "center" }}>{w}</div>)}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
               {grid.map((dt, i) => {
@@ -141,12 +141,12 @@ export function ScheduleCalendarTab({ devices, services, tasks, onLogService, on
                     onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropOn(e, iso)}
                     title={inBlackout(iso, blackouts) ? `Blackout: ${inBlackout(iso, blackouts).name}` : undefined} style={{
                     position: "relative", aspectRatio: "1", borderRadius: 9,
-                    border: isToday ? "1.5px solid #D97706" : moving ? "1px dashed #2B4562" : hasItems ? `1px solid ${singleColor ? singleColor + "55" : "#E1E4E8"}` : "1px solid #F1F2F4",
-                    background: singleColor ? `${singleColor}17` : inBlackout(iso, blackouts) ? "repeating-linear-gradient(45deg,#EEF0F2,#EEF0F2 4px,#fff 4px,#fff 8px)" : "#fff",
+                    border: isToday ? "1.5px solid #D97706" : moving ? "1px dashed var(--accent)" : hasItems ? `1px solid ${singleColor ? singleColor + "55" : "#E1E4E8"}` : "1px solid #F1F2F4",
+                    background: singleColor ? `${singleColor}17` : inBlackout(iso, blackouts) ? "repeating-linear-gradient(45deg,#EEF0F2,#EEF0F2 4px,#fff 4px,#fff 8px)" : "var(--card)",
                     cursor: hasItems || moving ? "pointer" : "default", padding: 3, overflow: "hidden",
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, fontFamily: "inherit",
                   }}>
-                    <span style={{ fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: "#1B2430" }}>{dt.getDate()}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: "var(--text)" }}>{dt.getDate()}</span>
                     {hasItems && (
                       <div style={{ display: "flex", gap: 3, flexWrap: "wrap", justifyContent: "center", maxWidth: "100%" }}>
                         {allCats.slice(0, 3).map((cat) => {
@@ -164,8 +164,8 @@ export function ScheduleCalendarTab({ devices, services, tasks, onLogService, on
                     )}
                     {totalCount > 1 && (
                       <span style={{
-                        position: "absolute", top: 2, right: 2, minWidth: 15, height: 15, borderRadius: 8, background: "#1B2430",
-                        color: "#fff", fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+                        position: "absolute", top: 2, right: 2, minWidth: 15, height: 15, borderRadius: 8, background: "var(--head)",
+                        color: "var(--on-accent)", fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
                       }}>{totalCount}</span>
                     )}
                   </button>
@@ -175,25 +175,25 @@ export function ScheduleCalendarTab({ devices, services, tasks, onLogService, on
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 8 }}>Due this month ({monthDue.length})</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Due this month ({monthDue.length})</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {monthDue.length === 0 && <div style={{ fontSize: 12.5, color: "#A3ABB4" }}>Nothing due.</div>}
+              {monthDue.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing due.</div>}
               {monthDue.map((d) => <DueRow key={d.id} device={d} onLogService={onLogService} onMove={ACTIVE_CAN_EDIT ? () => setMoving({ kind: "device", id: d.id, name: d.name, from: d.nextServiceDate }) : undefined} />)}
             </div>
 
             {tasks.length > 0 && (
               <>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", margin: "16px 0 8px" }}>Tasks due this month ({monthTasks.length})</div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", margin: "16px 0 8px" }}>Tasks due this month ({monthTasks.length})</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {monthTasks.length === 0 && <div style={{ fontSize: 12.5, color: "#A3ABB4" }}>Nothing due.</div>}
+                  {monthTasks.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing due.</div>}
                   {monthTasks.map((t) => <TaskDueRow key={t.id} task={t} device={deviceById[t.deviceId]} onMarkDone={onMarkTaskDone} onMove={ACTIVE_CAN_EDIT ? () => setMoving({ kind: "task", id: t.id, name: t.name, from: t.nextDate }) : undefined} />)}
                 </div>
               </>
             )}
 
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", margin: "16px 0 8px" }}>Completed this month ({monthDone.length})</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", margin: "16px 0 8px" }}>Completed this month ({monthDone.length})</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {monthDone.length === 0 && <div style={{ fontSize: 12.5, color: "#A3ABB4" }}>Nothing logged.</div>}
+              {monthDone.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing logged.</div>}
               {monthDone.map((s) => (
                 <CompletedRow key={s.id} service={s} device={deviceById[s.deviceId]} onEdit={onEditService} />
               ))}
@@ -223,9 +223,9 @@ export function DayDetailModal({ date, due, done, dueTasks, deviceById, onClose,
     <Modal title={fmtDate(date)} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 8 }}>Due ({due.length})</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Due ({due.length})</div>
           {due.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: "#A3ABB4" }}>Nothing due today.</div>
+            <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing due today.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {due.map((d) => <DueRow key={d.id} device={d} onLogService={onLogService} onMove={onMove ? () => onMove({ kind: "device", id: d.id, name: d.name, from: d.nextServiceDate }) : undefined} />)}
@@ -234,16 +234,16 @@ export function DayDetailModal({ date, due, done, dueTasks, deviceById, onClose,
         </div>
         {dueTasks && dueTasks.length > 0 && (
           <div>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 8 }}>Tasks due ({dueTasks.length})</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Tasks due ({dueTasks.length})</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {dueTasks.map((t) => <TaskDueRow key={t.id} task={t} device={deviceById[t.deviceId]} onMarkDone={onMarkTaskDone} onMove={onMove ? () => onMove({ kind: "task", id: t.id, name: t.name, from: t.nextDate }) : undefined} />)}
             </div>
           </div>
         )}
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 8 }}>Completed ({done.length})</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Completed ({done.length})</div>
           {done.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: "#A3ABB4" }}>Nothing logged today.</div>
+            <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing logged today.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {done.map((s) => <CompletedRow key={s.id} service={s} device={deviceById[s.deviceId]} onEdit={onEditService} />)}
@@ -259,17 +259,17 @@ export function TaskDueRow({ task, device, onMarkDone, onMove }) {
   const status = dueStatus(task.nextDate);
   const catColor = (CATEGORY_META[device?.serviceCategory] || CATEGORY_META.maintenance).color;
   return (
-    <div draggable={!!onMove} onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "task", id: task.id, name: task.name, from: task.nextDate })); }} style={{ cursor: onMove ? "grab" : "default", background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", borderLeft: `3px solid ${catColor}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+    <div draggable={!!onMove} onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "task", id: task.id, name: task.name, from: task.nextDate })); }} style={{ cursor: onMove ? "grab" : "default", background: "var(--card)", borderRadius: 10, padding: "10px 12px", border: "1px solid var(--border)", borderLeft: `3px solid ${catColor}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <StatusDot tone={status.tone} />
         <div>
           <div style={{ fontWeight: 650, fontSize: 13.5 }}>{task.name}</div>
-          <div style={{ fontSize: 11.5, color: "#8A94A0" }}>{device ? device.name : "Unknown service"}</div>
+          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{device ? device.name : "Unknown service"}</div>
         </div>
       </div>
-      {onMove && <button onClick={onMove} title="Reschedule" style={{ background: "none", border: "1px solid #D7DCE1", borderRadius: 8, padding: "5px 8px", fontSize: 11.5, fontWeight: 600, color: "#5B6672", cursor: "pointer", fontFamily: "inherit", marginRight: 6, whiteSpace: "nowrap" }}>Move</button>}
+      {onMove && <button onClick={onMove} title="Reschedule" style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", fontSize: 11.5, fontWeight: 600, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit", marginRight: 6, whiteSpace: "nowrap" }}>Move</button>}
       {ACTIVE_CAN_EDIT && (
-        <button onClick={() => onMarkDone(task.id)} style={{ background: "#EEF0F2", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 600, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Mark done</button>
+        <button onClick={() => onMarkDone(task.id)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 600, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Mark done</button>
       )}
     </div>
   );
@@ -279,19 +279,19 @@ export function DueRow({ device, onLogService, onMove }) {
   const status = dueStatus(device.nextServiceDate);
   const catColor = (CATEGORY_META[device.serviceCategory] || CATEGORY_META.maintenance).color;
   return (
-    <div draggable={!!onMove} onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "device", id: device.id, name: device.name, from: device.nextServiceDate })); }} style={{ cursor: onMove ? "grab" : "default", background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", borderLeft: `3px solid ${catColor}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+    <div draggable={!!onMove} onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "device", id: device.id, name: device.name, from: device.nextServiceDate })); }} style={{ cursor: onMove ? "grab" : "default", background: "var(--card)", borderRadius: 10, padding: "10px 12px", border: "1px solid var(--border)", borderLeft: `3px solid ${catColor}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <StatusDot tone={status.tone} />
         <div>
           <div style={{ fontWeight: 650, fontSize: 13.5 }}>{device.name}</div>
-          <div style={{ fontSize: 11.5, color: "#8A94A0", display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ fontSize: 11.5, color: "var(--faint)", display: "flex", alignItems: "center", gap: 5 }}>
             <CategoryBadge category={device.serviceCategory} />
           </div>
         </div>
       </div>
-      {onMove && <button onClick={onMove} title="Reschedule" style={{ background: "none", border: "1px solid #D7DCE1", borderRadius: 8, padding: "5px 8px", fontSize: 11.5, fontWeight: 600, color: "#5B6672", cursor: "pointer", fontFamily: "inherit", marginRight: 6, whiteSpace: "nowrap" }}>Move</button>}
+      {onMove && <button onClick={onMove} title="Reschedule" style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", fontSize: 11.5, fontWeight: 600, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit", marginRight: 6, whiteSpace: "nowrap" }}>Move</button>}
       {ACTIVE_CAN_EDIT && (
-        <button onClick={() => onLogService(device.id)} style={{ background: "#EEF0F2", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 600, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Log</button>
+        <button onClick={() => onLogService(device.id)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 600, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Log</button>
       )}
     </div>
   );
@@ -301,14 +301,14 @@ export function CompletedRow({ service, device, onEdit }) {
   const catColor = (CATEGORY_META[device?.serviceCategory] || CATEGORY_META.maintenance).color;
   return (
     <button onClick={() => onEdit(service)} style={{
-      background: "#fff", borderRadius: 10, padding: "10px 12px", border: "1px solid #E1E4E8", borderLeft: `3px solid ${catColor}`, display: "flex",
+      background: "var(--card)", borderRadius: 10, padding: "10px 12px", border: "1px solid var(--border)", borderLeft: `3px solid ${catColor}`, display: "flex",
       alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "left", fontFamily: "inherit", width: "100%",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <CheckCircle2 size={16} color="#2F855A" />
         <div>
           <div style={{ fontWeight: 650, fontSize: 13.5 }}>{service.name || (device ? device.name : "Service")}</div>
-          <div style={{ fontSize: 11.5, color: "#8A94A0" }}>{device ? device.name : "Unknown service"}{service.cost ? ` · ${gbp(service.cost)}` : ""}</div>
+          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{device ? device.name : "Unknown service"}{service.cost ? ` · ${gbp(service.cost)}` : ""}</div>
         </div>
       </div>
       <ChevronRight size={15} color="#C0C6CC" />
@@ -320,9 +320,9 @@ export function YearCalendar({ year, dueByDate, doneByDate, deviceById, onYearCh
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <button onClick={() => onYearChange(year - 1)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronLeft size={15} color="#5B6672" /></button>
+        <button onClick={() => onYearChange(year - 1)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronLeft size={15} color="#5B6672" /></button>
         <span style={{ fontWeight: 700, fontSize: 15 }}>{year}</span>
-        <button onClick={() => onYearChange(year + 1)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronRight size={15} color="#5B6672" /></button>
+        <button onClick={() => onYearChange(year + 1)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronRight size={15} color="#5B6672" /></button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {MONTH_LABELS.map((label, m) => {
@@ -339,7 +339,7 @@ export function YearCalendar({ year, dueByDate, doneByDate, deviceById, onYearCh
           const dueTotal = dueCounts.cleaning + dueCounts.maintenance + dueCounts.catering;
           return (
             <button key={label} onClick={() => onOpenMonth(m)} style={{
-              background: "#fff", border: "1px solid #E1E4E8", borderRadius: 10, padding: 10, cursor: "pointer",
+              background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 10, cursor: "pointer",
               textAlign: "left", fontFamily: "inherit",
             }}>
               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{label}</div>
@@ -348,12 +348,12 @@ export function YearCalendar({ year, dueByDate, doneByDate, deviceById, onYearCh
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   {Object.entries(dueCounts).filter(([, c]) => c > 0).map(([cat, c]) => (
-                    <span key={cat} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#5B6672" }}>
+                    <span key={cat} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--muted)" }}>
                       <span style={{ width: 7, height: 7, borderRadius: "50%", border: `1.3px solid ${CATEGORY_META[cat].color}` }} /> {c} due ({CATEGORY_META[cat].label.toLowerCase()})
                     </span>
                   ))}
                   {doneCount > 0 && (
-                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#5B6672" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--muted)" }}>
                       <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#8A94A0" }} /> {doneCount} completed
                     </span>
                   )}
@@ -394,16 +394,16 @@ export function CapacityView({ devices, tasks, visitBudgets, suppliers, services
   const open = openCell ? grid[openCell] || [] : [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 700 }}>Planned visits per supplier — next 8 weeks</div>
-          <label style={{ fontSize: 11, color: "#5B6672", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>Flag over
-            <input type="number" min="1" value={limit} onChange={(e) => setLimit(Math.max(1, Number(e.target.value) || 1))} style={{ width: 38, padding: "2px 4px", border: "1px solid #D7DCE1", borderRadius: 5, fontSize: 11 }} /> /wk</label>
+          <label style={{ fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>Flag over
+            <input type="number" min="1" value={limit} onChange={(e) => setLimit(Math.max(1, Number(e.target.value) || 1))} style={{ width: 38, padding: "2px 4px", border: "1px solid var(--border)", borderRadius: 5, fontSize: 11 }} /> /wk</label>
         </div>
-        {rows.length === 0 ? <div style={{ fontSize: 12.5, color: "#A3ABB4" }}>Nothing planned in the next 8 weeks.</div> : (
+        {rows.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing planned in the next 8 weeks.</div> : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "separate", borderSpacing: 3, width: "100%", minWidth: 420 }}>
-              <thead><tr><th style={{ textAlign: "left", fontSize: 10.5, color: "#8A94A0" }}>Supplier</th>{weeks.map((w) => <th key={w} style={{ fontSize: 10, color: "#8A94A0", fontWeight: 600, whiteSpace: "nowrap" }}>{wk(w)}</th>)}</tr></thead>
+              <thead><tr><th style={{ textAlign: "left", fontSize: 10.5, color: "var(--faint)" }}>Supplier</th>{weeks.map((w) => <th key={w} style={{ fontSize: 10, color: "var(--faint)", fontWeight: 600, whiteSpace: "nowrap" }}>{wk(w)}</th>)}</tr></thead>
               <tbody>{rows.map((r) => (
                 <tr key={r}>
                   <td style={{ fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", paddingRight: 6 }}>{r === "__none" ? "No supplier" : supMap[r]?.name || "Unknown"}</td>
@@ -414,19 +414,19 @@ export function CapacityView({ devices, tasks, visitBudgets, suppliers, services
           </div>
         )}
         {openCell && (
-          <div style={{ marginTop: 8, background: "#F7F8F9", borderRadius: 8, padding: "8px 10px" }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: "#5B6672", marginBottom: 4 }}>{openCell.split("|")[0] === "__none" ? "No supplier" : supMap[openCell.split("|")[0]]?.name} · week of {wk(openCell.split("|")[1])}</div>
-            {open.sort((a, b) => a.date.localeCompare(b.date)).map((it, i) => <div key={i} style={{ fontSize: 12, color: it.overdue ? "#C53030" : "#1B2430" }}>{it.overdue ? "Overdue — " : `${fmtDate(it.date)} · `}{it.label}</div>)}
+          <div style={{ marginTop: 8, background: "var(--card-hi)", borderRadius: 8, padding: "8px 10px" }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", marginBottom: 4 }}>{openCell.split("|")[0] === "__none" ? "No supplier" : supMap[openCell.split("|")[0]]?.name} · week of {wk(openCell.split("|")[1])}</div>
+            {open.sort((a, b) => a.date.localeCompare(b.date)).map((it, i) => <div key={i} style={{ fontSize: 12, color: it.overdue ? "var(--danger)" : "var(--text)" }}>{it.overdue ? "Overdue — " : `${fmtDate(it.date)} · `}{it.label}</div>)}
           </div>
         )}
-        <div style={{ fontSize: 10.5, color: "#A3ABB4", marginTop: 8 }}>Counts each service's planned dates and recurring tasks by its default supplier. Overdue items are counted in the current week. Use Month view → Move to spread out busy weeks.</div>
+        <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 8 }}>Counts each service's planned dates and recurring tasks by its default supplier. Overdue items are counted in the current week. Use Month view → Move to spread out busy weeks.</div>
       </div>
-      <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Technician workload — visits logged, last 8 weeks</div>
-        {techs.size === 0 ? <div style={{ fontSize: 12.5, color: "#A3ABB4" }}>No visits logged in the last 8 weeks.</div> : (
+        {techs.size === 0 ? <div style={{ fontSize: 12.5, color: "var(--faint)" }}>No visits logged in the last 8 weeks.</div> : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "separate", borderSpacing: 3, width: "100%", minWidth: 420 }}>
-              <thead><tr><th style={{ textAlign: "left", fontSize: 10.5, color: "#8A94A0" }}>Technician</th>{pastWeeks.map((w) => <th key={w} style={{ fontSize: 10, color: "#8A94A0", fontWeight: 600, whiteSpace: "nowrap" }}>{wk(w)}</th>)}</tr></thead>
+              <thead><tr><th style={{ textAlign: "left", fontSize: 10.5, color: "var(--faint)" }}>Technician</th>{pastWeeks.map((w) => <th key={w} style={{ fontSize: 10, color: "var(--faint)", fontWeight: 600, whiteSpace: "nowrap" }}>{wk(w)}</th>)}</tr></thead>
               <tbody>{[...techs].sort().map((t) => (
                 <tr key={t}><td style={{ fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", paddingRight: 6 }}>{t}</td>
                   {pastWeeks.map((w) => { const n = techGrid[`${t}|${w}`] || 0; return <td key={w}><div style={cellStyle(n, false)}>{n || "·"}</div></td>; })}</tr>
@@ -461,14 +461,14 @@ export function BlackoutsModal({ blackouts, avoidWeekends, onClose, onSave, onSh
   return (
     <Modal title="Holidays & blackout periods" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>No visits are scheduled inside these dates at this location. New schedules and repeat visits automatically move to the next available day.</div>
-        {list.length === 0 ? <div style={{ fontSize: 12.5, color: "#A3ABB4" }}>No blackout periods yet.</div> : list.map((b) => (
-          <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F8F9", borderRadius: 8, padding: "8px 10px" }}>
-            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 650 }}>{b.name}</div><div style={{ fontSize: 11.5, color: "#8A94A0" }}>{fmtDate(b.start)}{b.end !== b.start ? ` – ${fmtDate(b.end)}` : ""}</div></div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>No visits are scheduled inside these dates at this location. New schedules and repeat visits automatically move to the next available day.</div>
+        {list.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--faint)" }}>No blackout periods yet.</div> : list.map((b) => (
+          <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--card-hi)", borderRadius: 8, padding: "8px 10px" }}>
+            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 650 }}>{b.name}</div><div style={{ fontSize: 11.5, color: "var(--faint)" }}>{fmtDate(b.start)}{b.end !== b.start ? ` – ${fmtDate(b.end)}` : ""}</div></div>
             <button onClick={() => { const next = list.filter((x) => x.id !== b.id); setList(next); onSave(next, weekends); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Trash2 size={14} color="#A3ABB4" /></button>
           </div>
         ))}
-        <div style={{ border: "1px solid #E1E4E8", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. Office closure" />
           <div style={{ display: "flex", gap: 8 }}>
             <Field label="From"><TextInput type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
@@ -477,18 +477,18 @@ export function BlackoutsModal({ blackouts, avoidWeekends, onClose, onSave, onSh
           <PrimaryButton onClick={() => add({ name, start, end })}><Plus size={15} /> Add blackout</PrimaryButton>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {UK_BANK_HOLIDAYS.some(([d]) => d >= new Date().toISOString().slice(0, 10) && !list.some((b) => b.start === d)) && (
-              <button onClick={() => { const next = [...list, ...UK_BANK_HOLIDAYS.filter(([d]) => d >= new Date().toISOString().slice(0, 10) && !list.some((b) => b.start === d)).map(([d, n]) => ({ id: uid(), name: n, start: d, end: d }))].sort((a, c) => a.start.localeCompare(c.start)); setList(next); onSave(next, weekends); setMsg("UK bank holidays added — visits will avoid them."); }} style={{ background: "#EAF1F8", color: "#2B4562", border: "none", borderRadius: 7, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ All UK bank holidays (to end of 2027)</button>
+              <button onClick={() => { const next = [...list, ...UK_BANK_HOLIDAYS.filter(([d]) => d >= new Date().toISOString().slice(0, 10) && !list.some((b) => b.start === d)).map(([d, n]) => ({ id: uid(), name: n, start: d, end: d }))].sort((a, c) => a.start.localeCompare(c.start)); setList(next); onSave(next, weekends); setMsg("UK bank holidays added — visits will avoid them."); }} style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 7, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ All UK bank holidays (to end of 2027)</button>
             )}
-            {presets.filter((p) => !list.some((b) => b.name === p.name)).map((p) => <button key={p.name} onClick={() => add(p)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>+ {p.name}</button>)}
+            {presets.filter((p) => !list.some((b) => b.name === p.name)).map((p) => <button key={p.name} onClick={() => add(p)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>+ {p.name}</button>)}
           </div>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
           <input type="checkbox" checked={weekends} onChange={(e) => { setWeekends(e.target.checked); onSave(list, e.target.checked); }} /> Also avoid weekends (move Sat/Sun to Monday)
         </label>
-        <button onClick={() => { const n = onShift(); setMsg(n ? `Moved ${n} planned date${n === 1 ? "" : "s"} out of blackouts${weekends ? " and weekends" : ""}.` : "Nothing needed moving."); }} style={{ background: "#FDF1E0", border: "1px solid #E6D9BC", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#8A5A0B", cursor: "pointer", fontFamily: "inherit" }}>
+        <button onClick={() => { const n = onShift(); setMsg(n ? `Moved ${n} planned date${n === 1 ? "" : "s"} out of blackouts${weekends ? " and weekends" : ""}.` : "Nothing needed moving."); }} style={{ background: "var(--warn-soft)", border: "1px solid #E6D9BC", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "var(--warn)", cursor: "pointer", fontFamily: "inherit" }}>
           Move existing planned visits out of these dates
         </button>
-        {msg && <div style={{ fontSize: 12, color: "#2F6B4A" }}>{msg}</div>}
+        {msg && <div style={{ fontSize: 12, color: "var(--ok)" }}>{msg}</div>}
       </div>
     </Modal>
   );

@@ -345,28 +345,28 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
           const pct = effectiveMax > 0 ? Math.min(100, Math.round((actual / effectiveMax) * 100)) : 0;
           const over = effectiveMax > 0 && actual > effectiveMax;
           return (
-            <div key={cat} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12 }}>
+            <div key={cat} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700 }}>
                   <meta.icon size={14} color={meta.color} /> {meta.label}
                 </span>
                 {ACTIVE_CAN_EDIT && (
-                  <button onClick={() => setEditingCategory(cat)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>
+                  <button onClick={() => setEditingCategory(cat)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>
                     {max ? "Edit max" : "Set max"}
                   </button>
                 )}
               </div>
-              <div style={{ height: 7, background: "#EEF0F2", borderRadius: 20, overflow: "hidden", marginBottom: 6 }}>
+              <div style={{ height: 7, background: "var(--card-hi)", borderRadius: 20, overflow: "hidden", marginBottom: 6 }}>
                 <div style={{ width: `${pct}%`, height: "100%", background: over ? "#C53030" : meta.color, borderRadius: 20, transition: "width .2s" }} />
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#8A94A0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "var(--faint)" }}>
                 <span>{gbp(actual)} spent</span>
-                <span style={{ color: over ? "#C53030" : "#8A94A0", fontWeight: over ? 700 : 500 }}>
+                <span style={{ color: over ? "var(--danger)" : "var(--faint)", fontWeight: over ? 700 : 500 }}>
                   of {gbp(effectiveMax)} {max > 0 ? "max" : "planned"}
                 </span>
               </div>
               {planned > 0 && (
-                <div style={{ fontSize: 10.5, color: "#A3ABB4", marginTop: 3 }}>
+                <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 3 }}>
                   {gbp(planned)} planned across Budget → Plan lines this year{max === 0 ? " — set a max to cap it instead" : ""}
                 </div>
               )}
@@ -375,12 +375,12 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
         })}
       </div>
 
-      <div style={{ fontSize: 10.5, color: "#A3ABB4", marginBottom: 10 }}>
+      <div style={{ fontSize: 10.5, color: "var(--faint)", marginBottom: 10 }}>
         "Spent" above counts logged service costs, approved/completed works, recurring supplier contracts, and any Plan line where you've recorded an actual spend. Log the same cost in only one place to avoid double-counting it.
       </div>
 
       {nonControllableTotal > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FDF1E0", border: "1px solid #E6D9BC", borderRadius: 10, padding: "9px 12px", marginBottom: 14, fontSize: 12.5, color: "#8A5A0B", fontWeight: 600 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--warn-soft)", border: "1px solid #E6D9BC", borderRadius: 10, padding: "9px 12px", marginBottom: 14, fontSize: 12.5, color: "var(--warn)", fontWeight: 600 }}>
           <ShieldAlert size={14} /> {gbp(nonControllableTotal)} in non-controllable works this year — outside category maximums.
         </div>
       )}
@@ -402,7 +402,7 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
       )}
 
       {view === "month" || view === "year" ? (
-        <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: "14px 8px 4px" }}>
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 8px 4px" }}>
           <ResponsiveContainer width="100%" height={230}>
             {chartBreakdown === "total" ? (
               <BarChart data={view === "month" ? monthlyData : yearlyData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
@@ -432,7 +432,7 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
             })()}
           </ResponsiveContainer>
           {chartBreakdown !== "total" && (!(view === "month" ? monthBreakdown : yearBreakdown)?.seriesNames.length) && (
-            <div style={{ textAlign: "center", color: "#A3ABB4", fontSize: 12.5, padding: "20px 0" }}>No recorded spend to break down yet.</div>
+            <div style={{ textAlign: "center", color: "var(--faint)", fontSize: 12.5, padding: "20px 0" }}>No recorded spend to break down yet.</div>
           )}
         </div>
       ) : view === "variance" ? (
@@ -451,7 +451,7 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
             <MetricBlock label={planVariance >= 0 ? "Under budget" : "Over budget"} value={gbp(Math.abs(planVariance))} tone={planVariance >= 0 ? "ok" : "danger"} />
           </div>
           {planSpent === 0 && planTotal > 0 && (
-            <div style={{ fontSize: 11.5, color: "#8A94A0", marginBottom: 12, marginTop: -6 }}>
+            <div style={{ fontSize: 11.5, color: "var(--faint)", marginBottom: 12, marginTop: -6 }}>
               Nothing recorded as spent yet — tap any line below and enter its actual cost to start tracking against budget.
             </div>
           )}
@@ -462,7 +462,7 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
                 const v = varianceByCategory[c];
                 const meta = CATEGORY_META[c];
                 return (
-                  <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 650, background: v >= 0 ? "#EAF4EE" : "#FBEAEA", color: v >= 0 ? "#2F6B4A" : "#9B2C2C", padding: "5px 10px", borderRadius: 20 }}>
+                  <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 650, background: v >= 0 ? "var(--ok-soft)" : "var(--danger-soft)", color: v >= 0 ? "var(--ok)" : "var(--danger)", padding: "5px 10px", borderRadius: 20 }}>
                     <meta.icon size={12} /> {meta.label} {v >= 0 ? "+" : ""}{gbp(v)}
                   </span>
                 );
@@ -472,12 +472,12 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
 
           {overdueUnspentLines.length > 0 && (
             <button onClick={() => setShowOnlyOverdue((v) => !v)} style={{
-              display: "flex", alignItems: "center", gap: 8, width: "100%", background: showOnlyOverdue ? "#2B4562" : "#FDF1E0",
+              display: "flex", alignItems: "center", gap: 8, width: "100%", background: showOnlyOverdue ? "var(--accent)" : "var(--warn-soft)",
               border: "1px solid " + (showOnlyOverdue ? "#2B4562" : "#E6D9BC"), borderRadius: 10, padding: "9px 12px", marginBottom: 12,
               cursor: "pointer", fontFamily: "inherit", textAlign: "left",
             }}>
               <ShieldAlert size={14} color={showOnlyOverdue ? "#fff" : "#8A5A0B"} style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: showOnlyOverdue ? "#fff" : "#8A5A0B", fontWeight: 650, flex: 1 }}>
+              <span style={{ fontSize: 12, color: showOnlyOverdue ? "#fff" : "var(--warn)", fontWeight: 650, flex: 1 }}>
                 {overdueUnspentLines.length} line{overdueUnspentLines.length === 1 ? "" : "s"} past due with no spend recorded
                 {showOnlyOverdue ? " — showing only these" : " — tap to filter"}
               </span>
@@ -506,18 +506,18 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
           )}
           {ACTIVE_CAN_EDIT && (
             <button onClick={() => setAddingLine(true)} style={{
-              width: "100%", background: "#2B4562", color: "#fff", border: "none", borderRadius: 9, padding: "10px 14px",
+              width: "100%", background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 9, padding: "10px 14px",
               fontSize: 13.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center",
               justifyContent: "center", gap: 7, marginBottom: 14,
             }}><Plus size={15} /> Add contract line</button>
           )}
           {ACTIVE_CAN_EDIT && onApplySuggestion && (
-            <button onClick={() => setShowSuggest(true)} style={{ width: "100%", background: "#fff", color: "#2B4562", border: "1px dashed #9AA5B1", borderRadius: 9, padding: "9px 14px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: -6, marginBottom: 14 }}>
+            <button onClick={() => setShowSuggest(true)} style={{ width: "100%", background: "var(--card)", color: "var(--accent)", border: "1px dashed var(--border-strong)", borderRadius: 9, padding: "9px 14px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: -6, marginBottom: 14 }}>
               <Sparkles size={15} /> Suggest a 12-month plan
             </button>
           )}
           {ACTIVE_CAN_EDIT && onRollForward && yearLines.length > 0 && (
-            <button onClick={() => setRollOpen(true)} style={{ width: "100%", background: "#fff", color: "#2B4562", border: "1px dashed #9AA5B1", borderRadius: 9, padding: "9px 14px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: -6, marginBottom: 14 }}>
+            <button onClick={() => setRollOpen(true)} style={{ width: "100%", background: "var(--card)", color: "var(--accent)", border: "1px dashed var(--border-strong)", borderRadius: 9, padding: "9px 14px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: -6, marginBottom: 14 }}>
               <CopyPlus size={15} /> Copy {year} plan into {year + 1}
             </button>
           )}
@@ -529,13 +529,13 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
           ) : showOnlyOverdue && overdueUnspentLines.length === 0 ? (
             <EmptyState icon={CheckCircle2} title="Nothing overdue" body="Every past-due line has a spend recorded. Tap the banner above to see everything again." />
           ) : planView === "sheet" ? (
-            <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead>
-                    <tr style={{ background: "#F7F8F9", borderBottom: "1px solid #E1E4E8" }}>
+                    <tr style={{ background: "var(--card-hi)", borderBottom: "1px solid var(--border)" }}>
                       {["Date", "Service", "Category", "Budgeted", "Actual", "Variance", ""].map((h) => (
-                        <th key={h} style={{ textAlign: h === "Date" || h === "Service" || h === "Category" ? "left" : "right", padding: "10px 10px", fontWeight: 700, color: "#5B6672", whiteSpace: "nowrap" }}>{h}</th>
+                        <th key={h} style={{ textAlign: h === "Date" || h === "Service" || h === "Category" ? "left" : "right", padding: "10px 10px", fontWeight: 700, color: "var(--muted)", whiteSpace: "nowrap" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -545,12 +545,12 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
                       const variance = spent ? Number(l.amount) - Number(l.actualAmount) : null;
                       return (
                         <tr key={l.id} onClick={() => setRecordingSpendFor(l)} style={{ borderBottom: "1px solid #F0F1F3", cursor: "pointer" }}>
-                          <td style={{ padding: "10px 10px", whiteSpace: "nowrap", color: "#5B6672" }}>{fmtDate(l.date)}</td>
+                          <td style={{ padding: "10px 10px", whiteSpace: "nowrap", color: "var(--muted)" }}>{fmtDate(l.date)}</td>
                           <td style={{ padding: "10px 10px", fontWeight: 600, maxWidth: 160 }}>{l.description}</td>
                           <td style={{ padding: "10px 10px" }}><CategoryBadge category={l.category} subCategory={l.subCategory} /></td>
                           <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(l.amount)}</td>
-                          <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: spent ? "#1B2430" : "#C0C6CC" }}>{spent ? gbp(l.actualAmount) : "—"}</td>
-                          <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: variance === null ? "#C0C6CC" : variance >= 0 ? "#2F855A" : "#C53030" }}>
+                          <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: spent ? "var(--text)" : "#C0C6CC" }}>{spent ? gbp(l.actualAmount) : "—"}</td>
+                          <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: variance === null ? "#C0C6CC" : variance >= 0 ? "var(--ok)" : "var(--danger)" }}>
                             {variance === null ? "—" : (variance >= 0 ? "+" : "") + gbp(variance)}
                           </td>
                           <td style={{ padding: "8px 6px", textAlign: "right" }}>
@@ -580,21 +580,21 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
 
       {perVisitRows.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 8 }}>Budget per visit vs actual</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Budget per visit vs actual</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {perVisitRows.map(({ device, avg, visits, targetAvg, variesByVisit }) => {
               const over = avg !== null && avg > targetAvg;
               return (
-                <div key={device.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 10, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <div key={device.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 650 }}>{device.name}</div>
-                    <div style={{ fontSize: 11, color: "#8A94A0" }}>{visits} logged visit{visits === 1 ? "" : "s"}{variesByVisit ? " · budget varies by visit" : ""}</div>
+                    <div style={{ fontSize: 11, color: "var(--faint)" }}>{visits} logged visit{visits === 1 ? "" : "s"}{variesByVisit ? " · budget varies by visit" : ""}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 12.5, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: over ? "#C53030" : "#2F855A" }}>
+                    <div style={{ fontSize: 12.5, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: over ? "var(--danger)" : "var(--ok)" }}>
                       {avg !== null ? gbp(avg) : "—"} avg
                     </div>
-                    <div style={{ fontSize: 10.5, color: "#8A94A0" }}>{variesByVisit ? "avg target " : "target "}{gbp(targetAvg)}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--faint)" }}>{variesByVisit ? "avg target " : "target "}{gbp(targetAvg)}</div>
                   </div>
                 </div>
               );
@@ -605,10 +605,10 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
 
       {serviceLineRows.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 8 }}>Spend by service line ({year})</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Spend by service line ({year})</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {serviceLineRows.map(({ device, total }) => (
-              <div key={device.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 10, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div key={device.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <CategoryBadge category={device.serviceCategory} />
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{device.name}</span>
@@ -622,10 +622,10 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
 
       {supplierRows.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 8 }}>Spend by supplier ({year})</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Spend by supplier ({year})</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {supplierRows.map(({ supplier, recurring, logged, total }) => (
-              <div key={supplier.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 10, padding: "9px 12px" }}>
+              <div key={supplier.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 12px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <CategoryBadge category={supplier.category} />
@@ -633,7 +633,7 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
                   </div>
                   <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 13 }}>{gbp(total)}</span>
                 </div>
-                <div style={{ fontSize: 10.5, color: "#8A94A0", marginTop: 3 }}>
+                <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 3 }}>
                   {gbp(recurring)} contract{logged > 0 ? ` + ${gbp(logged)} logged services` : ""}
                 </div>
               </div>
@@ -669,15 +669,15 @@ export function BudgetGroupSection({ group, supplierById, onRecordSpend, onEdit,
   const [open, setOpen] = useState(true);
   const spentCount = group.lines.filter((l) => l.actualAmount != null).length;
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, overflow: "hidden" }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
       <button onClick={() => setOpen((v) => !v)} style={{
         width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px",
         background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left",
       }}>
         <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <ChevronDown size={16} color="#8A94A0" style={{ flexShrink: 0, transform: open ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform .15s" }} />
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: "#1B2430" }}>{group.label}</span>
-          <span style={{ fontSize: 11.5, color: "#A3ABB4", fontWeight: 600, flexShrink: 0 }}>{spentCount}/{group.lines.length} recorded</span>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{group.label}</span>
+          <span style={{ fontSize: 11.5, color: "var(--faint)", fontWeight: 600, flexShrink: 0 }}>{spentCount}/{group.lines.length} recorded</span>
         </span>
         <span style={{ fontSize: 13.5, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0 }}>{gbp(group.subtotal)}</span>
       </button>
@@ -701,21 +701,21 @@ export function BudgetLineRow({ line, supplier, onRecordSpend, onEdit, onDelete 
   const [viewingPhoto, setViewingPhoto] = useState(false);
   return (
     <>
-      <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
         <button onClick={onRecordSpend} disabled={!ACTIVE_CAN_EDIT} style={{
-          width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: spent ? "none" : "1.5px solid #C0C6CC",
-          background: spent ? (variance >= 0 ? "#2F855A" : "#C53030") : "#fff", cursor: ACTIVE_CAN_EDIT ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center",
+          width: 22, height: 22, borderRadius: "50%", flexShrink: 0, border: spent ? "none" : "1.5px solid var(--border-strong)",
+          background: spent ? (variance >= 0 ? "#2F855A" : "#C53030") : "var(--card)", cursor: ACTIVE_CAN_EDIT ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           {spent && <CheckCircle2 size={14} color="#fff" />}
         </button>
         {line.attachment && (
-          <button onClick={() => setViewingPhoto(true)} style={{ width: 30, height: 30, borderRadius: 6, overflow: "hidden", border: "1px solid #E1E4E8", padding: 0, cursor: "pointer", flexShrink: 0 }}>
+          <button onClick={() => setViewingPhoto(true)} style={{ width: 30, height: 30, borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)", padding: 0, cursor: "pointer", flexShrink: 0 }}>
             <img src={line.attachment} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </button>
         )}
         <button onClick={onEdit} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
           <div style={{ fontSize: 13, fontWeight: 650 }}>{line.description}</div>
-          <div style={{ fontSize: 11, color: "#8A94A0", display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: "var(--faint)", display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
             <span>{fmtDate(line.date)}</span>
             {supplier && <span>· {supplier.name}</span>}
             <CategoryBadge category={line.category} subCategory={line.subCategory} />
@@ -724,7 +724,7 @@ export function BudgetLineRow({ line, supplier, onRecordSpend, onEdit, onDelete 
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 13 }}>{gbp(spent ? line.actualAmount : line.amount)}</div>
           {spent && (
-            <div style={{ fontSize: 10, fontWeight: 700, color: variance >= 0 ? "#2F855A" : "#C53030" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: variance >= 0 ? "var(--ok)" : "var(--danger)" }}>
               budget {gbp(line.amount)} · {variance >= 0 ? "+" : ""}{gbp(variance)}
             </div>
           )}
@@ -756,9 +756,9 @@ export function RecordSpendModal({ line, onClose, onSave, onEditDetails }) {
     <Modal title={line.description} onClose={onClose} width={380}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 12, color: "#8A94A0" }}>Budgeted for {fmtDate(line.date)}: <strong style={{ color: "#1B2430" }}>{gbp(line.amount)}</strong></div>
+          <div style={{ fontSize: 12, color: "var(--faint)" }}>Budgeted for {fmtDate(line.date)}: <strong style={{ color: "var(--text)" }}>{gbp(line.amount)}</strong></div>
           {ACTIVE_CAN_EDIT && (
-            <button onClick={onEditDetails} style={{ background: "none", border: "none", color: "#2B4562", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4, padding: 2, flexShrink: 0 }}>
+            <button onClick={onEditDetails} style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4, padding: 2, flexShrink: 0 }}>
               <Pencil size={11} /> Edit details
             </button>
           )}
@@ -768,13 +768,13 @@ export function RecordSpendModal({ line, onClose, onSave, onEditDetails }) {
           <Field label={`Actual spend (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" autoFocus value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" /></Field>
         </div>
         {amount && (
-          <div style={{ fontSize: 12.5, fontWeight: 650, color: variance >= 0 ? "#2F855A" : "#C53030" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 650, color: variance >= 0 ? "var(--ok)" : "var(--danger)" }}>
             {variance >= 0 ? `${gbp(variance)} under budget` : `${gbp(Math.abs(variance))} over budget`}
           </div>
         )}
         <PrimaryButton onClick={submit}><CheckCircle2 size={15} /> {alreadySpent ? "Update spend" : "Record spend"}</PrimaryButton>
         {alreadySpent && (
-          <button onClick={clear} style={{ background: "none", border: "none", color: "#8A94A0", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 4 }}>
+          <button onClick={clear} style={{ background: "none", border: "none", color: "var(--faint)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 4 }}>
             Clear — mark as not yet spent
           </button>
         )}
@@ -880,7 +880,7 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
             <Select value={targetYear} onChange={(e) => handleYearChange(Number(e.target.value))}>
               {Array.from({ length: 8 }, (_, i) => thisYear - 1 + i).map((y) => <option key={y} value={y}>{y}</option>)}
             </Select>
-            <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>Pick any year — this doesn't have to match the year you're currently browsing.</span>
+            <span style={{ fontSize: 10.5, color: "var(--faint)" }}>Pick any year — this doesn't have to match the year you're currently browsing.</span>
           </Field>
         )}
         {!isEdit && (
@@ -910,10 +910,10 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
               ))}
               <button onClick={addManualDate} style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 11px", borderRadius: 8,
-                border: "1px dashed #D7DCE1", background: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12.5, color: "#2B4562", fontWeight: 650,
+                border: "1px dashed var(--border)", background: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12.5, color: "var(--accent)", fontWeight: 650,
               }}><Plus size={13} /> Add another visit date</button>
             </div>
-            <span style={{ fontSize: 11, color: "#8A94A0" }}>Creates {manualDates.filter(Boolean).length} lines, one per date above, all with the same description and amount.</span>
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>Creates {manualDates.filter(Boolean).length} lines, one per date above, all with the same description and amount.</span>
           </Field>
         ) : (
           <div style={{ display: "flex", gap: 10 }}>
@@ -925,8 +925,8 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
           <Field label={`Amount per occurrence (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" /></Field>
         )}
         {isEdit && existing.amountHistory?.length > 0 && (
-          <div style={{ fontSize: 11, color: "#8A94A0", background: "#F7F8F9", borderRadius: 8, padding: "8px 10px" }}>
-            <div style={{ fontWeight: 700, marginBottom: 3, color: "#5B6672" }}>Budget history</div>
+          <div style={{ fontSize: 11, color: "var(--faint)", background: "var(--card-hi)", borderRadius: 8, padding: "8px 10px" }}>
+            <div style={{ fontWeight: 700, marginBottom: 3, color: "var(--muted)" }}>Budget history</div>
             {existing.amountHistory.map((h, i) => (
               <div key={i}>{gbp(h.amount)} until {fmtDate(h.changedAt)}</div>
             ))}
@@ -934,24 +934,24 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
           </div>
         )}
         <Field label="Contract page / evidence photo (optional)">
-          <label style={{ border: "1px dashed #D7DCE1", borderRadius: 10, padding: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "#5B6672", fontSize: 12.5, background: attachment ? "transparent" : "#FAFBFC" }}>
+          <label style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "var(--muted)", fontSize: 12.5, background: attachment ? "transparent" : "#FAFBFC" }}>
             {busy ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Camera size={15} />}
             {attachment ? "Replace photo" : "Attach a photo (e.g. the contract page)"}
             <input type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
           </label>
-          {attachment && <img src={attachment} alt="attachment preview" style={{ width: "100%", borderRadius: 10, marginTop: 8, border: "1px solid #E1E4E8" }} />}
-          <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>Storage here only holds images, not PDFs — a clear photo of the contract page works well as a substitute.</span>
+          {attachment && <img src={attachment} alt="attachment preview" style={{ width: "100%", borderRadius: 10, marginTop: 8, border: "1px solid var(--border)" }} />}
+          <span style={{ fontSize: 10.5, color: "var(--faint)" }}>Storage here only holds images, not PDFs — a clear photo of the contract page works well as a substitute.</span>
         </Field>
         {!isEdit && repeat === "custom" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <Field label="How many times a year"><TextInput type="number" min="1" max="365" value={customCount} onChange={(e) => setCustomCount(e.target.value)} placeholder="e.g. 7" /></Field>
-            <span style={{ fontSize: 11, color: "#8A94A0" }}>
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>
               Creates {Math.max(1, Number(customCount) || 1)} lines, spaced about {Math.round(365 / Math.max(1, Number(customCount) || 1))} days apart, starting from the start date.
             </span>
           </div>
         )}
         {!isEdit && (repeat === "weekly" || repeat === "monthly" || repeat === "quarterly") && (
-          <span style={{ fontSize: 11, color: "#8A94A0" }}>
+          <span style={{ fontSize: 11, color: "var(--faint)" }}>
             Creates {repeat === "monthly" ? 12 : repeat === "weekly" ? 52 : 4} lines, one per {repeat === "monthly" ? "month" : repeat === "weekly" ? "week" : "quarter"}, starting from the start date — this can roll into the following year automatically.
           </span>
         )}
@@ -959,11 +959,11 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
         {isEdit && (
           confirmingDelete ? (
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={onDelete} style={{ flex: 1, background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
-              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+              <button onClick={onDelete} style={{ flex: 1, background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
+              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
             </div>
           ) : (
-            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
               <Trash2 size={13} /> Delete this line
             </button>
           )
@@ -987,14 +987,14 @@ export function SpendCalendar({ year, month, onMonthChange, spendByDate, selecte
 
   return (
     <div>
-      <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <button onClick={() => go(-1)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronLeft size={15} color="#5B6672" /></button>
+          <button onClick={() => go(-1)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronLeft size={15} color="#5B6672" /></button>
           <span style={{ fontWeight: 700, fontSize: 14 }}>{new Date(year, month, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</span>
-          <button onClick={() => go(1)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronRight size={15} color="#5B6672" /></button>
+          <button onClick={() => go(1)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: 6, cursor: "pointer" }}><ChevronRight size={15} color="#5B6672" /></button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 4 }}>
-          {WEEKDAY_LABELS.map((w) => <div key={w} style={{ fontSize: 10, fontWeight: 700, color: "#A3ABB4", textAlign: "center" }}>{w}</div>)}
+          {WEEKDAY_LABELS.map((w) => <div key={w} style={{ fontSize: 10, fontWeight: 700, color: "var(--faint)", textAlign: "center" }}>{w}</div>)}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
           {grid.map((dt, i) => {
@@ -1005,12 +1005,12 @@ export function SpendCalendar({ year, month, onMonthChange, spendByDate, selecte
             const isSelected = iso === selectedDate;
             return (
               <button key={i} onClick={() => total > 0 && onSelectDate(iso === selectedDate ? null : iso)} style={{
-                minHeight: 40, borderRadius: 8, border: isSelected ? "1.5px solid #2B4562" : "1px solid #EEF0F2",
-                background: total > 0 ? (flagged ? "#FDF1E0" : "#F1F4F7") : "#fff", cursor: total > 0 ? "pointer" : "default",
+                minHeight: 40, borderRadius: 8, border: isSelected ? "1.5px solid var(--accent)" : "1px solid var(--border)",
+                background: total > 0 ? (flagged ? "var(--warn-soft)" : "#F1F4F7") : "var(--card)", cursor: total > 0 ? "pointer" : "default",
                 padding: 3, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, fontFamily: "inherit",
               }}>
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: "#1B2430" }}>{dt.getDate()}</span>
-                {total > 0 && <span style={{ fontSize: 9, fontWeight: 700, color: flagged ? "#8A5A0B" : "#2B4562" }}>£{total >= 1000 ? Math.round(total / 1000) + "k" : Math.round(total)}</span>}
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--text)" }}>{dt.getDate()}</span>
+                {total > 0 && <span style={{ fontSize: 9, fontWeight: 700, color: flagged ? "var(--warn)" : "var(--accent)" }}>£{total >= 1000 ? Math.round(total / 1000) + "k" : Math.round(total)}</span>}
               </button>
             );
           })}
@@ -1018,10 +1018,10 @@ export function SpendCalendar({ year, month, onMonthChange, spendByDate, selecte
       </div>
       {selectedDate && (
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#5B6672" }}>{fmtDate(selectedDate)}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{fmtDate(selectedDate)}</div>
           {selectedItems.map((item, i) => (
-            <div key={i} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 8, padding: "8px 10px", display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
-              <span style={{ color: item.controllable ? "#5B6672" : "#8A5A0B", fontWeight: 600 }}>{item.controllable ? "Budgeted" : "Non-controllable"}</span>
+            <div key={i} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
+              <span style={{ color: item.controllable ? "var(--muted)" : "var(--warn)", fontWeight: 600 }}>{item.controllable ? "Budgeted" : "Non-controllable"}</span>
               <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{gbp(item.amount)}</span>
             </div>
           ))}
@@ -1056,18 +1056,18 @@ export function RollForwardModal({ year, lines, budgets, onClose, onApply }) {
   return (
     <Modal title={`Create the ${year + 1} plan`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>Copies all {lines.length} {year} plan lines to the same dates in {year + 1} (moved out of blackout periods), as planned with nothing spent. Lines for archived services are skipped, and lines already in {year + 1} aren't duplicated.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Copies all {lines.length} {year} plan lines to the same dates in {year + 1} (moved out of blackout periods), as planned with nothing spent. Lines for archived services are skipped, and lines already in {year + 1} aren't duplicated.</div>
         <Field label="Price uplift (%)">
           <TextInput type="number" step="0.1" value={pct} onChange={(e) => setPct(e.target.value)} />
-          <span style={{ fontSize: 11, color: "#8A94A0" }}>e.g. CPI or your contracts' indexation clause. Use 0 to copy prices as they are.</span>
+          <span style={{ fontSize: 11, color: "var(--faint)" }}>e.g. CPI or your contracts' indexation clause. Use 0 to copy prices as they are.</span>
         </Field>
         {hasCaps && (
-          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "#3A4451", cursor: "pointer" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
             <input type="checkbox" checked={caps} onChange={(e) => setCaps(e.target.checked)} style={{ margin: 0 }} /> Also copy category budget caps (with the same uplift)
           </label>
         )}
-        <div style={{ background: "#F7F8F9", borderRadius: 9, padding: "9px 11px", fontSize: 12.5 }}>
-          {year}: <b>{gbp(total)}</b> → {year + 1}: <b>{gbp(total * f)}</b> <span style={{ color: "#8A94A0" }}>({(Number(pct) || 0) >= 0 ? "+" : ""}{gbp(total * f - total)})</span>
+        <div style={{ background: "var(--card-hi)", borderRadius: 9, padding: "9px 11px", fontSize: 12.5 }}>
+          {year}: <b>{gbp(total)}</b> → {year + 1}: <b>{gbp(total * f)}</b> <span style={{ color: "var(--faint)" }}>({(Number(pct) || 0) >= 0 ? "+" : ""}{gbp(total * f - total)})</span>
         </div>
         <PrimaryButton onClick={() => onApply(Number(pct) || 0, hasCaps && caps)}><CopyPlus size={15} /> Create {year + 1} plan</PrimaryButton>
       </div>
@@ -1108,7 +1108,7 @@ export function VarianceView({ year, devices, services, works, budgetLines, supp
   const vColor = (v) => v >= 0 ? "#2F855A" : "#C53030";
   const cell = { fontFamily: "'IBM Plex Mono', monospace", textAlign: "right", fontSize: 12 };
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {[["month", "Month"], ["service", "Service"], ["supplier", "Supplier"], ["category", "Category"]].map(([k, l]) => <ToggleButton key={k} active={groupBy === k} onClick={() => { setGroupBy(k); setOpen(null); }}>{l}</ToggleButton>)}
       </div>
@@ -1129,20 +1129,20 @@ export function VarianceView({ year, devices, services, works, budgetLines, supp
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
         {[["Planned", tot.planned, "#1B2430"], ["Actual", tot.actual, "#1B2430"], [tot.planned - tot.actual >= 0 ? "Under" : "Over", Math.abs(tot.planned - tot.actual), vColor(tot.planned - tot.actual)]].map(([l, v, c]) => (
-          <div key={l} style={{ background: "#F7F8F9", borderRadius: 8, padding: "8px 10px" }}>
-            <div style={{ fontSize: 10.5, color: "#8A94A0", fontWeight: 600 }}>{l}</div>
+          <div key={l} style={{ background: "var(--card-hi)", borderRadius: 8, padding: "8px 10px" }}>
+            <div style={{ fontSize: 10.5, color: "var(--faint)", fontWeight: 600 }}>{l}</div>
             <div style={{ fontSize: 14.5, fontWeight: 800, color: c, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(v)}</div>
           </div>
         ))}
       </div>
-      {rows.length === 0 ? <div style={{ fontSize: 12.5, color: "#A3ABB4", textAlign: "center", padding: 16 }}>Nothing planned or spent for these filters.</div> : (
+      {rows.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--faint)", textAlign: "center", padding: 16 }}>Nothing planned or spent for these filters.</div> : (
         <div>
-          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr", gap: 4, fontSize: 10.5, fontWeight: 700, color: "#8A94A0", padding: "0 6px 4px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr", gap: 4, fontSize: 10.5, fontWeight: 700, color: "var(--faint)", padding: "0 6px 4px" }}>
             <span>{groupBy[0].toUpperCase() + groupBy.slice(1)}</span><span style={{ textAlign: "right" }}>Planned</span><span style={{ textAlign: "right" }}>Actual</span><span style={{ textAlign: "right" }}>Variance</span>
           </div>
           {rows.map((r) => (
-            <div key={r.key} style={{ borderTop: "1px solid #EEF0F2" }}>
-              <button onClick={() => setOpen(open === r.key ? null : r.key)} style={{ width: "100%", display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr", gap: 4, alignItems: "center", background: open === r.key ? "#F7F8F9" : "none", border: "none", padding: "8px 6px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+            <div key={r.key} style={{ borderTop: "1px solid var(--border)" }}>
+              <button onClick={() => setOpen(open === r.key ? null : r.key)} style={{ width: "100%", display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr", gap: 4, alignItems: "center", background: open === r.key ? "var(--card-hi)" : "none", border: "none", padding: "8px 6px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 650, display: "flex", alignItems: "center", gap: 4 }}><ChevronDown size={12} color="#A3ABB4" style={{ transform: open === r.key ? "none" : "rotate(-90deg)" }} />{nameOf(r.key)}</span>
                 <span style={cell}>{gbp(r.planned)}</span>
                 <span style={cell}>{gbp(r.actual)}</span>
@@ -1152,10 +1152,10 @@ export function VarianceView({ year, devices, services, works, budgetLines, supp
                 <div style={{ padding: "2px 6px 8px 22px", display: "flex", flexDirection: "column", gap: 3 }}>
                   {r.entries.sort((a, b) => a.date.localeCompare(b.date)).map((e) => (
                     <div key={e.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5 }}>
-                      <span style={{ color: "#5B6672", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {fmtDate(e.date)} · <b style={{ color: e.kind === "Planned" ? "#8A94A0" : "#2B4562" }}>{e.kind}</b> · {e.label}{groupBy !== "service" && e.deviceId && devMap[e.deviceId] ? ` · ${devMap[e.deviceId].name}` : ""}
+                      <span style={{ color: "var(--muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {fmtDate(e.date)} · <b style={{ color: e.kind === "Planned" ? "var(--faint)" : "var(--accent)" }}>{e.kind}</b> · {e.label}{groupBy !== "service" && e.deviceId && devMap[e.deviceId] ? ` · ${devMap[e.deviceId].name}` : ""}
                       </span>
-                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0, color: e.kind === "Planned" ? "#8A94A0" : "#1B2430" }}>{gbp(e.amount)}</span>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0, color: e.kind === "Planned" ? "var(--faint)" : "var(--text)" }}>{gbp(e.amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -1164,7 +1164,7 @@ export function VarianceView({ year, devices, services, works, budgetLines, supp
           ))}
         </div>
       )}
-      <div style={{ fontSize: 10.5, color: "#A3ABB4" }}>Planned = Budget Plan lines. Actual = logged visit costs, approved/in-progress/completed extra works and costs recorded on plan lines. Recurring supplier contract fees and non-controllable works aren't included here. Tap a row to see what makes it up.</div>
+      <div style={{ fontSize: 10.5, color: "var(--faint)" }}>Planned = Budget Plan lines. Actual = logged visit costs, approved/in-progress/completed extra works and costs recorded on plan lines. Recurring supplier contract fees and non-controllable works aren't included here. Tap a row to see what makes it up.</div>
     </div>
   );
 }
@@ -1185,12 +1185,12 @@ export function AccountingExport({ data, year, month }) {
     setMsg(`${items.length} line${items.length === 1 ? "" : "s"} exported (${gbp(items.reduce((a, i) => a + i.amount, 0))}).`);
   }
   return (
-    <div style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Receipt size={20} color="#8E4585" style={{ flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>Accounting export (CSV)</div>
-          <div style={{ fontSize: 11.5, color: "#8A94A0", marginTop: 2 }}>Costs laid out as bill lines for import.</div>
+          <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 2 }}>Costs laid out as bill lines for import.</div>
         </div>
       </div>
       <div style={{ display: "flex", gap: 6 }}>
@@ -1202,9 +1202,9 @@ export function AccountingExport({ data, year, month }) {
         </Select>
       </div>
       <TextInput value={accountCode} onChange={(e) => setAccountCode(e.target.value)} placeholder={format === "sage" ? "Nominal code, e.g. 7800 (optional)" : "Account code, e.g. 429 (optional)"} style={{ fontSize: 12.5 }} />
-      <button onClick={go} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Download size={14} /> Download CSV</button>
-      {msg && <div style={{ fontSize: 11.5, color: "#2F6B4A" }}>{msg}</div>}
-      <div style={{ fontSize: 10.5, color: "#A3ABB4" }}>Amounts are exported as net of VAT at the standard 20% rate. Import templates vary by account and change over time — check the column names against your system's current bill-import template, and fill in account codes and (for Sage) supplier account references to match your ledger. PO numbers are used as the invoice reference where set.</div>
+      <button onClick={go} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Download size={14} /> Download CSV</button>
+      {msg && <div style={{ fontSize: 11.5, color: "var(--ok)" }}>{msg}</div>}
+      <div style={{ fontSize: 10.5, color: "var(--faint)" }}>Amounts are exported as net of VAT at the standard 20% rate. Import templates vary by account and change over time — check the column names against your system's current bill-import template, and fill in account codes and (for Sage) supplier account references to match your ledger. PO numbers are used as the invoice reference where set.</div>
     </div>
   );
 }
@@ -1218,23 +1218,23 @@ export function SuggestPlanModal({ devices, services, visitBudgets, shiftDateFn,
   return (
     <Modal title="Suggested 12-month plan" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>Worked out from each service's repeat setting or visit history. Only dates not already in your plan are added; blackout days are avoided.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Worked out from each service's repeat setting or visit history. Only dates not already in your plan are added; blackout days are avoided.</div>
         {suggestions.map((s) => s.skip || s.dates.length === 0 ? (
-          <div key={s.dev.id} style={{ fontSize: 12, color: "#A3ABB4", padding: "4px 2px" }}><b style={{ color: "#8A94A0" }}>{s.dev.name}</b> — {s.skip || `already fully planned (${s.already} visits)`}</div>
+          <div key={s.dev.id} style={{ fontSize: 12, color: "var(--faint)", padding: "4px 2px" }}><b style={{ color: "var(--faint)" }}>{s.dev.name}</b> — {s.skip || `already fully planned (${s.already} visits)`}</div>
         ) : (
-          <label key={s.dev.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", border: "1px solid #E1E4E8", borderRadius: 10, padding: 10, cursor: "pointer", background: picked.has(s.dev.id) ? "#fff" : "#F7F8F9" }}>
+          <label key={s.dev.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", border: "1px solid var(--border)", borderRadius: 10, padding: 10, cursor: "pointer", background: picked.has(s.dev.id) ? "var(--card)" : "var(--card-hi)" }}>
             <input type="checkbox" checked={picked.has(s.dev.id)} onChange={(e) => { const n = new Set(picked); e.target.checked ? n.add(s.dev.id) : n.delete(s.dev.id); setPicked(n); }} style={{ marginTop: 3 }} />
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ fontSize: 13.5, fontWeight: 700 }}>{s.dev.name}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(s.dates.length * s.amount)}</span>
               </div>
-              <div style={{ fontSize: 11.5, color: "#5B6672", marginTop: 2 }}>{s.dates.length} visit{s.dates.length === 1 ? "" : "s"} · {s.label} ({s.basis}) · {gbp(s.amount)} each ({s.costBasis}){s.already ? ` · ${s.already} already planned` : ""}</div>
-              <div style={{ fontSize: 10.5, color: "#8A94A0", marginTop: 3 }}>{s.dates.slice(0, 6).map(fmtDate).join(", ")}{s.dates.length > 6 ? ` … +${s.dates.length - 6} more` : ""}</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{s.dates.length} visit{s.dates.length === 1 ? "" : "s"} · {s.label} ({s.basis}) · {gbp(s.amount)} each ({s.costBasis}){s.already ? ` · ${s.already} already planned` : ""}</div>
+              <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 3 }}>{s.dates.slice(0, 6).map(fmtDate).join(", ")}{s.dates.length > 6 ? ` … +${s.dates.length - 6} more` : ""}</div>
             </div>
           </label>
         ))}
-        {usable.length === 0 ? <div style={{ fontSize: 12.5, color: "#8A94A0" }}>Nothing to add — every repeating service is already planned for the next 12 months.</div> : (
+        {usable.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing to add — every repeating service is already planned for the next 12 months.</div> : (
           <PrimaryButton onClick={() => onApply(chosen.map((s) => ({ deviceId: s.dev.id, dates: s.dates, amount: s.amount })))}>
             <Plus size={15} /> Add {chosen.reduce((a, s) => a + s.dates.length, 0)} visits to plan ({gbp(total)})
           </PrimaryButton>

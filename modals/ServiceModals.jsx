@@ -1,8 +1,8 @@
 // Add/edit service, log a visit, service history, import and service library.
 import { useState, useMemo } from "react";
 import { Archive, Ban, BookOpen, Camera, CheckCircle2, CheckSquare, ChevronDown, ClipboardList, Copy, Download, FileSpreadsheet, HardHat, ImagePlus, KeyRound, Link2, Loader2, Mail, MapPin, PauseCircle, Pencil, Plus, Printer, RefreshCw, SkipForward, Square, Star, StickyNote, Trash2, TrendingUp, Upload, X } from "lucide-react";
-import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, Field, Modal, PhotoStrip, PrimaryButton, Select, SignOffSection, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, IMPORT_FIELDS, LATE_REASONS, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
+import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, SignOffSection, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
+import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, IMPORT_FIELDS, LATE_REASONS, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
 import { buildAssetRecord, buildBlankChecklist, openPrintReport, tableHtml } from "../lib/reports.js";
 import { addDays, addMonths, availability, checklistLabel, compressImage, currentDowntime, downloadBlob, dueStatus, escapeHtml, fmtDate, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
@@ -20,55 +20,56 @@ export function DeviceHistoryModal({ allDevices = [], onOutOfService, works = []
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
           {(device.photo || device.area || device.links?.length > 0) && (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              {device.photo && <img src={device.photo} alt="" style={{ width: 88, height: 88, borderRadius: 10, objectFit: "cover", border: "1px solid #E1E4E8", flexShrink: 0 }} />}
+              {device.photo && <img src={device.photo} alt="" style={{ width: 88, height: 88, borderRadius: 10, objectFit: "cover", border: "1px solid var(--border)", flexShrink: 0 }} />}
               <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                {device.area && <div style={{ fontSize: 12.5, fontWeight: 650, color: "#3A4451", display: "flex", alignItems: "center", gap: 4 }}><MapPin size={12} /> {device.area}</div>}
+                {device.area && <div style={{ fontSize: 12.5, fontWeight: 650, color: "var(--text-2)", display: "flex", alignItems: "center", gap: 4 }}><MapPin size={12} /> {device.area}</div>}
                 {(device.links || []).map((l, i) => (
-                  <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: "#2B4562", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Link2 size={12} /> {l.label}</a>
+                  <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: "var(--accent)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Link2 size={12} /> {l.label}</a>
                 ))}
               </div>
             </div>
           )}
           {(device.manufacturer || device.model || device.serialNumber || device.installDate || device.warrantyEnd) && (
-            <div style={{ fontSize: 12, color: "#5B6672", background: "#F7F8F9", borderRadius: 9, padding: "8px 10px" }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", background: "var(--card-hi)", borderRadius: 9, padding: "8px 10px" }}>
               {[device.manufacturer, device.model].filter(Boolean).join(" ")}{device.serialNumber ? ` · S/N ${device.serialNumber}` : ""}
               {device.installDate ? ` · Installed ${fmtDate(device.installDate)}` : ""}{device.warrantyEnd ? ` · Warranty to ${fmtDate(device.warrantyEnd)}` : ""}
               {replacementYear(device) ? ` · Replace ${replacementYear(device)}` : ""}
             </div>
           )}
           {(device.accessNotes || device.ramsRequired || device.permits?.length > 0) && (
-            <div style={{ fontSize: 12, color: "#8A5A0B", background: "#FDF1E0", borderRadius: 9, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 }}>
+            <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 9, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 }}>
               {device.accessNotes && <span><KeyRound size={11} style={{ verticalAlign: -1 }} /> {device.accessNotes}</span>}
               {(device.ramsRequired || device.permits?.length > 0) && <span style={{ fontWeight: 700 }}><HardHat size={11} style={{ verticalAlign: -1 }} /> Needs: {[device.ramsRequired && "RAMS", ...(device.permits || []).map((p) => `${p} permit`)].filter(Boolean).join(", ")}</span>}
             </div>
           )}
           <div style={{ display: "flex", gap: 6 }}>
           <button onClick={() => openPrintReport(`Checklist — ${device.name}`, `${locationName}${device.assetTag ? ` · #${device.assetTag}` : ""}`, buildBlankChecklist(device, supplierById))}
-            style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <ClipboardList size={14} /> Blank checklist
           </button>
           <button onClick={() => openPrintReport(`Asset record — ${device.name}`, `${locationName}${device.assetTag ? ` · #${device.assetTag}` : ""}`, buildAssetRecord(device, services, tasks, supplierById))}
-            style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Printer size={14} /> Asset record
           </button>
+          <ExportButton label="CSV" filename={`history-${device.name.replace(/[^a-z0-9]+/gi, "-")}.csv`} rows={[["Date", "Visit", "Supplier", "Technician", "Outcome", "Cost", "Labour", "Parts", "Call-out", "Checks passed", "Checks failed", "PO", "Notes"], ...services.map((v) => [v.date, v.name || "", supplierById[v.supplierId]?.name || "", v.technician || "", v.aborted ? `Not completed: ${v.abortReason || ""}` : v.skipped ? `Skipped: ${v.skipReason || ""}` : "Done", v.cost || 0, v.costBreakdown?.labour ?? "", v.costBreakdown?.parts ?? "", v.costBreakdown?.callout ?? "", (v.checklistResults || []).filter((r) => r.result === "pass").length, (v.checklistResults || []).filter((r) => r.result === "fail").length, v.poNumber || "", v.notes || ""])]} />
           </div>
           {(() => {
             const dt = currentDowntime(device); const kids = allDevices.filter((x) => x.parentId === device.id); const parent = allDevices.find((x) => x.id === device.parentId);
             return (
               <>
                 {(parent || kids.length > 0) && (
-                  <div style={{ fontSize: 12, color: "#5B6672", background: "#F7F8F9", borderRadius: 9, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 12, color: "var(--muted)", background: "var(--card-hi)", borderRadius: 9, padding: "8px 10px" }}>
                     {parent && <div>Part of <b>{parent.name}</b></div>}
                     {kids.length > 0 && <div>Includes: {kids.map((k) => k.name).join(", ")}</div>}
                   </div>
                 )}
-                <div style={{ background: dt ? "#FBEAEA" : "#F7F8F9", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ background: dt ? "var(--danger-soft)" : "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: dt ? "#9B2C2C" : "#2F6B4A" }}>{dt ? `Out of service since ${fmtDate(dt.from.slice(0, 10))}${dt.reason ? ` — ${dt.reason}` : ""}` : "In service"}</span>
-                    <span style={{ fontSize: 11.5, color: "#5B6672" }}>{availability(device)}% available (90 days)</span>
+                    <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: dt ? "var(--danger)" : "var(--ok)" }}>{dt ? `Out of service since ${fmtDate(dt.from.slice(0, 10))}${dt.reason ? ` — ${dt.reason}` : ""}` : "In service"}</span>
+                    <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{availability(device)}% available (90 days)</span>
                   </div>
                   {ACTIVE_CAN_EDIT && onOutOfService && (dt ? (
-                    <button onClick={() => onOutOfService(false)} style={{ background: "#2F855A", color: "#fff", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Back in service</button>
+                    <button onClick={() => onOutOfService(false)} style={{ background: "#2F855A", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Back in service</button>
                   ) : (
                     <OutOfServiceForm onSubmit={(reason) => onOutOfService(true, reason)} />
                   ))}
@@ -82,30 +83,30 @@ export function DeviceHistoryModal({ allDevices = [], onOutOfService, works = []
       )}
       <div style={{ marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672" }}>Recurring tasks</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)" }}>Recurring tasks</span>
           {ACTIVE_CAN_EDIT && (
-            <button onClick={() => setAddingTask(true)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
+            <button onClick={() => setAddingTask(true)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
               <Plus size={12} /> Add task
             </button>
           )}
         </div>
         {tasks.length === 0 ? (
-          <div style={{ fontSize: 12, color: "#A3ABB4" }}>No extra recurring tasks — this device just follows its main service schedule.</div>
+          <div style={{ fontSize: 12, color: "var(--faint)" }}>No extra recurring tasks — this device just follows its main service schedule.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {tasks.map((t) => {
               const status = dueStatus(t.nextDate);
               return (
-                <div key={t.id} style={{ background: "#F7F8F9", border: "1px solid #E1E4E8", borderRadius: 10, padding: "9px 11px", display: "flex", alignItems: "center", gap: 8 }}>
+                <div key={t.id} style={{ background: "var(--card-hi)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 11px", display: "flex", alignItems: "center", gap: 8 }}>
                   <button onClick={() => setEditingTask(t)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                     <div style={{ fontSize: 13, fontWeight: 650 }}>{t.name}</div>
-                    <div style={{ fontSize: 11, color: "#8A94A0", display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: "var(--faint)", display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
                       <Badge tone={status.tone}>{status.label}</Badge>
                       <span>every {t.intervalMonths}mo</span>
                     </div>
                   </button>
                   {ACTIVE_CAN_EDIT && (
-                    <button onClick={() => onMarkTaskDone(t.id)} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 7, padding: "6px 9px", fontSize: 11, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Mark done</button>
+                    <button onClick={() => onMarkTaskDone(t.id)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 7, padding: "6px 9px", fontSize: 11, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Mark done</button>
                   )}
                   <ConfirmDeleteButton onConfirm={() => onDeleteTask(t.id)} size={13} />
                 </div>
@@ -117,25 +118,25 @@ export function DeviceHistoryModal({ allDevices = [], onOutOfService, works = []
 
       <div style={{ marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672" }}>Visit budgets</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)" }}>Visit budgets</span>
           {ACTIVE_CAN_EDIT && (
-            <button onClick={() => setAddingVisitBudget(true)} style={{ background: "#EEF0F2", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
+            <button onClick={() => setAddingVisitBudget(true)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
               <Plus size={12} /> Add visit budget
             </button>
           )}
         </div>
         {sortedVisitBudgets.length === 0 ? (
-          <div style={{ fontSize: 12, color: "#A3ABB4" }}>No per-visit budgets set — {device?.budgetPerVisit ? `falls back to the flat ${gbp(device.budgetPerVisit)}/visit budget.` : "add one to budget a specific visit differently, e.g. a bigger amount for a winter service."}</div>
+          <div style={{ fontSize: 12, color: "var(--faint)" }}>No per-visit budgets set — {device?.budgetPerVisit ? `falls back to the flat ${gbp(device.budgetPerVisit)}/visit budget.` : "add one to budget a specific visit differently, e.g. a bigger amount for a winter service."}</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {sortedVisitBudgets.map((v) => (
               <button key={v.id} onClick={() => setEditingVisitBudget(v)} style={{
-                background: "#F7F8F9", border: "1px solid #E1E4E8", borderRadius: 10, padding: "9px 11px",
+                background: "var(--card-hi)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 11px",
                 display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, cursor: "pointer", textAlign: "left", fontFamily: "inherit", width: "100%",
               }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 650 }}>{fmtDate(v.date)}</div>
-                  {v.note && <div style={{ fontSize: 11, color: "#8A94A0", marginTop: 2 }}>{v.note}</div>}
+                  {v.note && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>{v.note}</div>}
                 </div>
                 <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 13 }}>{gbp(v.amount)}</span>
               </button>
@@ -144,27 +145,27 @@ export function DeviceHistoryModal({ allDevices = [], onOutOfService, works = []
         )}
         {ACTIVE_CAN_EDIT && device?.budgetPerVisit > 0 && (
           <button onClick={onSyncBudget} style={{
-            width: "100%", marginTop: 8, background: "#F1F4F7", border: "1px dashed #C7D0DA", borderRadius: 8, padding: "8px 10px",
-            fontSize: 11.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+            width: "100%", marginTop: 8, background: "#F1F4F7", border: "1px dashed var(--border-strong)", borderRadius: 8, padding: "8px 10px",
+            fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
           }}>
             <RefreshCw size={12} /> Sync to Budget Plan
           </button>
         )}
       </div>
 
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", marginBottom: 8 }}>Visit history</div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Visit history</div>
       {sorted.length === 0 ? (
-        <div style={{ fontSize: 13, color: "#8A94A0", textAlign: "center", padding: "20px 0" }}>No visits logged yet.</div>
+        <div style={{ fontSize: 13, color: "var(--faint)", textAlign: "center", padding: "20px 0" }}>No visits logged yet.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sorted.map((s) => (
             <button key={s.id} onClick={() => onEdit(s)} style={{
-              background: "#F7F8F9", border: "1px solid #E1E4E8", borderRadius: 10, padding: "10px 12px",
+              background: "var(--card-hi)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px",
               display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, cursor: "pointer", textAlign: "left", fontFamily: "inherit", width: "100%",
             }}>
               <div>
                 <div style={{ fontWeight: 650, fontSize: 13.5 }}>{s.name || "Service"}</div>
-                <div style={{ fontSize: 11.5, color: "#8A94A0" }}>{fmtDate(s.date)}{s.cost ? ` · ${gbp(s.cost)}` : ""}{s.arrived && s.left ? ` · on site ${s.arrived}–${s.left}` : ""}{s.skipped ? " · skipped" : s.aborted ? " · not completed" : ""}{(s.updatedBy || s.loggedBy) ? ` · ${s.updatedBy || s.loggedBy}` : ""}</div>
+                <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{fmtDate(s.date)}{s.cost ? ` · ${gbp(s.cost)}` : ""}{s.arrived && s.left ? ` · on site ${s.arrived}–${s.left}` : ""}{s.skipped ? " · skipped" : s.aborted ? " · not completed" : ""}{(s.updatedBy || s.loggedBy) ? ` · ${s.updatedBy || s.loggedBy}` : ""}</div>
               </div>
               <Pencil size={14} color="#8A94A0" />
             </button>
@@ -214,11 +215,11 @@ export function AddVisitBudgetModal({ existing, onClose, onSave, onDelete }) {
         {isEdit && (
           confirmingDelete ? (
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={onDelete} style={{ flex: 1, background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
-              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+              <button onClick={onDelete} style={{ flex: 1, background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
+              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
             </div>
           ) : (
-            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
               <Trash2 size={13} /> Delete this visit budget
             </button>
           )
@@ -250,11 +251,11 @@ export function AddDeviceTaskModal({ existing, onClose, onSave, onDelete }) {
         {isEdit && (
           confirmingDelete ? (
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={onDelete} style={{ flex: 1, background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
-              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+              <button onClick={onDelete} style={{ flex: 1, background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
+              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
             </div>
           ) : (
-            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
               <Trash2 size={13} /> Delete this task
             </button>
           )
@@ -317,6 +318,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
   const [replacementCost, setReplacementCost] = useState(src?.replacementCost ? String(src.replacementCost) : "");
   const [expectedLifeYears, setExpectedLifeYears] = useState(src?.expectedLifeYears ? String(src.expectedLifeYears) : "");
   const [accessNotes, setAccessNotes] = useState(src?.accessNotes || "");
+  const [instructions, setInstructions] = useState(src?.instructions || "");
   const [permits, setPermits] = useState(src?.permits || []);
   const [ramsRequired, setRamsRequired] = useState(!!src?.ramsRequired);
   const [certRequired, setCertRequired] = useState(!!src?.certRequired);
@@ -324,7 +326,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
   const [pauseOpen, setPauseOpen] = useState(false);
   const [pauseUntil, setPauseUntil] = useState(addMonths(new Date().toISOString().slice(0, 10), 1));
   const [pauseDrop, setPauseDrop] = useState(true);
-  const [showSafety, setShowSafety] = useState(!!(src?.accessNotes || src?.permits?.length || src?.ramsRequired || src?.certRequired));
+  const [showSafety, setShowSafety] = useState(!!(src?.instructions || src?.accessNotes || src?.permits?.length || src?.ramsRequired || src?.certRequired));
   const [showAsset, setShowAsset] = useState(!!(src?.manufacturer || src?.model || src?.serialNumber || src?.installDate || src?.warrantyEnd || src?.photo || src?.links?.length));
   const locationSuppliers = suppliers.filter((s) => s.locationId === locationId);
 
@@ -352,7 +354,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
       expectedLifeYears: expectedLifeYears ? Number(expectedLifeYears) : null, replacementCost: replacementCost ? Number(replacementCost) : null,
       condition: condition || null, conditionNotes: conditionNotes.trim(), conditionDate: condition && condition !== (existing?.condition || "") ? new Date().toISOString().slice(0, 10) : (existing?.conditionDate || null),
       parentId: parentId || null, criticality, tags: [...new Set(tags.split(",").map((t) => t.trim()).filter(Boolean))],
-      accessNotes: accessNotes.trim(), permits, ramsRequired, certRequired, assignee: assignee || null,
+      accessNotes: accessNotes.trim(), instructions: instructions.trim(), permits, ramsRequired, certRequired, assignee: assignee || null,
       area: area.trim(), photo: photo || null, links: links.filter((l) => l.url.trim()).map((l) => ({ label: l.label.trim() || "Link", url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : `https://${l.url.trim()}` })),
     };
     if (isEdit) {
@@ -397,7 +399,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
               {ACTIVE_TEMPLATES.some((t) => t.custom) && <optgroup label="Your templates">{ACTIVE_TEMPLATES.filter((t) => t.custom).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>}
               <optgroup label="Standard templates">{ACTIVE_TEMPLATES.filter((t) => !t.custom).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>
             </Select>
-            {templateId && ACTIVE_TEMPLATES.find((t) => t.id === templateId)?.note && <span style={{ fontSize: 11, color: "#5B6672", background: "#F1F4F7", borderRadius: 7, padding: "6px 8px", marginTop: 4 }}>{ACTIVE_TEMPLATES.find((t) => t.id === templateId).note}</span>}
+            {templateId && ACTIVE_TEMPLATES.find((t) => t.id === templateId)?.note && <span style={{ fontSize: 11, color: "var(--muted)", background: "#F1F4F7", borderRadius: 7, padding: "6px 8px", marginTop: 4 }}>{ACTIVE_TEMPLATES.find((t) => t.id === templateId).note}</span>}
           </Field>
         )}
         <Field label="Service name"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Rooftop AHU 3, or Cleaning" /></Field>
@@ -443,8 +445,8 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
           <Field label="Asset tag"><TextInput value={assetTag} onChange={(e) => setAssetTag(e.target.value)} placeholder="AHU-003" /></Field>
           <Field label="Equipment type"><TextInput value={category} onChange={(e) => setCategory(e.target.value)} placeholder="HVAC" /></Field>
         </div>
-        <div style={{ background: "#F7F8F9", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          <button type="button" onClick={() => setShowAsset((v) => !v)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: "#5B6672" }}>
+        <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <button type="button" onClick={() => setShowAsset((v) => !v)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
             <span>Asset details — photo, make, model, serial, warranty, documents (optional)</span>
             <ChevronDown size={14} style={{ transform: showAsset ? "rotate(180deg)" : "none" }} />
           </button>
@@ -461,14 +463,14 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
               </div>
               <Field label="Photo of the equipment">
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {photo && <img src={photo} alt="" style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", border: "1px solid #E1E4E8" }} />}
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #D7DCE1", borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer" }}>
+                  {photo && <img src={photo} alt="" style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", border: "1px solid var(--border)" }} />}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer" }}>
                     <ImagePlus size={14} /> {photoBusy ? "Processing…" : photo ? "Change" : "Add photo"}
                     <input type="file" accept="image/*" capture="environment" onChange={pickPhoto} style={{ display: "none" }} />
                   </label>
-                  {photo && <button type="button" onClick={() => setPhoto(null)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Remove</button>}
+                  {photo && <button type="button" onClick={() => setPhoto(null)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Remove</button>}
                 </div>
-                <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>Helps technicians find the right unit. Saved small to keep storage down.</span>
+                <span style={{ fontSize: 10.5, color: "var(--faint)" }}>Helps technicians find the right unit. Saved small to keep storage down.</span>
               </Field>
               <Field label="Documents & links (O&M manual, drawings, SharePoint…)">
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -479,7 +481,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
                       <button type="button" onClick={() => setLinks((p) => p.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color="#A3ABB4" /></button>
                     </div>
                   ))}
-                  <button type="button" onClick={() => setLinks((p) => [...p, { label: "", url: "" }])} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#2B4562", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>+ Add a link</button>
+                  <button type="button" onClick={() => setLinks((p) => [...p, { label: "", url: "" }])} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>+ Add a link</button>
                 </div>
               </Field>
               <div style={{ display: "flex", gap: 8 }}>
@@ -487,31 +489,32 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
                 <Field label={`Replacement cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" value={replacementCost} onChange={(e) => setReplacementCost(e.target.value)} placeholder="estimate" /></Field>
               </div>
               {installDate && Number(expectedLifeYears) > 0 && <span style={{ fontSize: 11, color: "#5B21B6", fontWeight: 600 }}>Replacement due in {Number(installDate.slice(0, 4)) + Number(expectedLifeYears)}</span>}
-              <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>You'll get a notification 60 days before the warranty ends, and the year before replacement is due.</span>
+              <span style={{ fontSize: 10.5, color: "var(--faint)" }}>You'll get a notification 60 days before the warranty ends, and the year before replacement is due.</span>
             </>
           )}
         </div>
-        <div style={{ background: "#F7F8F9", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          <button type="button" onClick={() => setShowSafety((v) => !v)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: "#5B6672" }}>
-            <span>Access &amp; safety — RAMS, permits, access notes (optional)</span>
+        <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <button type="button" onClick={() => setShowSafety((v) => !v)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
+            <span>Instructions, access &amp; safety — RAMS, permits (optional)</span>
             <ChevronDown size={14} style={{ transform: showSafety ? "rotate(180deg)" : "none" }} />
           </button>
           {showSafety && (
             <>
+              <Field label="Instructions for the technician (what to do, where, special steps)"><TextArea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="e.g. Isolate at DB-3 before opening. Replace both filter banks. Record supply air temperature." /></Field>
               <Field label="Access notes"><TextArea value={accessNotes} onChange={(e) => setAccessNotes(e.target.value)} placeholder="e.g. Plant room key at reception. Access via loading bay. Out of hours only." /></Field>
-              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "#3A4451", cursor: "pointer" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
                 <input type="checkbox" checked={ramsRequired} onChange={(e) => setRamsRequired(e.target.checked)} style={{ margin: 0 }} /> RAMS required before work starts
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "#3A4451", cursor: "pointer" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
                 <input type="checkbox" checked={certRequired} onChange={(e) => setCertRequired(e.target.checked)} style={{ margin: 0 }} /> Certificate required for every visit (alerts if one is missing)
               </label>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#3A4451" }}>Permits needed</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>Permits needed</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {PERMIT_TYPES.map((p) => (
                   <ToggleButton key={p} active={permits.includes(p)} onClick={() => setPermits((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])}>{p}</ToggleButton>
                 ))}
               </div>
-              <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>Shown on the service card and job sheet, and checked when a visit is logged.</span>
+              <span style={{ fontSize: 10.5, color: "var(--faint)" }}>Shown on the service card and job sheet, and checked when a visit is logged.</span>
             </>
           )}
         </div>
@@ -535,7 +538,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
             {locationSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name} ({CATEGORY_META[s.category]?.label})</option>)}
           </Select>
           {locationSuppliers.length === 0 && (
-            <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>No suppliers added at this location yet — add one from the Suppliers tab first.</span>
+            <span style={{ fontSize: 10.5, color: "var(--faint)" }}>No suppliers added at this location yet — add one from the Suppliers tab first.</span>
           )}
         </Field>
         <Field label={`Budget per visit (${ACTIVE_CURRENCY_CODE}, optional)`}><TextInput type="number" min="0" step="0.01" value={budgetPerVisit} onChange={(e) => setBudgetPerVisit(e.target.value)} placeholder="0.00" /></Field>
@@ -543,7 +546,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
           {checklist.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
               {checklist.map((item, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F7F8F9", borderRadius: 7, padding: "6px 8px" }}>
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--card-hi)", borderRadius: 7, padding: "6px 8px" }}>
                   <CheckCircle2 size={13} color="#8A94A0" />
                   <span style={{ flex: 1, fontSize: 12.5 }}>{item}</span>
                   <button type="button" onClick={() => setChecklist((p) => p.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><X size={13} color="#A3ABB4" /></button>
@@ -553,17 +556,17 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
           )}
           <div style={{ display: "flex", gap: 6 }}>
             <TextInput value={newCheckItem} onChange={(e) => setNewCheckItem(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCheckItem(); } }} placeholder="e.g. Filters cleaned" style={{ flex: 1 }} />
-            <button type="button" onClick={addCheckItem} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>Add</button>
+            <button type="button" onClick={addCheckItem} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Add</button>
           </div>
           {checklist.length === 0 && (
-            <button type="button" onClick={() => setChecklist(CHECKLIST_PRESETS[serviceCategory] || [])} style={{ background: "none", border: "none", color: "#2B4562", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: "4px 0", textAlign: "left" }}>
+            <button type="button" onClick={() => setChecklist(CHECKLIST_PRESETS[serviceCategory] || [])} style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: "4px 0", textAlign: "left" }}>
               + Start from a standard {(CATEGORY_META[serviceCategory] || CATEGORY_META.maintenance).label.toLowerCase()} checklist
             </button>
           )}
-          <span style={{ fontSize: 10.5, color: "#A3ABB4" }}>Ticked off Pass / Fail / N/A each time a visit is logged. Failed items create follow-up jobs in Works.</span>
+          <span style={{ fontSize: 10.5, color: "var(--faint)" }}>Ticked off Pass / Fail / N/A each time a visit is logged. Failed items create follow-up jobs in Works.</span>
         </Field>
         <CustomFieldInputs appliesTo="service" category={serviceCategory} values={custom} onChange={setCustom} />
-        {fieldErr && <div style={{ fontSize: 12, color: "#C53030" }}>{fieldErr}</div>}
+        {fieldErr && <div style={{ fontSize: 12, color: "var(--danger)" }}>{fieldErr}</div>}
 
         {isEdit ? (
           <div style={{ display: "flex", gap: 10 }}>
@@ -590,7 +593,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
             {repeat === "custom" && (
               <Field label="How many times a year">
                 <TextInput type="number" min="1" max="365" value={customCount} onChange={(e) => setCustomCount(e.target.value)} placeholder="e.g. 7" />
-                <span style={{ fontSize: 11, color: "#8A94A0" }}>Creates {Math.max(1, Number(customCount) || 1)} visits, spaced about {Math.round(365 / Math.max(1, Number(customCount) || 1))} days apart.</span>
+                <span style={{ fontSize: 11, color: "var(--faint)" }}>Creates {Math.max(1, Number(customCount) || 1)} visits, spaced about {Math.round(365 / Math.max(1, Number(customCount) || 1))} days apart.</span>
               </Field>
             )}
             {repeat === "manual" && (
@@ -608,13 +611,13 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
                   ))}
                   <button onClick={addManualDate} style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 11px", borderRadius: 8,
-                    border: "1px dashed #D7DCE1", background: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12.5, color: "#2B4562", fontWeight: 650,
+                    border: "1px dashed var(--border)", background: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12.5, color: "var(--accent)", fontWeight: 650,
                   }}><Plus size={13} /> Add another visit date</button>
                 </div>
               </Field>
             )}
             {(repeat === "once" || repeat === "weekly" || repeat === "monthly" || repeat === "quarterly" || repeat === "custom" || repeat === "manual") && (
-              <div style={{ fontSize: 11, color: "#8A94A0", background: "#F1F4F7", borderRadius: 8, padding: "8px 10px" }}>
+              <div style={{ fontSize: 11, color: "var(--faint)", background: "#F1F4F7", borderRadius: 8, padding: "8px 10px" }}>
                 This also adds a matching visit budget and Budget → Plan line for each date, using the budget per visit above — so this service and the Budget tab stay in sync.
               </div>
             )}
@@ -624,41 +627,41 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
         {isEdit && (
           confirmingDelete ? (
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => onDelete(existing.id)} style={{ flex: 1, background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
-              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+              <button onClick={() => onDelete(existing.id)} style={{ flex: 1, background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
+              <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
             </div>
           ) : (
-            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+            <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
               <Trash2 size={13} /> Delete this service
             </button>
           )
         )}
         {isEdit && onDuplicate && ACTIVE_CAN_EDIT && (
-          <button type="button" onClick={() => onDuplicate(existing)} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, color: "#2B4562", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 12px" }}>
+          <button type="button" onClick={() => onDuplicate(existing)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, color: "var(--accent)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 12px" }}>
             <Copy size={13} /> Duplicate this service (e.g. another unit of the same kind)
           </button>
         )}
         {isEdit && onPause && ACTIVE_CAN_EDIT && !existing.archived && (
           existing.pausedUntil && existing.pausedUntil >= new Date().toISOString().slice(0, 10) ? (
-            <button type="button" onClick={() => onResume(existing.id)} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, color: "#2B4562", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 12px" }}>
+            <button type="button" onClick={() => onResume(existing.id)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, color: "var(--accent)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 12px" }}>
               <PauseCircle size={13} /> Paused until {fmtDate(existing.pausedUntil)} — resume now
             </button>
           ) : pauseOpen ? (
-            <div style={{ background: "#F7F8F9", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
               <Field label="Pause until (next due becomes this date)"><TextInput type="date" value={pauseUntil} onChange={(e) => setPauseUntil(e.target.value)} /></Field>
-              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "#3A4451", cursor: "pointer" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
                 <input type="checkbox" checked={pauseDrop} onChange={(e) => setPauseDrop(e.target.checked)} style={{ margin: 0 }} /> Remove planned visits and budget lines during the pause
               </label>
               <PrimaryButton onClick={() => pauseUntil && onPause(existing.id, pauseUntil, pauseDrop)}><PauseCircle size={15} /> Pause service</PrimaryButton>
             </div>
           ) : (
-            <button type="button" onClick={() => setPauseOpen(true)} style={{ background: "none", border: "none", color: "#5B6672", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+            <button type="button" onClick={() => setPauseOpen(true)} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
               <PauseCircle size={13} /> Pause — e.g. area closed or refurbishment (no alerts until it restarts)
             </button>
           )
         )}
         {isEdit && onArchive && ACTIVE_CAN_EDIT && !existing.archived && (
-          <button type="button" onClick={() => onArchive(existing.id)} style={{ background: "none", border: "none", color: "#5B6672", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+          <button type="button" onClick={() => onArchive(existing.id)} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
             <Archive size={13} /> Archive — decommissioned / no longer maintained (keeps history)
           </button>
         )}
@@ -706,6 +709,9 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
   });
   function setCheck(i, patch) { setCheckResults((prev) => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
   const [cost, setCost] = useState(existing?.cost ? String(existing.cost) : "");
+  const [breakdown, setBreakdown] = useState(existing?.costBreakdown || null);
+  const [nextOverride, setNextOverride] = useState("");
+  const setPart = (k, v) => setBreakdown((p) => { const n = { ...(p || {}), [k]: v }; const total = ["labour", "parts", "callout", "other"].reduce((t, x) => t + (Number(n[x]) || 0), 0); setCost(total ? String(Math.round(total * 100) / 100) : ""); return n; });
   const [photo, setPhoto] = useState(existing?.certificatePhoto || null);
   const [visitPhotos, setVisitPhotos] = useState(existing?.photos || []);
   const [partsUsed, setPartsUsed] = useState(existing?.partsUsed || []);
@@ -739,7 +745,7 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
     onSave({
       id: existing?.id, deviceId: device.id, name: name.trim() || defaultName, date,
       technician: technician.trim(), supplierId: supplierId || null,
-      notes: notes.trim(), cost: cost ? Number(cost) : 0, certificatePhoto: photo, photos: visitPhotos.length ? visitPhotos : undefined, partsUsed: partsUsed.filter((p) => Number(p.qty) > 0).length ? partsUsed.filter((p) => Number(p.qty) > 0).map((p) => ({ ...p, qty: Number(p.qty) })) : undefined,
+      notes: notes.trim(), cost: cost ? Number(cost) : 0, costBreakdown: breakdown && Object.values(breakdown).some((x) => Number(x)) ? Object.fromEntries(Object.entries(breakdown).map(([k, v]) => [k, Number(v) || 0])) : undefined, nextDueOverride: !isEdit && nextOverride ? nextOverride : undefined, certificatePhoto: photo, photos: visitPhotos.length ? visitPhotos : undefined, partsUsed: partsUsed.filter((p) => Number(p.qty) > 0).length ? partsUsed.filter((p) => Number(p.qty) > 0).map((p) => ({ ...p, qty: Number(p.qty) })) : undefined,
       checklistResults: checkResults.length ? checkResults : undefined,
       poNumber: visitPo.trim(),
       custom: Object.keys(visitCustom).length ? visitCustom : undefined,
@@ -784,20 +790,30 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
           </Select>
         </Field>
         <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" /></Field>
+        {breakdown ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, background: "var(--card-hi)", borderRadius: 9, padding: 8 }}>
+            {[["labour", "Labour"], ["parts", "Parts"], ["callout", "Call-out"], ["other", "Other"]].map(([k, l]) => (
+              <label key={k} style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600 }}>{l}<TextInput type="number" min="0" step="0.01" value={breakdown[k] ?? ""} onChange={(e) => setPart(k, e.target.value)} style={{ width: "100%", padding: "5px 7px" }} /></label>
+            ))}
+            <span style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--faint)" }}>The cost above is the total of these.</span>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setBreakdown({ labour: "", parts: "", callout: "", other: "" })} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", marginTop: -6 }}>Split cost into labour / parts / call-out</button>
+        )}
         {nearestVisitBudget ? (
-          <div style={{ fontSize: 11.5, color: "#8A5A0B", background: "#FDF1E0", border: "1px solid #E6D9BC", borderRadius: 8, padding: "7px 10px" }}>
+          <div style={{ fontSize: 11.5, color: "var(--warn)", background: "var(--warn-soft)", border: "1px solid #E6D9BC", borderRadius: 8, padding: "7px 10px" }}>
             Nearest visit budget: {gbp(nearestVisitBudget.amount)} (set for {fmtDate(nearestVisitBudget.date)}{nearestVisitBudget.note ? ` — ${nearestVisitBudget.note}` : ""})
           </div>
         ) : device?.budgetPerVisit ? (
-          <div style={{ fontSize: 11.5, color: "#8A94A0" }}>Flat per-visit budget for this service: {gbp(device.budgetPerVisit)}</div>
+          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Flat per-visit budget for this service: {gbp(device.budgetPerVisit)}</div>
         ) : null}
         <div style={{ display: "flex", gap: 8 }}>
           <Field label="Arrived (optional)"><TextInput type="time" value={arrived} onChange={(e) => setArrived(e.target.value)} /></Field>
           <Field label="Left (optional)"><TextInput type="time" value={left} onChange={(e) => setLeft(e.target.value)} /></Field>
         </div>
-        {arrived && left && left > arrived && <div style={{ fontSize: 11.5, color: "#5B6672", marginTop: -6 }}>Time on site: {(() => { const [ah, am] = arrived.split(":").map(Number); const [lh, lm] = left.split(":").map(Number); const mins = lh * 60 + lm - (ah * 60 + am); return `${Math.floor(mins / 60)}h ${mins % 60}m`; })()}</div>}
+        {arrived && left && left > arrived && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: -6 }}>Time on site: {(() => { const [ah, am] = arrived.split(":").map(Number); const [lh, lm] = left.split(":").map(Number); const mins = lh * 60 + lm - (ah * 60 + am); return `${Math.floor(mins / 60)}h ${mins % 60}m`; })()}</div>}
         {!isEdit && lastVisit && (
-          <button type="button" onClick={() => { if (lastVisit.technician) setTechnician(lastVisit.technician); if (lastVisit.supplierId) setSupplierId(lastVisit.supplierId); if (lastVisit.cost && !cost) setCost(String(lastVisit.cost)); if (lastVisit.name) setName(lastVisit.name); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "#2B4562", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>
+          <button type="button" onClick={() => { if (lastVisit.technician) setTechnician(lastVisit.technician); if (lastVisit.supplierId) setSupplierId(lastVisit.supplierId); if (lastVisit.cost && !cost) setCost(String(lastVisit.cost)); if (lastVisit.name) setName(lastVisit.name); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>
             ↺ Copy details from last visit ({fmtDate(lastVisit.date)}{lastVisit.technician ? `, ${lastVisit.technician}` : ""})
           </button>
         )}
@@ -805,9 +821,9 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
           <Field label={`Checklist (${checkResults.filter((r) => r.result).length}/${checkResults.length} answered)`}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {checkResults.map((r, i) => (
-                <div key={i} style={{ background: r.result === "fail" ? "#FBEAEA" : "#F7F8F9", borderRadius: 8, padding: "8px 10px" }}>
+                <div key={i} style={{ background: r.result === "fail" ? "var(--danger-soft)" : "var(--card-hi)", borderRadius: 8, padding: "8px 10px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <span style={{ fontSize: 13, color: "#1B2430", fontWeight: 600, flex: 1 }}>{checklistLabel(r.item)}</span>
+                    <span style={{ fontSize: 13, color: "var(--text)", fontWeight: 600, flex: 1 }}>{checklistLabel(r.item)}</span>
                     {parseReading(r.item) && (() => { const rd = parseReading(r.item); return (
                       <TextInput type="number" inputMode="decimal" step="any" value={r.value} placeholder={rd.unit || "value"} style={{ width: 78, padding: "5px 7px" }}
                         onChange={(e) => { const v = e.target.value; const num = Number(v); setCheck(i, { value: v, result: v === "" ? "" : num >= rd.min && num <= rd.max ? "pass" : "fail", note: v !== "" && !(num >= rd.min && num <= rd.max) && !r.note ? `Reading ${v}${rd.unit ? ` ${rd.unit}` : ""} outside ${rd.min}–${rd.max}` : r.note }); }} />
@@ -815,7 +831,7 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
                     <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                       {[["pass", "Pass", "#2F855A"], ["fail", "Fail", "#C53030"], ["na", "N/A", "#8A94A0"]].map(([key, label, color]) => (
                         <button key={key} type="button" onClick={() => setCheck(i, { result: r.result === key ? "" : key })} style={{
-                          border: `1.5px solid ${color}`, background: r.result === key ? color : "#fff", color: r.result === key ? "#fff" : color,
+                          border: `1.5px solid ${color}`, background: r.result === key ? color : "var(--card)", color: r.result === key ? "#fff" : color,
                           borderRadius: 7, padding: "4px 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
                         }}>{label}</button>
                       ))}
@@ -828,7 +844,7 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
               ))}
             </div>
             {checkResults.some((r) => r.result === "fail") && (
-              <span style={{ fontSize: 11, color: "#9B2C2C" }}>Each failed item will create a high-priority follow-up in Works.</span>
+              <span style={{ fontSize: 11, color: "var(--danger)" }}>Each failed item will create a high-priority follow-up in Works.</span>
             )}
           </Field>
         )}
@@ -836,12 +852,12 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
           const budget = Number(nearestVisitBudget?.amount || device?.budgetPerVisit) || 0;
           const c = Number(cost) || 0;
           if (!budget || c <= budget * 1.1) return null;
-          return <div style={{ fontSize: 12, color: "#8A5A0B", background: "#FDF1E0", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>
+          return <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>
             {gbp(c - budget)} over the {gbp(budget)} visit budget (+{Math.round(((c - budget) / budget) * 100)}%). Please say why in the notes — it will show in the Budget tab variance.
           </div>;
         })()}
-        <div style={{ background: aborted ? "#FBEAEA" : "#F7F8F9", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 650, color: aborted ? "#9B2C2C" : "#3A4451", cursor: "pointer" }}>
+        <div style={{ background: aborted ? "var(--danger-soft)" : "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 650, color: aborted ? "var(--danger)" : "var(--text-2)", cursor: "pointer" }}>
             <input type="checkbox" checked={aborted} onChange={(e) => setAborted(e.target.checked)} style={{ margin: 0 }} /> <Ban size={13} /> Visit NOT completed (supplier attended but couldn't do the work)
           </label>
           {aborted && (
@@ -850,13 +866,13 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
                 <option value="">— Why? —</option>
                 {["No access to area", "Area in use / meeting", "Equipment isolated or faulty", "Wrong parts / tools", "Missing RAMS or permit", "Technician left early", "Other"].map((r) => <option key={r} value={r}>{r}</option>)}
               </Select>
-              <span style={{ fontSize: 11, color: "#9B2C2C" }}>The service stays due — it won't move to the next date. This counts against the supplier if the reason is theirs.</span>
+              <span style={{ fontSize: 11, color: "var(--danger)" }}>The service stays due — it won't move to the next date. This counts against the supplier if the reason is theirs.</span>
             </>
           )}
         </div>
         {!isEdit && !aborted && (
-          <div style={{ background: skipped ? "#EEF0F2" : "#F7F8F9", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 650, color: "#3A4451", cursor: "pointer" }}>
+          <div style={{ background: skipped ? "var(--card-hi)" : "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 650, color: "var(--text-2)", cursor: "pointer" }}>
               <input type="checkbox" checked={skipped} onChange={(e) => setSkipped(e.target.checked)} style={{ margin: 0 }} /> <SkipForward size={13} /> Skip this visit on purpose (moves on to the next date)
             </label>
             {skipped && (
@@ -865,7 +881,7 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
                   <option value="">— Why? —</option>
                   {SKIP_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
                 </Select>
-                <span style={{ fontSize: 11, color: "#5B6672" }}>Recorded as skipped (not a completed visit) and the next visit is scheduled as normal.</span>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>Recorded as skipped (not a completed visit) and the next visit is scheduled as normal.</span>
               </>
             )}
           </div>
@@ -878,12 +894,18 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
             </Select>
           </Field>
         )}
+        {device?.instructions && (
+          <div style={{ background: "var(--accent-soft)", borderRadius: 10, padding: "9px 11px", fontSize: 12.3, color: "var(--accent)" }}><b>Instructions:</b> <span style={{ whiteSpace: "pre-wrap" }}>{device.instructions}</span></div>
+        )}
+        {!isEdit && !aborted && !skipped && (
+          <Field label="Next visit due (optional — leave blank to follow the schedule)"><TextInput type="date" value={nextOverride} onChange={(e) => setNextOverride(e.target.value)} /></Field>
+        )}
         {(needsRams || needsPermit) && (
-          <div style={{ background: "#FDF1E0", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#8A5A0B", display: "flex", alignItems: "center", gap: 5 }}><HardHat size={13} /> Safety paperwork for this job</div>
-            {device?.accessNotes && <div style={{ fontSize: 11.5, color: "#5B6672" }}><KeyRound size={11} style={{ verticalAlign: -1 }} /> {device.accessNotes}</div>}
+          <div style={{ background: "var(--warn-soft)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warn)", display: "flex", alignItems: "center", gap: 5 }}><HardHat size={13} /> Safety paperwork for this job</div>
+            {device?.accessNotes && <div style={{ fontSize: 11.5, color: "var(--muted)" }}><KeyRound size={11} style={{ verticalAlign: -1 }} /> {device.accessNotes}</div>}
             {needsRams && (
-              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "#3A4451", cursor: "pointer" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
                 <input type="checkbox" checked={ramsReceived} onChange={(e) => setRamsReceived(e.target.checked)} style={{ margin: 0 }} /> RAMS received and reviewed
               </label>
             )}
@@ -891,11 +913,11 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
               <Field label={`Permit reference (${device.permits.join(", ")})`}>
                 <TextInput list="open-permits" value={permitRef} onChange={(e) => setPermitRef(e.target.value)} placeholder="e.g. PTW-0142" />
                 <datalist id="open-permits">{openPermits.map((pm) => <option key={pm.id} value={pm.ref}>{pm.type} — {pm.contractor}</option>)}</datalist>
-                {openPermits.length > 0 && !permitRef && <span style={{ fontSize: 11, color: "#2B4562" }}>Open permits: {openPermits.map((pm) => pm.ref).join(", ")}</span>}
+                {openPermits.length > 0 && !permitRef && <span style={{ fontSize: 11, color: "var(--accent)" }}>Open permits: {openPermits.map((pm) => pm.ref).join(", ")}</span>}
               </Field>
             )}
             {((needsRams && !ramsReceived) || (needsPermit && !permitRef.trim())) && (
-              <span style={{ fontSize: 11, color: "#9B2C2C", fontWeight: 600 }}>Missing: {[needsRams && !ramsReceived && "RAMS", needsPermit && !permitRef.trim() && "permit reference"].filter(Boolean).join(" and ")} — you can still save, but it will show as missing on the record.</span>
+              <span style={{ fontSize: 11, color: "var(--danger)", fontWeight: 600 }}>Missing: {[needsRams && !ramsReceived && "RAMS", needsPermit && !permitRef.trim() && "permit reference"].filter(Boolean).join(" and ")} — you can still save, but it will show as missing on the record.</span>
             )}
           </div>
         )}
@@ -905,7 +927,7 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               {partsUsed.map((p, i) => { const sp = spares.find((x) => x.id === p.spareId); return (
                 <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <span style={{ flex: 1, fontSize: 12.8 }}>{sp?.name || "Part"} <span style={{ color: "#8A94A0" }}>({sp?.qty ?? 0} in stock)</span></span>
+                  <span style={{ flex: 1, fontSize: 12.8 }}>{sp?.name || "Part"} <span style={{ color: "var(--faint)" }}>({sp?.qty ?? 0} in stock)</span></span>
                   <TextInput type="number" min="1" value={p.qty} disabled={isEdit} onChange={(e) => setPartsUsed((prev) => prev.map((x, j) => j === i ? { ...x, qty: e.target.value } : x))} style={{ width: 64, padding: "5px 7px" }} />
                   {!isEdit && <button type="button" onClick={() => setPartsUsed((prev) => prev.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={13} color="#A3ABB4" /></button>}
                 </div>
@@ -917,7 +939,7 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
                   <optgroup label="Other spares">{otherSpares.filter((sp) => !partsUsed.some((p) => p.spareId === sp.id)).map((sp) => <option key={sp.id} value={sp.id}>{sp.name} ({sp.qty})</option>)}</optgroup>
                 </select>
               )}
-              {!isEdit && partsUsed.length > 0 && <span style={{ fontSize: 11, color: "#8A94A0" }}>Stock is reduced when you save.</span>}
+              {!isEdit && partsUsed.length > 0 && <span style={{ fontSize: 11, color: "var(--faint)" }}>Stock is reduced when you save.</span>}
             </div>
           </Field>
         )}
@@ -928,7 +950,7 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
                 <Star size={24} color={n <= rating ? "#D97706" : "#C0C6CC"} fill={n <= rating ? "#D97706" : "none"} />
               </button>
             ))}
-            <span style={{ fontSize: 11.5, color: "#8A94A0", marginLeft: 6 }}>{["", "Poor", "Below par", "OK", "Good", "Excellent"][rating]}</span>
+            <span style={{ fontSize: 11.5, color: "var(--faint)", marginLeft: 6 }}>{["", "Poor", "Below par", "OK", "Good", "Excellent"][rating]}</span>
           </div>
         </Field>
         {isEdit && (
@@ -939,36 +961,36 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
               ${checkResults.length ? `<h2>Checklist</h2>${tableHtml(["Item", "Reading", "Result", "Note"], checkResults.map((r) => [e(checklistLabel(r.item)), r.value !== "" && r.value != null ? e(String(r.value)) : "", r.result === "pass" ? '<span class="ok">Pass</span>' : r.result === "fail" ? '<span class="bad">Fail</span>' : r.result === "na" ? "N/A" : "", e(r.note || "")]))}` : ""}
               ${notes ? `<h2>Notes</h2><div>${e(notes).replace(/\n/g, "<br>")}</div>` : ""}
               ${signatures?.technician || signatures?.site ? `<h2>Sign-off</h2><table><tr>${signatures.technician ? `<td>Technician<br><img src="${signatures.technician}" style="max-height:70px"></td>` : ""}${signatures.site ? `<td>Site<br><img src="${signatures.site}" style="max-height:70px"></td>` : ""}</tr></table>` : ""}`);
-          }} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Printer size={14} /> Print visit report
           </button>
         )}
         {isEdit && (
-          <button type="button" onClick={emailSummary} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <button type="button" onClick={emailSummary} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Mail size={14} /> Email visit summary{suppliers.find((x) => x.id === supplierId)?.managerEmail ? " to supplier" : ""}
           </button>
         )}
         {showSignoff ? (
           <SignOffSection signatures={signatures} onChange={setSignatures} gps={gps} onGps={setGps} defaultTechName={technician} />
         ) : (
-          <button type="button" onClick={() => setShowSignoff(true)} style={{ background: "#F1F4F7", border: "1px dashed #C7D0DA", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>
+          <button type="button" onClick={() => setShowSignoff(true)} style={{ background: "#F1F4F7", border: "1px dashed var(--border-strong)", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>
             + Add sign-off signatures &amp; location stamp
           </button>
         )}
         <CustomFieldInputs appliesTo="visit" category={device?.serviceCategory} values={visitCustom} onChange={setVisitCustom} />
-        {visitFieldErr && <div style={{ fontSize: 12, color: "#C53030" }}>{visitFieldErr}</div>}
+        {visitFieldErr && <div style={{ fontSize: 12, color: "var(--danger)" }}>{visitFieldErr}</div>}
         <Field label="PO / work order number (optional)"><TextInput value={visitPo} onChange={(e) => setVisitPo(e.target.value)} placeholder="e.g. PO-40213" /></Field>
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Work performed, parts replaced, readings…" /></Field>
         <Field label="Certificate photo">
-          <label style={{ border: "1px dashed #D7DCE1", borderRadius: 10, padding: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "#5B6672", fontSize: 13, background: photo ? "transparent" : "#FAFBFC" }}>
+          <label style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "var(--muted)", fontSize: 13, background: photo ? "transparent" : "#FAFBFC" }}>
             {busy ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Camera size={16} />}
             {photo ? "Replace photo" : "Upload certificate or job photo"}
             <input type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
           </label>
-          {photo && <img src={photo} alt="preview" style={{ width: "100%", borderRadius: 10, marginTop: 8, border: "1px solid #E1E4E8" }} />}
+          {photo && <img src={photo} alt="preview" style={{ width: "100%", borderRadius: 10, marginTop: 8, border: "1px solid var(--border)" }} />}
         </Field>
         {device?.serviceIntervalMonths ? (
-          <div style={{ fontSize: 12, color: "#8A94A0" }}>Next visit will auto-set to {fmtDate(addMonths(date, device.serviceIntervalMonths))} ({device.serviceIntervalMonths}mo interval) based on the latest logged date.</div>
+          <div style={{ fontSize: 12, color: "var(--faint)" }}>Next visit will auto-set to {fmtDate(addMonths(date, device.serviceIntervalMonths))} ({device.serviceIntervalMonths}mo interval) based on the latest logged date.</div>
         ) : null}
         {ACTIVE_CAN_EDIT ? (
           <>
@@ -976,18 +998,18 @@ export function LogServiceModal({ spares = [], lastVisit = null, locationName = 
             {isEdit && (
               confirmingDelete ? (
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => onDelete(existing.id, device.id)} style={{ flex: 1, background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
-                  <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                  <button onClick={() => onDelete(existing.id, device.id)} style={{ flex: 1, background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
+                  <button onClick={() => setConfirmingDelete(false)} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
                 </div>
               ) : (
-                <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
+                <button onClick={() => setConfirmingDelete(true)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}>
                   <Trash2 size={13} /> Delete this visit
                 </button>
               )
             )}
           </>
         ) : (
-          <div style={{ fontSize: 11.5, color: "#A3ABB4", textAlign: "center" }}>Viewing only — this profile can't save changes.</div>
+          <div style={{ fontSize: 11.5, color: "var(--faint)", textAlign: "center" }}>Viewing only — this profile can't save changes.</div>
         )}
       </div>
     </Modal>
@@ -1009,6 +1031,7 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
   const [dateRaised, setDateRaised] = useState(() => new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState("quoted");
   const [budgetType, setBudgetType] = useState("budgeted");
+  const [category, setCategory] = useState(prefill?.category || "");
   const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
 
@@ -1027,17 +1050,20 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
     { const miss = missingRequiredFields("work", devices.find((d) => d.id === deviceId)?.serviceCategory, workCustom); if (miss.length) { setWorkFieldErr(`Please fill in: ${miss.join(", ")}`); return; } }
     if (!deviceId || !description.trim()) return;
     if (suppliers.find((s) => s.id === supplierId)?.status === "blocked" && !window.confirm("This supplier is marked 'Do not use'. Raise the work anyway?")) return;
-    onSave({ deviceId, description: description.trim(), quoteAmount: quoteAmount ? Number(quoteAmount) : 0, dateRaised, status, budgetType, photos, priority, supplierId: supplierId || null, comments: [], poNumber: poNumber.trim(), custom: Object.keys(workCustom).length ? workCustom : undefined });
+    onSave({ category: category || null, deviceId, description: description.trim(), quoteAmount: quoteAmount ? Number(quoteAmount) : 0, dateRaised, status, budgetType, photos, priority, supplierId: supplierId || null, comments: [], poNumber: poNumber.trim(), custom: Object.keys(workCustom).length ? workCustom : undefined });
   }
   return (
     <Modal title="Add extra work" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {(() => { const dup = openWorks.filter((w) => w.deviceId === deviceId); return dup.length ? <div style={{ fontSize: 12, color: "#8A5A0B", background: "#FDF1E0", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>This service already has {dup.length} open job{dup.length === 1 ? "" : "s"}: {dup.slice(0, 2).map((w) => `"${String(w.description).slice(0, 40)}" (${w.status.replace("_", " ")})`).join(", ")}. Check it isn't the same problem.</div> : null; })()}
-        {suppliers.find((s) => s.id === supplierId)?.status === "blocked" && <div style={{ fontSize: 12, color: "#9B2C2C", background: "#FBEAEA", borderRadius: 8, padding: "8px 10px", fontWeight: 700 }}>This supplier is marked "Do not use".</div>}
+        {(() => { const dup = openWorks.filter((w) => w.deviceId === deviceId); return dup.length ? <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>This service already has {dup.length} open job{dup.length === 1 ? "" : "s"}: {dup.slice(0, 2).map((w) => `"${String(w.description).slice(0, 40)}" (${w.status.replace("_", " ")})`).join(", ")}. Check it isn't the same problem.</div> : null; })()}
+        {suppliers.find((s) => s.id === supplierId)?.status === "blocked" && <div style={{ fontSize: 12, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 700 }}>This supplier is marked "Do not use".</div>}
         <Field label="Service">
           <Select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); const d = devices.find((x) => x.id === e.target.value); if (d?.supplierId) setSupplierId(d.supplierId); }}>
             {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </Select>
+        </Field>
+        <Field label="Trade (optional)">
+          <Select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">—</option>{WORK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
         </Field>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Priority">
@@ -1054,7 +1080,7 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
         </div>
         <Field label="PO / work order number (optional)"><TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="e.g. PO-40213" /></Field>
         <CustomFieldInputs appliesTo="work" category={devices.find((d) => d.id === deviceId)?.serviceCategory} values={workCustom} onChange={setWorkCustom} />
-        {workFieldErr && <div style={{ fontSize: 12, color: "#C53030" }}>{workFieldErr}</div>}
+        {workFieldErr && <div style={{ fontSize: 12, color: "var(--danger)" }}>{workFieldErr}</div>}
         <Field label="Description"><TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What extra work is being quoted or done?" /></Field>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label={`Quote amount (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={quoteAmount} onChange={(e) => setQuoteAmount(e.target.value)} placeholder="0.00" /></Field>
@@ -1069,10 +1095,10 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
           <Select value={budgetType} onChange={(e) => setBudgetType(e.target.value)}>
             {WORK_BUDGET_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
           </Select>
-          <span style={{ fontSize: 11, color: "#8A94A0" }}>{WORK_BUDGET_TYPES.find((t) => t.key === budgetType)?.hint}</span>
+          <span style={{ fontSize: 11, color: "var(--faint)" }}>{WORK_BUDGET_TYPES.find((t) => t.key === budgetType)?.hint}</span>
         </Field>
         <Field label="Photos">
-          <label style={{ border: "1px dashed #D7DCE1", borderRadius: 10, padding: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "#5B6672", fontSize: 13, background: "#FAFBFC" }}>
+          <label style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "var(--muted)", fontSize: 13, background: "#FAFBFC" }}>
             {busy ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Camera size={16} />}
             Add photos
             <input type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
@@ -1081,8 +1107,8 @@ export function AddWorkModal({ openWorks = [], prefill = null, devices, supplier
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               {photos.map((p, i) => (
                 <div key={i} style={{ position: "relative" }}>
-                  <img src={p} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", border: "1px solid #E1E4E8" }} />
-                  <button onClick={() => removePhoto(i)} style={{ position: "absolute", top: -6, right: -6, background: "#1B2430", borderRadius: "50%", width: 18, height: 18, border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={11} /></button>
+                  <img src={p} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", border: "1px solid var(--border)" }} />
+                  <button onClick={() => removePhoto(i)} style={{ position: "absolute", top: -6, right: -6, background: "var(--head)", borderRadius: "50%", width: 18, height: 18, border: "none", color: "var(--on-accent)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={11} /></button>
                 </div>
               ))}
             </div>
@@ -1102,24 +1128,24 @@ export function NotesLog({ notes, onAdd, onDelete }) {
   const [showAll, setShowAll] = useState(false);
   const list = showAll ? notes : notes.slice(0, 3);
   return (
-    <div style={{ background: "#F7F8F9", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", display: "flex", alignItems: "center", gap: 5 }}><StickyNote size={13} /> Site notes ({notes.length})</div>
+    <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", display: "flex", alignItems: "center", gap: 5 }}><StickyNote size={13} /> Site notes ({notes.length})</div>
       {ACTIVE_CAN_EDIT && onAdd && (
         <div style={{ display: "flex", gap: 6 }}>
           <TextInput value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { onAdd(text); setText(""); } }} placeholder="e.g. Fan belt worn — monitor next visit" style={{ flex: 1, fontSize: 13 }} />
-          <button onClick={() => { if (text.trim()) { onAdd(text); setText(""); } }} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Add</button>
+          <button onClick={() => { if (text.trim()) { onAdd(text); setText(""); } }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Add</button>
         </div>
       )}
       {list.map((n) => (
-        <div key={n.id} style={{ background: "#fff", borderRadius: 8, padding: "7px 9px", display: "flex", gap: 6, alignItems: "flex-start" }}>
+        <div key={n.id} style={{ background: "var(--card)", borderRadius: 8, padding: "7px 9px", display: "flex", gap: 6, alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 12.5, whiteSpace: "pre-wrap" }}>{n.text}</div>
-            <div style={{ fontSize: 10.5, color: "#8A94A0", marginTop: 2 }}>{n.by} · {fmtDate(n.at.slice(0, 10))}</div>
+            <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 2 }}>{n.by} · {fmtDate(n.at.slice(0, 10))}</div>
           </div>
           {onDelete && <ConfirmDeleteButton onConfirm={() => onDelete(n.id)} size={12} />}
         </div>
       ))}
-      {notes.length > 3 && <button onClick={() => setShowAll((v) => !v)} style={{ background: "none", border: "none", color: "#2B4562", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{showAll ? "Show fewer" : `Show all ${notes.length}`}</button>}
+      {notes.length > 3 && <button onClick={() => setShowAll((v) => !v)} style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{showAll ? "Show fewer" : `Show all ${notes.length}`}</button>}
     </div>
   );
 }
@@ -1172,31 +1198,31 @@ export function ImportModal({ suppliers, existing, onClose, onImport }) {
   return (
     <Modal title="Import services" onClose={onClose} width={560}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>Bring in your asset register in one go. Upload a CSV, or copy the cells from Excel / Google Sheets (including the header row) and paste them below. Only a <b>Service name</b> column is required.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Bring in your asset register in one go. Upload a CSV, or copy the cells from Excel / Google Sheets (including the header row) and paste them below. Only a <b>Service name</b> column is required.</div>
         <div style={{ display: "flex", gap: 8 }}>
-          <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#2B4562", color: "#fff", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+          <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "var(--accent)", color: "var(--on-accent)", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
             <Upload size={14} /> Choose CSV file
             <input type="file" accept=".csv,.txt,.tsv,.xlsx,.xls" onChange={readFile} style={{ display: "none" }} />
           </label>
-          <button onClick={template} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Download size={14} /> Template</button>
+          <button onClick={template} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Download size={14} /> Template</button>
         </div>
         <TextArea value={text} onChange={(e) => { setText(e.target.value); setErr(""); }} placeholder="…or paste cells here" style={{ minHeight: 80, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }} />
-        {err && <div style={{ fontSize: 12, color: "#C53030" }}>{err}</div>}
+        {err && <div style={{ fontSize: 12, color: "var(--danger)" }}>{err}</div>}
         {rows.length > 0 && (
           <>
-            <div style={{ fontSize: 11.5, color: "#5B6672" }}>
-              Columns recognised: {Object.keys(map).length ? IMPORT_FIELDS.filter((f) => map[f.key] !== undefined).map((f) => f.label).join(", ") : <b style={{ color: "#C53030" }}>none — check the header row</b>}
+            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
+              Columns recognised: {Object.keys(map).length ? IMPORT_FIELDS.filter((f) => map[f.key] !== undefined).map((f) => f.label).join(", ") : <b style={{ color: "var(--danger)" }}>none — check the header row</b>}
             </div>
-            <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid #E1E4E8", borderRadius: 9 }}>
+            <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 9 }}>
               {parsed.slice(0, 200).map((p, i) => (
-                <div key={i} style={{ padding: "6px 9px", borderTop: i ? "1px solid #EEF0F2" : "none", fontSize: 12, opacity: p.skip ? 0.5 : 1 }}>
+                <div key={i} style={{ padding: "6px 9px", borderTop: i ? "1px solid var(--border)" : "none", fontSize: 12, opacity: p.skip ? 0.5 : 1 }}>
                   <b>{p.device.name || "(no name)"}</b>
-                  <span style={{ color: "#8A94A0" }}> · {CATEGORY_META[p.device.serviceCategory]?.label}{p.device.area ? ` · ${p.device.area}` : ""}{p.device.serviceIntervalMonths ? ` · every ${p.device.serviceIntervalMonths} mo` : ""}{p.device.nextServiceDate ? ` · due ${fmtDate(p.device.nextServiceDate)}` : ""}{p.device.budgetPerVisit ? ` · ${gbp(p.device.budgetPerVisit)}` : ""}</span>
-                  {p.issues.length > 0 && <div style={{ color: p.skip ? "#C53030" : "#B7791F", fontSize: 11 }}>{p.issues.join(" · ")}</div>}
+                  <span style={{ color: "var(--faint)" }}> · {CATEGORY_META[p.device.serviceCategory]?.label}{p.device.area ? ` · ${p.device.area}` : ""}{p.device.serviceIntervalMonths ? ` · every ${p.device.serviceIntervalMonths} mo` : ""}{p.device.nextServiceDate ? ` · due ${fmtDate(p.device.nextServiceDate)}` : ""}{p.device.budgetPerVisit ? ` · ${gbp(p.device.budgetPerVisit)}` : ""}</span>
+                  {p.issues.length > 0 && <div style={{ color: p.skip ? "var(--danger)" : "var(--warn)", fontSize: 11 }}>{p.issues.join(" · ")}</div>}
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 11, color: "#8A94A0" }}>Services with an interval, next due date and budget per visit also get a year of planned visits in the Budget Plan. Unknown suppliers are left blank — add them in Suppliers first to link them.</div>
+            <div style={{ fontSize: 11, color: "var(--faint)" }}>Services with an interval, next due date and budget per visit also get a year of planned visits in the Budget Plan. Unknown suppliers are left blank — add them in Suppliers first to link them.</div>
             <PrimaryButton onClick={() => good.length && onImport(good.map((p) => p.device))} style={{ opacity: good.length ? 1 : 0.5 }}><FileSpreadsheet size={15} /> Import {good.length} service{good.length === 1 ? "" : "s"}</PrimaryButton>
           </>
         )}
@@ -1225,22 +1251,22 @@ export function CostHistory({ device, services, works }) {
   const advice = rc && reactive12 >= rc * 0.5 ? `Repairs in the last 12 months (${gbp(reactive12)}) are ${Math.round((reactive12 / rc) * 100)}% of the replacement cost — worth considering replacement.`
     : ry && ry <= y0 && reactive12 > 0 ? "Past its expected life and still needing repairs — consider planning a replacement." : null;
   return (
-    <div style={{ background: "#F7F8F9", borderRadius: 10, padding: 10 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B6672", display: "flex", alignItems: "center", gap: 5, marginBottom: 8 }}><TrendingUp size={13} /> Cost per year</div>
+    <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", display: "flex", alignItems: "center", gap: 5, marginBottom: 8 }}><TrendingUp size={13} /> Cost per year</div>
       <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 70 }}>
         {per.map((p) => (
           <div key={p.y} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <div style={{ fontSize: 9.5, color: "#5B6672", fontWeight: 600 }}>{p.total ? gbp(p.total).replace(".00", "") : ""}</div>
+            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 600 }}>{p.total ? gbp(p.total).replace(".00", "") : ""}</div>
             <div style={{ width: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: 44 }}>
               <div style={{ height: `${(p.reactive / max) * 44}px`, background: "#D97706", borderRadius: "3px 3px 0 0" }} />
-              <div style={{ height: `${(p.ppm / max) * 44}px`, background: "#2B4562", borderRadius: p.reactive ? 0 : "3px 3px 0 0" }} />
+              <div style={{ height: `${(p.ppm / max) * 44}px`, background: "var(--accent)", borderRadius: p.reactive ? 0 : "3px 3px 0 0" }} />
             </div>
-            <div style={{ fontSize: 10, color: "#8A94A0" }}>{p.y}</div>
+            <div style={{ fontSize: 10, color: "var(--faint)" }}>{p.y}</div>
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 10.5, color: "#8A94A0", marginTop: 4 }}><span style={{ color: "#2B4562", fontWeight: 700 }}>■</span> Planned visits <span style={{ color: "#D97706", fontWeight: 700, marginLeft: 6 }}>■</span> Reactive works</div>
-      {advice && <div style={{ fontSize: 11.5, color: "#9B2C2C", fontWeight: 650, marginTop: 6 }}>{advice}</div>}
+      <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4 }}><span style={{ color: "var(--accent)", fontWeight: 700 }}>■</span> Planned visits <span style={{ color: "#D97706", fontWeight: 700, marginLeft: 6 }}>■</span> Reactive works</div>
+      {advice && <div style={{ fontSize: 11.5, color: "var(--danger)", fontWeight: 650, marginTop: 6 }}>{advice}</div>}
     </div>
   );
 }
@@ -1276,17 +1302,17 @@ export function LibraryModal({ existing, suppliers, onClose, onAdd }) {
   return (
     <Modal title="Service library" onClose={onClose} width={540}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>Tick the services your site needs — each comes with a typical UK frequency and checklist. You can adjust any of them afterwards.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Tick the services your site needs — each comes with a typical UK frequency and checklist. You can adjust any of them afterwards.</div>
         <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search e.g. fire, water, lift…" />
         <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
           {list.map((t) => {
             const on = picked.includes(t.id); const exists = have.has(t.name.trim().toLowerCase());
             return (
-              <button key={t.id} onClick={() => setPicked((p) => on ? p.filter((x) => x !== t.id) : [...p, t.id])} style={{ display: "flex", alignItems: "center", gap: 8, background: on ? "#EAF1F8" : "#F7F8F9", border: `1px solid ${on ? "#2B4562" : "transparent"}`, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+              <button key={t.id} onClick={() => setPicked((p) => on ? p.filter((x) => x !== t.id) : [...p, t.id])} style={{ display: "flex", alignItems: "center", gap: 8, background: on ? "var(--accent-soft)" : "var(--card-hi)", border: `1px solid ${on ? "#2B4562" : "transparent"}`, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
                 {on ? <CheckSquare size={17} color="#2B4562" /> : <Square size={17} color="#A3ABB4" />}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 650 }}>{t.name}{exists && <span style={{ fontSize: 10.5, color: "#B7791F", fontWeight: 700 }}> · already added</span>}</div>
-                  <div style={{ fontSize: 11, color: "#8A94A0" }}>{freq(t)}{t.subCategory ? ` · ${t.subCategory}` : ""}{t.checklist?.length ? ` · ${t.checklist.length} checks` : ""}</div>
+                  <div style={{ fontSize: 13, fontWeight: 650 }}>{t.name}{exists && <span style={{ fontSize: 10.5, color: "var(--warn)", fontWeight: 700 }}> · already added</span>}</div>
+                  <div style={{ fontSize: 11, color: "var(--faint)" }}>{freq(t)}{t.subCategory ? ` · ${t.subCategory}` : ""}{t.checklist?.length ? ` · ${t.checklist.length} checks` : ""}</div>
                 </div>
               </button>
             );
@@ -1304,11 +1330,11 @@ export function LibraryModal({ existing, suppliers, onClose, onAdd }) {
 
 function OutOfServiceForm({ onSubmit }) {
   const [open, setOpen] = useState(false); const [reason, setReason] = useState("");
-  if (!open) return <button onClick={() => setOpen(true)} style={{ background: "#fff", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Mark out of service…</button>;
+  if (!open) return <button onClick={() => setOpen(true)} style={{ background: "var(--card)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Mark out of service…</button>;
   return (
     <div style={{ display: "flex", gap: 6 }}>
       <TextInput autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. compressor failed" style={{ flex: 1, fontSize: 12.5 }} />
-      <button onClick={() => onSubmit(reason.trim())} style={{ background: "#C53030", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Mark down</button>
+      <button onClick={() => onSubmit(reason.trim())} style={{ background: "#C53030", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Mark down</button>
     </div>
   );
 }

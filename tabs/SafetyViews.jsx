@@ -1,11 +1,11 @@
 // Site tab safety records: legionella water temperatures, training & competency, fire drills.
 import { useMemo, useState } from "react";
-import { DOC_TYPES, DRILL_TYPES, TRAINING_COURSES, WATER_LIMITS } from "../lib/constants.js";
+import { DOC_TYPES, DRILL_TYPES, LOG_TEMPLATES, TRAINING_COURSES, WATER_LIMITS } from "../lib/constants.js";
 import { addMonths, daysUntil, escapeHtml, fmtDate, uid } from "../lib/utils.js";
 import { openPrintReport, tableHtml } from "../lib/reports.js";
-import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
+import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
-import { CheckCircle2, Droplets, FileText, Flame, GraduationCap, Link2, Printer } from "lucide-react";
+import { CheckCircle2, ClipboardList, Droplets, FileText, Flame, GraduationCap, Link2, Plus, Printer, X } from "lucide-react";
 
 /* ---------- Water temperatures (legionella control) ---------- */
 export function WaterTempsView({ outlets, readings, areas, locationName, onSaveOutlet, onDeleteOutlet, onAddReadings }) {
@@ -31,9 +31,9 @@ export function WaterTempsView({ outlets, readings, areas, locationName, onSaveO
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {ACTIVE_CAN_EDIT && outlets.length > 0 && <PrimaryButton onClick={() => setLogging(true)} style={{ flex: 1 }}><Droplets size={15} /> Record this month's temperatures</PrimaryButton>}
-        {ACTIVE_CAN_EDIT && <button onClick={() => setEditing({})} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>+ Outlet</button>}
+        {ACTIVE_CAN_EDIT && <button onClick={() => setEditing({})} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>+ Outlet</button>}
       </div>
-      <div style={{ fontSize: 11, color: "#8A94A0", marginBottom: 8 }}>Monthly checks at sentinel outlets (HSG274): hot {WATER_LIMITS.hot.rule} within a minute, cold {WATER_LIMITS.cold.rule} within two minutes, TMVs {WATER_LIMITS.tmv.rule}.</div>
+      <div style={{ fontSize: 11, color: "var(--faint)", marginBottom: 8 }}>Monthly checks at sentinel outlets (HSG274): hot {WATER_LIMITS.hot.rule} within a minute, cold {WATER_LIMITS.cold.rule} within two minutes, TMVs {WATER_LIMITS.tmv.rule}.</div>
       {outlets.length === 0 ? (
         <EmptyState icon={Droplets} title="No outlets yet" body="Add your sentinel outlets (nearest and furthest from the calorifier/tank) and any TMVs, then record temperatures monthly. Out-of-range readings raise an alert." actionLabel={ACTIVE_CAN_EDIT ? "Add an outlet" : undefined} onAction={() => setEditing({})} />
       ) : (
@@ -41,16 +41,16 @@ export function WaterTempsView({ outlets, readings, areas, locationName, onSaveO
           {outlets.map((o) => {
             const l = last(o); const ok = l && WATER_LIMITS[o.type]?.ok(Number(l.temp));
             return (
-              <button key={o.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(o)} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: `3px solid ${!l ? "#8A94A0" : ok ? "#2F855A" : "#C53030"}`, borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+              <button key={o.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(o)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${!l ? "#8A94A0" : ok ? "#2F855A" : "#C53030"}`, borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 650 }}>{o.name}{o.sentinel && <span style={{ fontSize: 10.5, color: "#2B6CB0", fontWeight: 700 }}> · sentinel</span>}</div>
-                  <div style={{ fontSize: 11, color: "#8A94A0" }}>{WATER_LIMITS[o.type]?.label}{o.area ? ` · ${o.area}` : ""}{l ? ` · ${fmtDate(l.date)}` : " · not checked"}</div>
+                  <div style={{ fontSize: 11, color: "var(--faint)" }}>{WATER_LIMITS[o.type]?.label}{o.area ? ` · ${o.area}` : ""}{l ? ` · ${fmtDate(l.date)}` : " · not checked"}</div>
                 </div>
-                {l && <b style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, color: ok ? "#2F855A" : "#C53030" }}>{l.temp}°C</b>}
+                {l && <b style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, color: ok ? "var(--ok)" : "var(--danger)" }}>{l.temp}°C</b>}
               </button>
             );
           })}
-          <button onClick={print} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4 }}><Printer size={14} /> Print temperature log</button>
+          <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4 }}><Printer size={14} /> Print temperature log</button>
         </div>
       )}
       {editing && <OutletModal existing={editing.id ? editing : null} areas={areas} onClose={() => setEditing(null)} onSave={(o) => { onSaveOutlet(o); setEditing(null); }} onDelete={(id) => { onDeleteOutlet(id); setEditing(null); }} />}
@@ -91,13 +91,13 @@ function WaterReadingsModal({ outlets, onClose, onSave }) {
             <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.8, fontWeight: 650 }}>{o.name}</div>
-                <div style={{ fontSize: 10.8, color: "#8A94A0" }}>{WATER_LIMITS[o.type].label} · target {WATER_LIMITS[o.type].rule}</div>
+                <div style={{ fontSize: 10.8, color: "var(--faint)" }}>{WATER_LIMITS[o.type].label} · target {WATER_LIMITS[o.type].rule}</div>
               </div>
               <TextInput type="number" inputMode="decimal" step="0.1" value={v ?? ""} onChange={(e) => setTemps((p) => ({ ...p, [o.id]: e.target.value }))} placeholder="°C" style={{ width: 76, borderColor: has ? (ok ? "#2F855A" : "#C53030") : undefined }} />
             </div>
           );
         })}
-        {entered.some((o) => !WATER_LIMITS[o.type].ok(Number(temps[o.id]))) && <div style={{ fontSize: 11.5, color: "#C53030", fontWeight: 600 }}>Out-of-range readings: flush the outlet, re-test, and check the TMV / calorifier. These will show as alerts until a good reading is logged.</div>}
+        {entered.some((o) => !WATER_LIMITS[o.type].ok(Number(temps[o.id]))) && <div style={{ fontSize: 11.5, color: "var(--danger)", fontWeight: 600 }}>Out-of-range readings: flush the outlet, re-test, and check the TMV / calorifier. These will show as alerts until a good reading is logged.</div>}
         <PrimaryButton onClick={() => entered.length && onSave(entered.map((o) => ({ outletId: o.id, date, temp: Number(temps[o.id]) })))}><CheckCircle2 size={15} /> Save {entered.length} reading{entered.length === 1 ? "" : "s"}</PrimaryButton>
       </div>
     </Modal>
@@ -132,12 +132,12 @@ export function TrainingView({ records, locationName, onSave, onDelete }) {
         const courses = [...new Set(records.map((r) => r.course))];
         const cell = (person, course) => records.filter((r) => r.person === person && r.course === course).sort((a, b) => String(b.expiry || "9999").localeCompare(String(a.expiry || "9999")))[0];
         return (
-          <div style={{ overflowX: "auto", background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, marginBottom: 10 }}>
+          <div style={{ overflowX: "auto", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, marginBottom: 10 }}>
             <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
-              <thead><tr><th style={{ textAlign: "left", padding: 6, position: "sticky", left: 0, background: "#fff" }}>Person</th>{courses.map((c) => <th key={c} style={{ padding: 6, fontWeight: 650, color: "#5B6672", minWidth: 70, verticalAlign: "bottom" }}>{c}</th>)}</tr></thead>
+              <thead><tr><th style={{ textAlign: "left", padding: 6, position: "sticky", left: 0, background: "var(--card)" }}>Person</th>{courses.map((c) => <th key={c} style={{ padding: 6, fontWeight: 650, color: "var(--muted)", minWidth: 70, verticalAlign: "bottom" }}>{c}</th>)}</tr></thead>
               <tbody>{people.map((p) => (
-                <tr key={p} style={{ borderTop: "1px solid #EEF0F2" }}>
-                  <td style={{ padding: 6, fontWeight: 650, position: "sticky", left: 0, background: "#fff", whiteSpace: "nowrap" }}>{p}</td>
+                <tr key={p} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: 6, fontWeight: 650, position: "sticky", left: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{p}</td>
                   {courses.map((c) => { const r = cell(p, c); const n = r?.expiry ? daysUntil(r.expiry) : null; const [bg, fg, t] = !r ? ["#fff", "#C0C6CC", "—"] : n === null ? ["#EAF4EE", "#2F6B4A", "✓"] : n < 0 ? ["#FBEAEA", "#9B2C2C", "Expired"] : n <= 45 ? ["#FDF1E0", "#8A5A0B", fmtDate(r.expiry)] : ["#EAF4EE", "#2F6B4A", fmtDate(r.expiry)];
                     return <td key={c} onClick={() => r && ACTIVE_CAN_EDIT && setEditing(r)} style={{ padding: 6, textAlign: "center", background: bg, color: fg, fontWeight: 650, cursor: r ? "pointer" : "default", whiteSpace: "nowrap" }}>{t}</td>; })}
                 </tr>
@@ -153,13 +153,13 @@ export function TrainingView({ records, locationName, onSave, onDelete }) {
           {sorted.map((r) => {
             const n = r.expiry ? daysUntil(r.expiry) : null;
             return (
-              <button key={r.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(r)} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: `3px solid ${n === null ? "#8A94A0" : n < 0 ? "#C53030" : n <= 45 ? "#D97706" : "#2F855A"}`, borderRadius: 10, padding: "8px 10px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
-                <div style={{ fontSize: 13, fontWeight: 650 }}>{r.person} <span style={{ color: "#8A94A0", fontWeight: 500 }}>· {r.course}</span></div>
-                <div style={{ fontSize: 11, color: n !== null && n < 0 ? "#C53030" : "#8A94A0", fontWeight: n !== null && n <= 45 ? 700 : 500 }}>{r.date ? `Done ${fmtDate(r.date)}` : ""}{r.expiry ? ` · ${n < 0 ? "expired" : "expires"} ${fmtDate(r.expiry)}` : " · no expiry"}{r.provider ? ` · ${r.provider}` : ""}</div>
+              <button key={r.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(r)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${n === null ? "#8A94A0" : n < 0 ? "#C53030" : n <= 45 ? "#D97706" : "#2F855A"}`, borderRadius: 10, padding: "8px 10px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+                <div style={{ fontSize: 13, fontWeight: 650 }}>{r.person} <span style={{ color: "var(--faint)", fontWeight: 500 }}>· {r.course}</span></div>
+                <div style={{ fontSize: 11, color: n !== null && n < 0 ? "var(--danger)" : "var(--faint)", fontWeight: n !== null && n <= 45 ? 700 : 500 }}>{r.date ? `Done ${fmtDate(r.date)}` : ""}{r.expiry ? ` · ${n < 0 ? "expired" : "expires"} ${fmtDate(r.expiry)}` : " · no expiry"}{r.provider ? ` · ${r.provider}` : ""}</div>
               </button>
             );
           })}
-          <div style={{ fontSize: 11, color: "#8A94A0", marginTop: 4 }}>{people.length} people on the register at {locationName}.</div>
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4 }}>{people.length} people on the register at {locationName}.</div>
         </div>
       ))}
       {editing && <TrainingModal existing={editing.id ? editing : null} people={people} onClose={() => setEditing(null)} onSave={(r) => { onSave(r); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
@@ -214,9 +214,9 @@ export function DrillsView({ drills, locationName, onSave, onDelete }) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {sorted.map((d) => (
-            <button key={d.id} onClick={() => setEditing(d)} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 10, padding: "8px 10px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+            <button key={d.id} onClick={() => setEditing(d)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 13, fontWeight: 650 }}>{d.type}</span>{d.minutes ? <b style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>{d.minutes} min</b> : null}</div>
-              <div style={{ fontSize: 11, color: "#8A94A0" }}>{fmtDate(d.date)}{d.time ? ` ${d.time}` : ""}{d.people ? ` · ${d.people} people` : ""}{d.issues ? " · issues noted" : ""}</div>
+              <div style={{ fontSize: 11, color: "var(--faint)" }}>{fmtDate(d.date)}{d.time ? ` ${d.time}` : ""}{d.people ? ` · ${d.people} people` : ""}{d.issues ? " · issues noted" : ""}</div>
             </button>
           ))}
         </div>
@@ -252,7 +252,7 @@ function DrillModal({ existing, locationName, onClose, onSave, onDelete }) {
         <Field label="Issues found"><TextArea value={issues} onChange={(e) => setIssues(e.target.value)} placeholder="e.g. Sounder not heard in L3 meeting room; one fire door wedged open" /></Field>
         <Field label="Actions"><TextArea value={actions} onChange={(e) => setActions(e.target.value)} /></Field>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => onSave({ id: existing?.id, type, date, time, minutes: minutes ? Number(minutes) : null, people: people ? Number(people) : null, issues: issues.trim(), actions: actions.trim() })}><CheckCircle2 size={15} /> Save</PrimaryButton>}
-        {existing && <button onClick={print} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print record</button>}
+        {existing && <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print record</button>}
         {existing && <ConfirmTextDelete label="Delete this record" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -278,10 +278,10 @@ export function DocumentsView({ docs, onSave, locationName }) {
         <MetricBlock label="Overdue review" value={overdue} tone={overdue ? "danger" : "ok"} />
         <MetricBlock label="Key docs missing" value={missing.length} tone={missing.length ? "danger" : "ok"} />
       </div>
-      {missing.length > 0 && <div style={{ fontSize: 11.5, color: "#9B2C2C", marginBottom: 8 }}>Not on file: {missing.join(", ")}.</div>}
+      {missing.length > 0 && <div style={{ fontSize: 11.5, color: "var(--danger)", marginBottom: 8 }}>Not on file: {missing.join(", ")}.</div>}
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><FileText size={15} /> Add a document</PrimaryButton>}
-        {docs.length > 0 && <button onClick={print} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}><Printer size={14} color="#2B4562" /></button>}
+        {docs.length > 0 && <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}><Printer size={14} color="#2B4562" /></button>}
       </div>
       {docs.length === 0 ? (
         <EmptyState icon={FileText} title="No documents yet" body="Keep your fire risk assessment, asbestos register, legionella risk assessment, certificates and manuals in one list — with links and review dates, so you're reminded before anything lapses." />
@@ -290,10 +290,10 @@ export function DocumentsView({ docs, onSave, locationName }) {
           {sorted.map((d) => {
             const n = d.reviewDate ? daysUntil(d.reviewDate) : null;
             return (
-              <div key={d.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: `3px solid ${n === null ? "#8A94A0" : n < 0 ? "#C53030" : n <= 30 ? "#D97706" : "#2F855A"}`, borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
+              <div key={d.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${n === null ? "#8A94A0" : n < 0 ? "#C53030" : n <= 30 ? "#D97706" : "#2F855A"}`, borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => ACTIVE_CAN_EDIT && setEditing(d)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                   <div style={{ fontSize: 13, fontWeight: 650 }}>{d.title}</div>
-                  <div style={{ fontSize: 11, color: n !== null && n < 0 ? "#C53030" : "#8A94A0", fontWeight: n !== null && n <= 30 ? 700 : 500 }}>{d.type}{d.reviewDate ? ` · ${n < 0 ? "review overdue" : "review"} ${fmtDate(d.reviewDate)}` : ""}{d.holder ? ` · ${d.holder}` : ""}</div>
+                  <div style={{ fontSize: 11, color: n !== null && n < 0 ? "var(--danger)" : "var(--faint)", fontWeight: n !== null && n <= 30 ? 700 : 500 }}>{d.type}{d.reviewDate ? ` · ${n < 0 ? "review overdue" : "review"} ${fmtDate(d.reviewDate)}` : ""}{d.holder ? ` · ${d.holder}` : ""}</div>
                 </button>
                 {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" title="Open" style={{ padding: 4, display: "flex" }}><Link2 size={15} color="#2B4562" /></a>}
               </div>
@@ -326,6 +326,121 @@ function DocModal({ existing, onClose, onSave, onDelete }) {
         <Field label="Link (SharePoint, Drive…)"><TextInput value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" /></Field>
         <PrimaryButton onClick={() => onSave({ id: existing?.id, type, title: (title || type).trim(), issued: issued || null, reviewDate: reviewDate || null, holder: holder.trim(), url: url.trim() ? (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`) : "" })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this document" onConfirm={() => onDelete(existing.id)} />}
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- Site logs (custom registers) ---------- */
+export function LogsView({ defs, entries, onSaveDefs, onSave, onDelete, locationName }) {
+  const [openId, setOpenId] = useState(defs[0]?.id || null);
+  const [adding, setAdding] = useState(null);
+  const [building, setBuilding] = useState(false);
+  const def = defs.find((d) => d.id === openId) || defs[0];
+  const list = def ? entries.filter((e) => e.logId === def.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
+  const fmtVal = (f, v) => f.type === "check" ? (v ? "✓" : "✗") : v === undefined || v === null ? "" : String(v);
+  function addTemplate(t) { onSaveDefs([...defs, { ...t, id: `${t.id}_${uid().slice(-4)}`, template: t.id, firealarm: t.id === "firealarm" }]); }
+  // Fire alarm rotation: next call point after the last one tested, wrapping at the highest number seen / set.
+  const nextCallPoint = (d) => { const last = entries.filter((e) => e.logId === d.id).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0]; const n = Number(String(last?.values?.callpoint || "").replace(/\D/g, "")) || 0; const max = Number(d.callPoints) || 0; return max ? (n % max) + 1 : n + 1; };
+  function print() {
+    const e = escapeHtml;
+    openPrintReport(def.name, locationName, tableHtml(["Date", ...def.fields.map((f) => e(f.label)), "By"], list.map((x) => [fmtDate(x.date), ...def.fields.map((f) => e(fmtVal(f, x.values?.[f.key]))), e(x.by || "")])));
+  }
+  return (
+    <div>
+      {defs.length === 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <EmptyState icon={ClipboardList} title="No logs yet" body="Add ready-made logs for routine site checks, or build your own with the columns you need." />
+          {ACTIVE_CAN_EDIT && LOG_TEMPLATES.map((t) => <button key={t.id} onClick={() => addTemplate(t)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 11px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}><b style={{ fontSize: 13 }}>+ {t.name}</b><div style={{ fontSize: 11, color: "var(--faint)" }}>{t.fields.map((f) => f.label).join(" · ")}{t.everyDays ? ` · reminder every ${t.everyDays} days` : ""}</div></button>)}
+          {ACTIVE_CAN_EDIT && <button onClick={() => setBuilding(true)} style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: 9, fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>+ Build your own log</button>}
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            {defs.map((d) => <ToggleButton key={d.id} active={def?.id === d.id} onClick={() => setOpenId(d.id)}>{d.name}</ToggleButton>)}
+            {ACTIVE_CAN_EDIT && <ToggleButton active={false} onClick={() => setBuilding(true)}>+ Log</ToggleButton>}
+          </div>
+          {def && (() => {
+            const last = list[0]; const age = last ? -daysUntil(last.date) : null; const due = def.everyDays && (!last || age > def.everyDays);
+            return (
+              <>
+                <div style={{ fontSize: 12, color: due ? "var(--danger)" : "var(--muted)", fontWeight: due ? 700 : 500, marginBottom: 8 }}>{last ? `Last entry ${fmtDate(last.date)}${age ? ` (${age} days ago)` : " (today)"}` : "No entries yet"}{def.everyDays ? ` · due every ${def.everyDays} days` : ""}{def.firealarm ? ` · next call point: ${nextCallPoint(def)}` : ""}</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setAdding({})} style={{ flex: 1 }}><Plus size={15} /> New entry</PrimaryButton>}
+                  {list.length > 0 && <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}><Printer size={14} color="#2B4562" /></button>}
+                  {list.length > 0 && <ExportButton label="CSV" filename={`${def.name.replace(/[^a-z0-9]+/gi, "-")}.csv`} rows={[["Date", ...def.fields.map((f) => f.label), "By"], ...list.map((x) => [x.date, ...def.fields.map((f) => fmtVal(f, x.values?.[f.key])), x.by || ""])]} />}
+                </div>
+                {list.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--faint)", textAlign: "center", padding: 14 }}>Nothing logged yet.</div> : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {list.slice(0, 60).map((x) => (
+                      <button key={x.id} onClick={() => ACTIVE_CAN_EDIT && setAdding(x)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700 }}>{fmtDate(x.date)} <span style={{ color: "var(--faint)", fontWeight: 500 }}>· {x.by}</span></div>
+                        <div style={{ fontSize: 11.8, color: "var(--text-2)" }}>{def.fields.filter((f) => x.values?.[f.key] !== undefined && x.values?.[f.key] !== "").map((f) => `${f.label}: ${fmtVal(f, x.values[f.key])}`).join(" · ")}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {ACTIVE_CAN_EDIT && <button onClick={() => { if (window.confirm(`Remove the "${def.name}" log? Its entries stay in backups.`)) { onSaveDefs(defs.filter((d) => d.id !== def.id)); setOpenId(null); } }} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", marginTop: 10 }}>Remove this log</button>}
+              </>
+            );
+          })()}
+          {ACTIVE_CAN_EDIT && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>{LOG_TEMPLATES.filter((t) => !defs.some((d) => d.template === t.id)).map((t) => <button key={t.id} onClick={() => addTemplate(t)} style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 8, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>+ {t.name}</button>)}</div>}
+        </>
+      )}
+      {adding && def && <LogEntryModal def={def} existing={adding.id ? adding : null} suggestCallPoint={def.firealarm ? nextCallPoint(def) : null} onClose={() => setAdding(null)} onSave={(x) => { onSave({ ...x, logId: def.id }); setAdding(null); }} onDelete={(id) => { onDelete(id); setAdding(null); }} onSetCallPoints={(n) => onSaveDefs(defs.map((d) => d.id === def.id ? { ...d, callPoints: n } : d))} />}
+      {building && <LogBuilderModal onClose={() => setBuilding(false)} onSave={(d) => { onSaveDefs([...defs, d]); setOpenId(d.id); setBuilding(false); }} />}
+    </div>
+  );
+}
+function LogEntryModal({ def, existing, suggestCallPoint, onClose, onSave, onDelete, onSetCallPoints }) {
+  const [date, setDate] = useState(existing?.date || new Date().toISOString().slice(0, 10));
+  const [values, setValues] = useState(existing?.values || (suggestCallPoint ? { callpoint: String(suggestCallPoint) } : {}));
+  const set = (k, v) => setValues((p) => ({ ...p, [k]: v }));
+  return (
+    <Modal title={def.name} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Field label="Date"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        {def.fields.map((f) => (
+          f.type === "check" ? (
+            <label key={f.key} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, cursor: "pointer" }}><input type="checkbox" checked={!!values[f.key]} onChange={(e) => set(f.key, e.target.checked)} style={{ margin: 0 }} /> {f.label}</label>
+          ) : f.type === "select" ? (
+            <Field key={f.key} label={f.label}><Select value={values[f.key] || ""} onChange={(e) => set(f.key, e.target.value)}><option value="">—</option>{(f.options || []).map((o) => <option key={o} value={o}>{o}</option>)}</Select></Field>
+          ) : (
+            <Field key={f.key} label={f.label}>
+              <TextInput type={f.type === "number" || f.type === "callpoint" ? "number" : f.type === "date" ? "date" : "text"} value={values[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)} />
+              {f.type === "callpoint" && <span style={{ fontSize: 11, color: "var(--muted)" }}>Suggested next in rotation: {suggestCallPoint}. Total call points on site: <input type="number" min="1" defaultValue={def.callPoints || ""} onBlur={(e) => e.target.value && onSetCallPoints(Number(e.target.value))} style={{ width: 52, fontSize: 11 }} /> (so the rotation wraps round)</span>}
+            </Field>
+          )
+        ))}
+        <PrimaryButton onClick={() => onSave({ id: existing?.id, date, values })}><CheckCircle2 size={15} /> Save entry</PrimaryButton>
+        {existing && <ConfirmTextDelete label="Delete entry" onConfirm={() => onDelete(existing.id)} />}
+      </div>
+    </Modal>
+  );
+}
+function LogBuilderModal({ onClose, onSave }) {
+  const [name, setName] = useState(""); const [everyDays, setEveryDays] = useState("");
+  const [fields, setFields] = useState([{ label: "", type: "text", options: "" }]);
+  return (
+    <Modal title="Build a log" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Field label="Log name"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Generator weekly run" /></Field>
+        <Field label="Remind me if nothing logged for (days, optional)"><TextInput type="number" min="0" value={everyDays} onChange={(e) => setEveryDays(e.target.value)} placeholder="e.g. 7" /></Field>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Columns</div>
+        {fields.map((f, i) => (
+          <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, background: "var(--card-hi)", borderRadius: 8, padding: 7 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              <TextInput value={f.label} onChange={(e) => setFields((p) => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="Column name" style={{ flex: 1, minWidth: 0 }} />
+              <select value={f.type} onChange={(e) => setFields((p) => p.map((x, j) => j === i ? { ...x, type: e.target.value } : x))} style={{ ...inputStyle, width: 110, fontSize: 12 }}>
+                <option value="text">Text</option><option value="number">Number</option><option value="date">Date</option><option value="check">Tick box</option><option value="select">Choice</option>
+              </select>
+              {fields.length > 1 && <button onClick={() => setFields((p) => p.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={13} color="#A3ABB4" /></button>}
+            </div>
+            {f.type === "select" && <TextInput value={f.options} onChange={(e) => setFields((p) => p.map((x, j) => j === i ? { ...x, options: e.target.value } : x))} placeholder="Choices, comma separated" style={{ fontSize: 12 }} />}
+          </div>
+        ))}
+        <button onClick={() => setFields((p) => [...p, { label: "", type: "text", options: "" }])} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>+ Add column</button>
+        <PrimaryButton onClick={() => { const fs = fields.filter((f) => f.label.trim()).map((f, i) => ({ key: `f${i}`, label: f.label.trim(), type: f.type, options: f.type === "select" ? f.options.split(",").map((x) => x.trim()).filter(Boolean) : undefined })); if (!name.trim() || !fs.length) return; onSave({ id: `log_${uid()}`, name: name.trim(), everyDays: Number(everyDays) || 0, fields: fs }); }}><CheckCircle2 size={15} /> Create log</PrimaryButton>
       </div>
     </Modal>
   );

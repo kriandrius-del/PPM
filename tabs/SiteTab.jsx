@@ -1,9 +1,9 @@
 // Site tab: meters, spares, keys, audits, incidents, permits to work, waste.
 import { useState, useMemo } from "react";
 import { Activity, CheckCircle2, ClipboardCheck, Flame, Key, Leaf as LeafIcon, Mail, Package, Pencil, Plus, Printer, Recycle, Siren, Trash2, Upload, Wrench } from "lucide-react";
-import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar } from "recharts";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ConfirmDeleteButton, ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
-import { DEFAULT_CO2, INCIDENT_TYPES, METER_TYPES, PERMIT_PRECAUTIONS, PERMIT_TYPES, WASTE_STREAMS } from "../lib/constants.js";
+import { DEFAULT_CO2, INCIDENT_TYPES, METER_TYPES, MONTH_LABELS, PERMIT_PRECAUTIONS, PERMIT_TYPES, WASTE_STREAMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE } from "../lib/globals.js";
 import { buildKeyRegister, openPrintReport, printPermit, tableHtml } from "../lib/reports.js";
 import { daysUntil, escapeHtml, fmtDate, gbp, meterStats, parseDelimited, scoreTone, toISO, uid } from "../lib/utils.js";
@@ -34,17 +34,17 @@ export function MetersTab({ onImportReadings, meters, readings, suppliers, onSav
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        {ACTIVE_CAN_EDIT ? <button onClick={() => setEditing({})} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Plus size={14} /> Add meter</button> : <span />}
+        {ACTIVE_CAN_EDIT ? <button onClick={() => setEditing({})} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Plus size={14} /> Add meter</button> : <span />}
         <div style={{ display: "flex", gap: 6 }}>
-          {ACTIVE_CAN_EDIT && onImportReadings && <button onClick={() => setImportOpen(true)} style={{ background: "#EEF0F2", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Upload size={13} /> Import</button>}
+          {ACTIVE_CAN_EDIT && onImportReadings && <button onClick={() => setImportOpen(true)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Upload size={13} /> Import</button>}
           <ExportButton rows={csv} filename="meter-readings.csv" />
         </div>
         {importOpen && <ReadingsImportModal meters={meters} onClose={() => setImportOpen(false)} onImport={(list) => { onImportReadings(list); setImportOpen(false); }} />}
       </div>
       {(ytd.co2 > 0 || ytd.priced) && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          {ytd.priced && <div style={{ flex: 1, background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "#8A94A0", fontWeight: 600 }}>Energy & water cost {yr}</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(ytd.cost)}</div></div>}
-          <div style={{ flex: 1, background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "#2F855A", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><LeafIcon size={11} /> Carbon {yr}</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{ytd.co2 >= 1000 ? `${(ytd.co2 / 1000).toFixed(2)} t` : `${Math.round(ytd.co2)} kg`} CO₂e</div></div>
+          {ytd.priced && <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Energy & water cost {yr}</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(ytd.cost)}</div></div>}
+          <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "var(--ok)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><LeafIcon size={11} /> Carbon {yr}</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{ytd.co2 >= 1000 ? `${(ytd.co2 / 1000).toFixed(2)} t` : `${Math.round(ytd.co2)} kg`} CO₂e</div></div>
         </div>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -53,11 +53,11 @@ export function MetersTab({ onImportReadings, meters, readings, suppliers, onSav
           const since = st.last ? -daysUntil(st.last.date) : null;
           const chart = Object.entries(st.monthly).sort().slice(-12).map(([k, v]) => ({ month: new Date(k + "-01T00:00:00").toLocaleDateString("en-GB", { month: "short" }), used: Math.round(v * 10) / 10 }));
           return (
-            <div key={m.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: `3px solid ${t.color}`, borderRadius: 12, padding: 12 }}>
+            <div key={m.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${t.color}`, borderRadius: 12, padding: 12 }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                 <button onClick={() => setOpenId(openId === m.id ? null : m.id)} style={{ flex: 1, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700 }}>{m.name}</div>
-                  <div style={{ fontSize: 11.5, color: "#8A94A0" }}>{t.label}{m.serial ? ` · #${m.serial}` : ""}{m.mpan ? ` · ${m.mpan}` : ""}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{t.label}{m.serial ? ` · #${m.serial}` : ""}{m.mpan ? ` · ${m.mpan}` : ""}</div>
                 </button>
                 {ACTIVE_CAN_EDIT && <button onClick={() => setEditing(m)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color="#8A94A0" /></button>}
               </div>
@@ -67,18 +67,18 @@ export function MetersTab({ onImportReadings, meters, readings, suppliers, onSav
                 <MetricBlock label="Avg per day" value={st.avgDaily != null ? `${fmt(st.avgDaily)} ${m.unit}` : "—"} />
               </div>
               {st.lastP && (m.tariff || (m.co2Factor ?? DEFAULT_CO2[m.type])) ? (
-                <div style={{ fontSize: 11.5, color: "#5B6672", marginTop: 6, fontWeight: 600 }}>
+                <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6, fontWeight: 600 }}>
                   Last period: {m.tariff ? `${gbp(st.lastP.used * Number(m.tariff))} · ` : ""}{fmt(st.lastP.used * Number(m.co2Factor ?? DEFAULT_CO2[m.type] ?? 0))} kg CO₂e
                 </div>
               ) : null}
               {Number(m.annualTarget) > 0 && (() => {
                 const yrS = String(new Date().getFullYear()); const used = st.periods.filter((p) => p.to.startsWith(yrS)).reduce((t, p) => t + p.used, 0);
                 const doy = Math.max(1, Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 86400000)); const proj = (used / doy) * 365; const over = proj > Number(m.annualTarget) * 1.05;
-                return used > 0 ? <div style={{ fontSize: 11.5, fontWeight: 650, marginTop: 6, color: over ? "#C53030" : "#2F855A" }}>{fmt(used)} {m.unit} so far · on course for {fmt(proj)} vs target {fmt(m.annualTarget)} {over ? "— over" : "— on track"}</div> : null;
+                return used > 0 ? <div style={{ fontSize: 11.5, fontWeight: 650, marginTop: 6, color: over ? "var(--danger)" : "var(--ok)" }}>{fmt(used)} {m.unit} so far · on course for {fmt(proj)} vs target {fmt(m.annualTarget)} {over ? "— over" : "— on track"}</div> : null;
               })()}
-              <div style={{ fontSize: 11, color: since != null && since > (Number(m.readEveryDays) || 31) ? "#B7791F" : "#8A94A0", marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: since != null && since > (Number(m.readEveryDays) || 31) ? "var(--warn)" : "var(--faint)", marginTop: 6 }}>
                 {st.last ? `Read ${fmtDate(st.last.date)} (${since === 0 ? "today" : `${since} days ago`})` : "No readings yet"} · read every {Number(m.readEveryDays) || 31} days
-                {st.spike && <span style={{ color: "#C53030", fontWeight: 700 }}> · Usage up {Math.round((st.lastDaily / st.avgDaily - 1) * 100)}% on average — check for leaks or plant left running</span>}
+                {st.spike && <span style={{ color: "var(--danger)", fontWeight: 700 }}> · Usage up {Math.round((st.lastDaily / st.avgDaily - 1) * 100)}% on average — check for leaks or plant left running</span>}
               </div>
               {openId === m.id && chart.length > 0 && (
                 <div style={{ height: 150, marginTop: 8 }}>
@@ -96,16 +96,16 @@ export function MetersTab({ onImportReadings, meters, readings, suppliers, onSav
               {openId === m.id && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
                   {[...st.rs].reverse().slice(0, 12).map((r) => (
-                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, background: "#F7F8F9", borderRadius: 7, padding: "5px 8px" }}>
-                      <span style={{ flex: 1 }}>{fmtDate(r.date)}{r.reset ? " · new meter" : ""}{r.by ? <span style={{ color: "#8A94A0" }}> · {r.by}</span> : null}</span>
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, background: "var(--card-hi)", borderRadius: 7, padding: "5px 8px" }}>
+                      <span style={{ flex: 1 }}>{fmtDate(r.date)}{r.reset ? " · new meter" : ""}{r.by ? <span style={{ color: "var(--faint)" }}> · {r.by}</span> : null}</span>
                       <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(r.value)}</b>
                       <ConfirmDeleteButton onConfirm={() => onDeleteReading(r.id)} size={12} />
                     </div>
                   ))}
-                  {ACTIVE_CAN_EDIT && <button onClick={() => onArchiveMeter(m.id)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>Remove this meter</button>}
+                  {ACTIVE_CAN_EDIT && <button onClick={() => onArchiveMeter(m.id)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>Remove this meter</button>}
                 </div>
               )}
-              {ACTIVE_CAN_EDIT && <button onClick={() => setReadingFor(m)} style={{ width: "100%", marginTop: 10, background: "#EEF0F2", color: "#2B4562", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Add reading</button>}
+              {ACTIVE_CAN_EDIT && <button onClick={() => setReadingFor(m)} style={{ width: "100%", marginTop: 10, background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Add reading</button>}
             </div>
           );
         })}
@@ -159,7 +159,7 @@ export function MeterModal({ existing, suppliers, onClose, onSave }) {
           <Field label={`Price per ${unit || "unit"} (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" step="0.0001" min="0" value={tariff} onChange={(e) => setTariff(e.target.value)} placeholder="e.g. 0.245" /></Field>
           <Field label={`kg CO₂e per ${unit || "unit"}`}><TextInput type="number" step="0.001" min="0" value={co2} onChange={(e) => setCo2(e.target.value)} /></Field>
         </div>
-        <span style={{ fontSize: 10.5, color: "#A3ABB4", marginTop: -6 }}>Carbon defaults are approximate UK factors (electricity 0.207 kg/kWh, gas 2.04 kg/m³, water 0.34 kg/m³) — update to your supplier's or the latest government figures.</span>
+        <span style={{ fontSize: 10.5, color: "var(--faint)", marginTop: -6 }}>Carbon defaults are approximate UK factors (electricity 0.207 kg/kWh, gas 2.04 kg/m³, water 0.34 kg/m³) — update to your supplier's or the latest government figures.</span>
         <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), type, unit: unit.trim(), serial: serial.trim(), mpan: mpan.trim(), readEveryDays: Number(readEveryDays) || 31, supplierId: supplierId || null, tariff: tariff === "" ? null : Number(tariff), co2Factor: co2 === "" ? null : Number(co2), annualTarget: annualTarget === "" ? null : Number(annualTarget) })}><CheckCircle2 size={15} /> Save meter</PrimaryButton>
       </div>
     </Modal>
@@ -180,18 +180,18 @@ export function ReadingModal({ meter, last, onClose, onSave }) {
   return (
     <Modal title={`Reading — ${meter.name}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {last && <div style={{ fontSize: 12, color: "#5B6672" }}>Last reading: <b>{last.value} {meter.unit}</b> on {fmtDate(last.date)}</div>}
+        {last && <div style={{ fontSize: 12, color: "var(--muted)" }}>Last reading: <b>{last.value} {meter.unit}</b> on {fmtDate(last.date)}</div>}
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Date"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           <Field label={`Reading${meter.unit ? ` (${meter.unit})` : ""}`}><TextInput autoFocus type="number" inputMode="decimal" step="any" value={value} onChange={(e) => { setValue(e.target.value); setErr(""); }} /></Field>
         </div>
         {last && value !== "" && !isNaN(Number(value)) && !reset && Number(value) >= Number(last.value) && (
-          <div style={{ fontSize: 12, color: "#2F855A", fontWeight: 600 }}>Used since last reading: {(Number(value) - Number(last.value)).toLocaleString("en-GB", { maximumFractionDigits: 1 })} {meter.unit}</div>
+          <div style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Used since last reading: {(Number(value) - Number(last.value)).toLocaleString("en-GB", { maximumFractionDigits: 1 })} {meter.unit}</div>
         )}
-        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "#3A4451", cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
           <input type="checkbox" checked={reset} onChange={(e) => setReset(e.target.checked)} style={{ margin: 0 }} /> New / replaced meter (starts a fresh count)
         </label>
-        {err && <div style={{ fontSize: 12, color: "#C53030" }}>{err}</div>}
+        {err && <div style={{ fontSize: 12, color: "var(--danger)" }}>{err}</div>}
         <PrimaryButton onClick={submit}><CheckCircle2 size={15} /> Save reading</PrimaryButton>
       </div>
     </Modal>
@@ -201,7 +201,7 @@ export function ReadingModal({ meter, last, onClose, onSave }) {
 /* ---------------------------------------------------------
    Site tab: meters, spares and keys
 --------------------------------------------------------- */
-export function SiteTab({ docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
+export function SiteTab({ logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
   const [view, setView] = useState("meters");
   return (
     <div>
@@ -221,6 +221,7 @@ export function SiteTab({ docs, meters, spares, keys, audits, incidents, permits
         <ToggleButton active={view === "training"} onClick={() => setView("training")}>Training</ToggleButton>
         <ToggleButton active={view === "drills"} onClick={() => setView("drills")}>Fire drills</ToggleButton>
         <ToggleButton active={view === "docs"} onClick={() => setView("docs")}>Documents</ToggleButton>
+        <ToggleButton active={view === "logs"} onClick={() => setView("logs")}>Logs</ToggleButton>
       </div>
       {view === "meters" && meters}
       {view === "spares" && spares}
@@ -233,13 +234,15 @@ export function SiteTab({ docs, meters, spares, keys, audits, incidents, permits
       {view === "training" && training}
       {view === "drills" && drills}
       {view === "docs" && docs}
+      {view === "logs" && logs}
     </div>
   );
 }
 
-export function SparesView({ spares, suppliers, devices, senderName, onSave, onAdjust, onDelete }) {
+export function SparesView({ onStockTake, spares, suppliers, devices, senderName, onSave, onAdjust, onDelete }) {
   const [editing, setEditing] = useState(null);
   const [adjusting, setAdjusting] = useState(null); // { spare, dir }
+  const [taking, setTaking] = useState(false);
   const [q, setQ] = useState("");
   const low = (sp) => sp.minQty !== "" && sp.minQty != null && Number(sp.qty) <= Number(sp.minQty);
   const list = spares.filter((sp) => !q.trim() || [sp.name, sp.partNo, sp.store].filter(Boolean).some((v) => v.toLowerCase().includes(q.trim().toLowerCase())))
@@ -259,12 +262,13 @@ export function SparesView({ spares, suppliers, devices, senderName, onSave, onA
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search spares…" style={{ flex: 1 }} />
-        {ACTIVE_CAN_EDIT && <button onClick={() => setEditing({})} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Plus size={14} /> Add</button>}
+        {ACTIVE_CAN_EDIT && <button onClick={() => setEditing({})} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Plus size={14} /> Add</button>}
       </div>
       {spares.length > 0 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
-          <span style={{ flex: 1, fontSize: 12, color: "#5B6672" }}>{spares.length} items · stock value {gbp(value)}{lowList.length ? <b style={{ color: "#B7791F" }}> · {lowList.length} low</b> : null}</span>
-          {lowList.length > 0 && ACTIVE_CAN_EDIT && <button onClick={reorderEmail} style={{ background: "#FDF1E0", color: "#8A5A0B", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Mail size={12} /> Reorder</button>}
+          <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }}>{spares.length} items · stock value {gbp(value)}{lowList.length ? <b style={{ color: "var(--warn)" }}> · {lowList.length} low</b> : null}</span>
+          {ACTIVE_CAN_EDIT && onStockTake && <button onClick={() => setTaking(true)} style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Stock take</button>}
+          {lowList.length > 0 && ACTIVE_CAN_EDIT && <button onClick={reorderEmail} style={{ background: "var(--warn-soft)", color: "var(--warn)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Mail size={12} /> Reorder</button>}
           <ExportButton label="CSV" filename="spares.csv" rows={[["Item", "Part no.", "Qty", "Unit", "Reorder at", "Store", "Unit cost", "Supplier"], ...spares.map((sp) => [sp.name, sp.partNo || "", sp.qty, sp.unit || "", sp.minQty ?? "", sp.store || "", sp.unitCost || "", suppliers.find((x) => x.id === sp.supplierId)?.name || ""])]} />
         </div>
       )}
@@ -273,26 +277,27 @@ export function SparesView({ spares, suppliers, devices, senderName, onSave, onA
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {list.map((sp) => (
-            <div key={sp.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: low(sp) ? "3px solid #D97706" : "1px solid #E1E4E8", borderRadius: 12, padding: 11, display: "flex", alignItems: "center", gap: 10 }}>
+            <div key={sp.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: low(sp) ? "3px solid #D97706" : "1px solid var(--border)", borderRadius: 12, padding: 11, display: "flex", alignItems: "center", gap: 10 }}>
               <button onClick={() => ACTIVE_CAN_EDIT && setEditing(sp)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700 }}>{sp.name}</div>
-                <div style={{ fontSize: 11.3, color: "#8A94A0" }}>{[sp.partNo && `#${sp.partNo}`, sp.store, sp.deviceIds?.length ? `for ${sp.deviceIds.map((id) => devices.find((d) => d.id === id)?.name).filter(Boolean).join(", ")}` : null].filter(Boolean).join(" · ") || "—"}</div>
-                {low(sp) && <div style={{ fontSize: 11, fontWeight: 700, color: "#B7791F" }}>Reorder — at or below {sp.minQty}</div>}
+                <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{[sp.partNo && `#${sp.partNo}`, sp.store, sp.deviceIds?.length ? `for ${sp.deviceIds.map((id) => devices.find((d) => d.id === id)?.name).filter(Boolean).join(", ")}` : null].filter(Boolean).join(" · ") || "—"}</div>
+                {low(sp) && <div style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)" }}>Reorder — at or below {sp.minQty}</div>}
               </button>
               <div style={{ textAlign: "center", minWidth: 44 }}>
-                <div style={{ fontSize: 18, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace", color: Number(sp.qty) <= 0 ? "#C53030" : "#1B2430" }}>{sp.qty}</div>
-                <div style={{ fontSize: 10, color: "#8A94A0" }}>{sp.unit || "in stock"}</div>
+                <div style={{ fontSize: 18, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace", color: Number(sp.qty) <= 0 ? "var(--danger)" : "var(--text)" }}>{sp.qty}</div>
+                <div style={{ fontSize: 10, color: "var(--faint)" }}>{sp.unit || "in stock"}</div>
               </div>
               {ACTIVE_CAN_EDIT && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button onClick={() => setAdjusting({ spare: sp, dir: 1 })} title="Add stock" style={{ background: "#EAF4EE", color: "#2F6B4A", border: "none", borderRadius: 7, width: 30, height: 26, fontWeight: 800, cursor: "pointer" }}>+</button>
-                  <button onClick={() => setAdjusting({ spare: sp, dir: -1 })} title="Use stock" style={{ background: "#FBEAEA", color: "#9B2C2C", border: "none", borderRadius: 7, width: 30, height: 26, fontWeight: 800, cursor: "pointer" }}>−</button>
+                  <button onClick={() => setAdjusting({ spare: sp, dir: 1 })} title="Add stock" style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 7, width: 30, height: 26, fontWeight: 800, cursor: "pointer" }}>+</button>
+                  <button onClick={() => setAdjusting({ spare: sp, dir: -1 })} title="Use stock" style={{ background: "var(--danger-soft)", color: "var(--danger)", border: "none", borderRadius: 7, width: 30, height: 26, fontWeight: 800, cursor: "pointer" }}>−</button>
                 </div>
               )}
             </div>
           ))}
         </div>
       )}
+      {taking && <StockTakeModal spares={spares} onClose={() => setTaking(false)} onSave={(c) => { onStockTake(c); setTaking(false); }} />}
       {editing && <SpareModal existing={editing.id ? editing : null} suppliers={suppliers} devices={devices} onClose={() => setEditing(null)} onSave={(sp) => { onSave(sp); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
       {adjusting && <AdjustStockModal spare={adjusting.spare} dir={adjusting.dir} devices={devices} onClose={() => setAdjusting(null)} onSave={(delta, note) => { onAdjust(adjusting.spare.id, delta, note); setAdjusting(null); }} />}
     </div>
@@ -344,10 +349,10 @@ export function SpareModal({ existing, suppliers, devices, onClose, onSave, onDe
         {existing && <ConfirmTextDelete label="Delete this spare" onConfirm={() => onDelete(existing.id)} />}
         {existing?.log?.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#5B6672" }}>Stock history</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Stock history</div>
             {existing.log.slice(0, 15).map((l, i) => (
-              <div key={i} style={{ fontSize: 11.5, color: "#5B6672", display: "flex", gap: 6 }}>
-                <b style={{ color: l.delta < 0 ? "#9B2C2C" : "#2F6B4A", minWidth: 34 }}>{l.delta > 0 ? "+" : ""}{l.delta}</b>
+              <div key={i} style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", gap: 6 }}>
+                <b style={{ color: l.delta < 0 ? "var(--danger)" : "var(--ok)", minWidth: 34 }}>{l.delta > 0 ? "+" : ""}{l.delta}</b>
                 <span style={{ flex: 1 }}>{l.note || ""}</span>
                 <span>{l.by} · {fmtDate(l.at.slice(0, 10))}</span>
               </div>
@@ -366,7 +371,7 @@ export function AdjustStockModal({ spare, dir, devices, onClose, onSave }) {
   return (
     <Modal title={`${dir > 0 ? "Add stock" : "Use stock"} — ${spare.name}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>In stock now: <b>{spare.qty} {spare.unit || ""}</b></div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>In stock now: <b>{spare.qty} {spare.unit || ""}</b></div>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="How many"><TextInput autoFocus type="number" min="1" value={n} onChange={(e) => setN(e.target.value)} /></Field>
           <Field label={dir > 0 ? "Note (e.g. delivery ref)" : "Used on"}>
@@ -380,7 +385,7 @@ export function AdjustStockModal({ spare, dir, devices, onClose, onSave }) {
   );
 }
 
-export function KeysView({ locationName = "", keys, onSave, onIssue, onReturn, onDelete }) {
+export function KeysView({ onLost, locationName = "", keys, onSave, onIssue, onReturn, onDelete }) {
   const [editing, setEditing] = useState(null);
   const [issuing, setIssuing] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -391,8 +396,8 @@ export function KeysView({ locationName = "", keys, onSave, onIssue, onReturn, o
         <ToggleButton active={filter === "all"} onClick={() => setFilter("all")}>All ({keys.length})</ToggleButton>
         <ToggleButton active={filter === "out"} onClick={() => setFilter("out")}>Issued ({keys.filter((k) => k.holder).length})</ToggleButton>
         <ToggleButton active={filter === "in"} onClick={() => setFilter("in")}>In</ToggleButton>
-        {keys.length > 0 && <button onClick={() => openPrintReport("Key & access card register", locationName, buildKeyRegister(keys))} title="Print key register" style={{ background: "#EEF0F2", color: "#2B4562", border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer", display: "flex" }}><Printer size={14} /></button>}
-        {ACTIVE_CAN_EDIT && <button onClick={() => setEditing({})} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Plus size={14} /></button>}
+        {keys.length > 0 && <button onClick={() => openPrintReport("Key & access card register", locationName, buildKeyRegister(keys))} title="Print key register" style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer", display: "flex" }}><Printer size={14} /></button>}
+        {ACTIVE_CAN_EDIT && <button onClick={() => setEditing({})} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Plus size={14} /></button>}
       </div>
       {keys.length === 0 ? (
         <EmptyState icon={Key} title="No keys or access cards yet" body="Keep track of plant room keys, riser keys and access cards — who has them and when they're due back." actionLabel={ACTIVE_CAN_EDIT ? "Add a key" : undefined} onAction={() => setEditing({})} />
@@ -401,18 +406,20 @@ export function KeysView({ locationName = "", keys, onSave, onIssue, onReturn, o
           {list.map((k) => {
             const late = k.holder && k.dueBack && daysUntil(k.dueBack) < 0;
             return (
-              <div key={k.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: `3px solid ${late ? "#C53030" : k.holder ? "#D97706" : "#2F855A"}`, borderRadius: 12, padding: 11, display: "flex", alignItems: "center", gap: 10 }}>
+              <div key={k.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${late ? "#C53030" : k.holder ? "#D97706" : "#2F855A"}`, borderRadius: 12, padding: 11, display: "flex", alignItems: "center", gap: 10 }}>
                 <button onClick={() => ACTIVE_CAN_EDIT && setEditing(k)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>{k.label}{k.number ? <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#8A94A0", fontWeight: 600 }}> #{k.number}</span> : null}</div>
-                  <div style={{ fontSize: 11.3, color: "#8A94A0" }}>{[k.type === "card" ? "Access card" : k.type === "fob" ? "Fob" : "Key", k.opens && `opens ${k.opens}`, k.kept && `kept in ${k.kept}`].filter(Boolean).join(" · ")}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>{k.label}{k.number ? <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--faint)", fontWeight: 600 }}> #{k.number}</span> : null}</div>
+                  <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{[k.type === "card" ? "Access card" : k.type === "fob" ? "Fob" : "Key", k.opens && `opens ${k.opens}`, k.kept && `kept in ${k.kept}`].filter(Boolean).join(" · ")}</div>
+                  {k.lost ? <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--danger)" }}>LOST {k.lostAt ? fmtDate(k.lostAt.slice(0, 10)) : ""}{k.lostNote ? ` — ${k.lostNote}` : ""}</div> : null}
                   {k.holder ? (
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: late ? "#C53030" : "#8A5A0B" }}>With {k.holder}{k.holderCompany ? ` (${k.holderCompany})` : ""} since {fmtDate(k.issuedAt?.slice(0, 10))}{k.dueBack ? ` · ${late ? "was due" : "due"} back ${fmtDate(k.dueBack)}` : ""}</div>
-                  ) : <div style={{ fontSize: 11.5, fontWeight: 700, color: "#2F855A" }}>In</div>}
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: late ? "var(--danger)" : "var(--warn)" }}>With {k.holder}{k.holderCompany ? ` (${k.holderCompany})` : ""} since {fmtDate(k.issuedAt?.slice(0, 10))}{k.dueBack ? ` · ${late ? "was due" : "due"} back ${fmtDate(k.dueBack)}` : ""}</div>
+                  ) : <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>In</div>}
                 </button>
-                {ACTIVE_CAN_EDIT && (k.holder ? (
-                  <button onClick={() => onReturn(k.id)} style={{ background: "#EAF4EE", color: "#2F6B4A", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Returned</button>
+                {ACTIVE_CAN_EDIT && (k.holder ? (<>
+                  <button onClick={() => { const note = window.prompt(`Mark "${k.label}" as lost? Add a note (who lost it / when):`, k.holder ? `Lost by ${k.holder}` : ""); if (note !== null) onLost?.(k.id, note); }} title="Mark lost" style={{ background: "var(--danger-soft)", color: "var(--danger)", border: "none", borderRadius: 8, padding: "7px 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Lost</button>
+                  <button onClick={() => onReturn(k.id)} style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Returned</button></>
                 ) : (
-                  <button onClick={() => setIssuing(k)} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Issue</button>
+                  <button onClick={() => setIssuing(k)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Issue</button>
                 ))}
               </div>
             );
@@ -449,8 +456,8 @@ export function KeyModal({ existing, onClose, onSave, onDelete }) {
         {existing && <ConfirmTextDelete label="Delete this key" onConfirm={() => onDelete(existing.id)} />}
         {existing?.log?.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#5B6672" }}>History</div>
-            {existing.log.slice(0, 20).map((l, i) => <div key={i} style={{ fontSize: 11.5, color: "#5B6672" }}>{fmtDate(l.at.slice(0, 10))} · {l.action === "issued" ? "Issued to" : "Returned by"} {l.holder}{l.holderCompany ? ` (${l.holderCompany})` : ""} · {l.by}</div>)}
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>History</div>
+            {existing.log.slice(0, 20).map((l, i) => <div key={i} style={{ fontSize: 11.5, color: "var(--muted)" }}>{fmtDate(l.at.slice(0, 10))} · {l.action === "issued" ? "Issued to" : "Returned by"} {l.holder}{l.holderCompany ? ` (${l.holderCompany})` : ""} · {l.by}</div>)}
           </div>
         )}
       </div>
@@ -486,7 +493,7 @@ export function AuditsView({ audits, templates, suppliers, areas, locationName, 
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><ClipboardCheck size={15} /> New audit</PrimaryButton>}
-        {ACTIVE_CAN_EDIT && <button onClick={() => setEditTemplates(true)} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>Templates</button>}
+        {ACTIVE_CAN_EDIT && <button onClick={() => setEditTemplates(true)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Templates</button>}
       </div>
       {Object.keys(byTemplate).length > 0 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10, overflowX: "auto" }}>
@@ -494,13 +501,13 @@ export function AuditsView({ audits, templates, suppliers, areas, locationName, 
             const last6 = list.slice(0, 6); const avg = Math.round(last6.reduce((t, a) => t + a.score, 0) / last6.length);
             const [fg] = scoreTone(avg);
             return (
-              <div key={name} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: "9px 11px", minWidth: 140 }}>
-                <div style={{ fontSize: 11, color: "#8A94A0", fontWeight: 650 }}>{name}</div>
+              <div key={name} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 11px", minWidth: 140 }}>
+                <div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 650 }}>{name}</div>
                 <div style={{ fontSize: 18, fontWeight: 750, color: fg, fontFamily: "'IBM Plex Mono', monospace" }}>{avg}%</div>
                 <div style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 20, marginTop: 3 }}>
                   {[...last6].reverse().map((a) => <div key={a.id} title={`${fmtDate(a.date)} ${a.score}%`} style={{ width: 8, height: Math.max(3, a.score / 5), background: scoreTone(a.score)[0], borderRadius: 2 }} />)}
                 </div>
-                <div style={{ fontSize: 10, color: "#8A94A0" }}>avg of last {last6.length}</div>
+                <div style={{ fontSize: 10, color: "var(--faint)" }}>avg of last {last6.length}</div>
               </div>
             );
           })}
@@ -513,10 +520,10 @@ export function AuditsView({ audits, templates, suppliers, areas, locationName, 
           {sorted.map((a) => {
             const [fg, bg] = scoreTone(a.score);
             return (
-              <button key={a.id} onClick={() => setEditing(a)} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 12, padding: 11, display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+              <button key={a.id} onClick={() => setEditing(a)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 11, display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700 }}>{a.templateName}{a.area ? ` — ${a.area}` : ""}</div>
-                  <div style={{ fontSize: 11.3, color: "#8A94A0" }}>{fmtDate(a.date)} · {a.by || ""}{a.supplierId ? ` · ${suppliers.find((s) => s.id === a.supplierId)?.name || ""}` : ""}{a.items.filter((i) => i.score !== null && i.score <= 2).length ? ` · ${a.items.filter((i) => i.score !== null && i.score <= 2).length} poor` : ""}</div>
+                  <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{fmtDate(a.date)} · {a.by || ""}{a.supplierId ? ` · ${suppliers.find((s) => s.id === a.supplierId)?.name || ""}` : ""}{a.items.filter((i) => i.score !== null && i.score <= 2).length ? ` · ${a.items.filter((i) => i.score !== null && i.score <= 2).length} poor` : ""}</div>
                 </div>
                 <span style={{ fontSize: 14, fontWeight: 800, color: fg, background: bg, borderRadius: 10, padding: "4px 10px", fontFamily: "'IBM Plex Mono', monospace" }}>{a.score}%</span>
               </button>
@@ -567,24 +574,24 @@ export function AuditModal({ existing, templates, suppliers, areas, locationName
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
         </Field>
-        <div style={{ fontSize: 11.5, color: "#8A94A0" }}>Score each item 0 (very poor) to 5 (excellent), or N/A.</div>
+        <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Score each item 0 (very poor) to 5 (excellent), or N/A.</div>
         {items.map((it, i) => (
-          <div key={i} style={{ background: "#F7F8F9", borderRadius: 9, padding: "8px 9px" }}>
+          <div key={i} style={{ background: "var(--card-hi)", borderRadius: 9, padding: "8px 9px" }}>
             <div style={{ fontSize: 12.8, fontWeight: 650, marginBottom: 5 }}>{it.item}</div>
             <div style={{ display: "flex", gap: 4 }}>
               {[0, 1, 2, 3, 4, 5].map((n) => {
                 const on = it.score === n; const [fg, bg] = scoreTone(n * 20);
-                return <button key={n} onClick={() => setItems((p) => p.map((x, j) => j === i ? { ...x, score: n } : x))} style={{ flex: 1, background: on ? fg : "#fff", color: on ? "#fff" : "#5B6672", border: `1px solid ${on ? fg : "#D7DCE1"}`, borderRadius: 7, padding: "6px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{n}</button>;
+                return <button key={n} onClick={() => setItems((p) => p.map((x, j) => j === i ? { ...x, score: n } : x))} style={{ flex: 1, background: on ? fg : "var(--card)", color: on ? "#fff" : "var(--muted)", border: `1px solid ${on ? fg : "#D7DCE1"}`, borderRadius: 7, padding: "6px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{n}</button>;
               })}
-              <button onClick={() => setItems((p) => p.map((x, j) => j === i ? { ...x, score: null } : x))} style={{ flex: 1.3, background: it.score === null ? "#5B6672" : "#fff", color: it.score === null ? "#fff" : "#5B6672", border: "1px solid #D7DCE1", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>N/A</button>
+              <button onClick={() => setItems((p) => p.map((x, j) => j === i ? { ...x, score: null } : x))} style={{ flex: 1.3, background: it.score === null ? "#5B6672" : "var(--card)", color: it.score === null ? "#fff" : "var(--muted)", border: "1px solid var(--border)", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>N/A</button>
             </div>
             {it.score !== null && it.score <= 2 && <TextInput value={it.note} onChange={(e) => setItems((p) => p.map((x, j) => j === i ? { ...x, note: e.target.value } : x))} placeholder="What's wrong?" style={{ width: "100%", marginTop: 6, fontSize: 12.5 }} />}
           </div>
         ))}
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
-        <div style={{ fontSize: 14, fontWeight: 800, textAlign: "center", color: scoreTone(score)[0] }}>Score: {scored.length ? `${score}%` : "—"} <span style={{ fontSize: 11.5, color: "#8A94A0", fontWeight: 600 }}>({scored.length} of {items.length} scored)</span></div>
+        <div style={{ fontSize: 14, fontWeight: 800, textAlign: "center", color: scoreTone(score)[0] }}>Score: {scored.length ? `${score}%` : "—"} <span style={{ fontSize: 11.5, color: "var(--faint)", fontWeight: 600 }}>({scored.length} of {items.length} scored)</span></div>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => scored.length && onSave(payload())}><CheckCircle2 size={15} /> Save audit</PrimaryButton>}
-        {existing && <button onClick={email} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Mail size={14} /> Email result to supplier</button>}
+        {existing && <button onClick={email} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Mail size={14} /> Email result to supplier</button>}
         {existing && <ConfirmTextDelete label="Delete this audit" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -596,9 +603,9 @@ export function AuditTemplatesModal({ templates, onClose, onSave }) {
   return (
     <Modal title="Audit templates" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 12, color: "#5B6672" }}>One item per line. Changes apply to new audits only.</div>
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>One item per line. Changes apply to new audits only.</div>
         {list.map((t, i) => (
-          <div key={t.id} style={{ background: "#F7F8F9", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div key={t.id} style={{ background: "var(--card-hi)", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", gap: 6 }}>
               <TextInput value={t.name} onChange={(e) => setList((p) => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} style={{ flex: 1, fontWeight: 700 }} />
               {list.length > 1 && <button onClick={() => setList((p) => p.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color="#C0C6CC" /></button>}
@@ -606,7 +613,7 @@ export function AuditTemplatesModal({ templates, onClose, onSave }) {
             <TextArea value={t.text} onChange={(e) => setList((p) => p.map((x, j) => j === i ? { ...x, text: e.target.value } : x))} style={{ minHeight: 90, fontSize: 12.5 }} />
           </div>
         ))}
-        <button onClick={() => setList((p) => [...p, { id: `t_${uid()}`, name: "New audit", text: "" }])} style={{ background: "none", border: "1px dashed #C7D0DA", borderRadius: 9, padding: 9, fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>+ Add a template</button>
+        <button onClick={() => setList((p) => [...p, { id: `t_${uid()}`, name: "New audit", text: "" }])} style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 9, padding: 9, fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>+ Add a template</button>
         <PrimaryButton onClick={() => onSave(list.map(({ text, ...t }) => ({ ...t, items: text.split("\n").map((x) => x.trim()).filter(Boolean) })).filter((t) => t.items.length))}><CheckCircle2 size={15} /> Save templates</PrimaryButton>
       </div>
     </Modal>
@@ -634,19 +641,19 @@ export function IncidentsView({ onRaiseWork, incidents, areas, locationName, onS
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Siren size={15} /> Log incident / near miss</PrimaryButton>}
         {incidents.length > 0 && <ExportButton label="CSV" filename="incident-log.csv" rows={csv} />}
       </div>
-      {thisYear.length > 0 && <div style={{ fontSize: 11.5, color: "#5B6672", marginBottom: 8 }}>{yr}: {Object.entries(INCIDENT_TYPES).map(([k, v]) => [v, thisYear.filter((i) => i.type === k).length]).filter(([, n]) => n).map(([v, n]) => `${n} ${v.toLowerCase()}`).join(" · ")}</div>}
+      {thisYear.length > 0 && <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>{yr}: {Object.entries(INCIDENT_TYPES).map(([k, v]) => [v, thisYear.filter((i) => i.type === k).length]).filter(([, n]) => n).map(([v, n]) => `${n} ${v.toLowerCase()}`).join(" · ")}</div>}
       {list.length === 0 ? (
         <EmptyState icon={Siren} title={filter === "open" ? "No open incidents" : "Nothing here"} body="Record accidents, near misses, property damage, spills and security issues — with actions taken and a RIDDOR reminder where needed." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {list.map((i) => (
-            <button key={i.id} onClick={() => setEditing(i)} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: `3px solid ${i.type === "injury" ? "#C53030" : i.type === "near_miss" ? "#D97706" : "#2B4562"}`, borderRadius: 12, padding: 11, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+            <button key={i.id} onClick={() => setEditing(i)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${i.type === "injury" ? "#C53030" : i.type === "near_miss" ? "#D97706" : "#2B4562"}`, borderRadius: 12, padding: 11, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ fontSize: 13.5, fontWeight: 700 }}>{INCIDENT_TYPES[i.type]}{i.area ? ` — ${i.area}` : ""}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: i.status === "closed" ? "#2F855A" : "#B7791F" }}>{i.status === "closed" ? "Closed" : "Open"}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: i.status === "closed" ? "var(--ok)" : "var(--warn)" }}>{i.status === "closed" ? "Closed" : "Open"}</span>
               </div>
-              <div style={{ fontSize: 11.3, color: "#8A94A0" }}>{fmtDate(i.date)}{i.time ? ` ${i.time}` : ""} · {i.reportedBy || ""}{i.riddor ? <b style={{ color: i.riddorReported ? "#2F855A" : "#C53030" }}> · RIDDOR {i.riddorReported ? "reported" : "to report"}</b> : null}</div>
-              <div style={{ fontSize: 12.5, color: "#3A4451", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.description}</div>
+              <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{fmtDate(i.date)}{i.time ? ` ${i.time}` : ""} · {i.reportedBy || ""}{i.riddor ? <b style={{ color: i.riddorReported ? "var(--ok)" : "var(--danger)" }}> · RIDDOR {i.riddorReported ? "reported" : "to report"}</b> : null}</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.description}</div>
             </button>
           ))}
         </div>
@@ -699,8 +706,8 @@ export function IncidentModal({ onRaiseWork, existing, areas, locationName, onCl
         </Field>
         <Field label="Action taken / to prevent it happening again"><TextArea value={actions} onChange={(e) => setActions(e.target.value)} /></Field>
         {(type === "property" || type === "injury" || claimRef) && (
-          <div style={{ background: "#F7F8F9", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#5B6672" }}>Insurance claim (optional)</div>
+          <div style={{ background: "var(--card-hi)", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Insurance claim (optional)</div>
             <div style={{ display: "flex", gap: 8 }}>
               <Field label="Claim ref"><TextInput value={claimRef} onChange={(e) => setClaimRef(e.target.value)} /></Field>
               <Field label={`Amount (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" value={claimAmount} onChange={(e) => setClaimAmount(e.target.value)} /></Field>
@@ -712,14 +719,14 @@ export function IncidentModal({ onRaiseWork, existing, areas, locationName, onCl
           </div>
         )}
         {existing && onRaiseWork && ACTIVE_CAN_EDIT && (
-          existing.workId ? <div style={{ fontSize: 12, color: "#2B4562", fontWeight: 650 }}>✓ Work request raised for this incident</div>
-          : <button type="button" onClick={() => onRaiseWork(existing)} style={{ background: "#EAF1F8", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Wrench size={14} /> Raise a work request to fix this</button>
+          existing.workId ? <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 650 }}>✓ Work request raised for this incident</div>
+          : <button type="button" onClick={() => onRaiseWork(existing)} style={{ background: "var(--accent-soft)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Wrench size={14} /> Raise a work request to fix this</button>
         )}
         {(type === "injury" || type === "environmental" || riddor) && (
-          <div style={{ background: "#FDF1E0", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ background: "var(--warn-soft)", borderRadius: 9, padding: 9, display: "flex", flexDirection: "column", gap: 6 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, fontWeight: 650, cursor: "pointer" }}><input type="checkbox" checked={riddor} onChange={(e) => setRiddor(e.target.checked)} style={{ margin: 0 }} /> RIDDOR reportable</label>
             {riddor && <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, fontWeight: 650, cursor: "pointer" }}><input type="checkbox" checked={riddorReported} onChange={(e) => setRiddorReported(e.target.checked)} style={{ margin: 0 }} /> Reported to the HSE</label>}
-            <span style={{ fontSize: 10.8, color: "#8A5A0B" }}>Examples: specified injuries, over-7-day incapacitation, dangerous occurrences. Check the HSE RIDDOR guidance if unsure.</span>
+            <span style={{ fontSize: 10.8, color: "var(--warn)" }}>Examples: specified injuries, over-7-day incapacitation, dangerous occurrences. Check the HSE RIDDOR guidance if unsure.</span>
           </div>
         )}
         <div style={{ display: "flex", gap: 6 }}>
@@ -727,7 +734,7 @@ export function IncidentModal({ onRaiseWork, existing, areas, locationName, onCl
           <ToggleButton active={status === "closed"} onClick={() => setStatus("closed")}>Closed</ToggleButton>
         </div>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => description.trim() && onSave({ id: existing?.id, type, date, time, area: area.trim(), description: description.trim(), person: person.trim(), actions: actions.trim(), riddor, riddorReported, status, rootCause, claimRef: claimRef.trim(), claimStatus, claimAmount: claimAmount === "" ? null : Number(claimAmount), photos: incPhotos })}><CheckCircle2 size={15} /> Save</PrimaryButton>}
-        {existing && <button onClick={print} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print incident report</button>}
+        {existing && <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print incident report</button>}
         {existing && <ConfirmTextDelete label="Delete this incident" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -737,7 +744,7 @@ export function IncidentModal({ onRaiseWork, existing, areas, locationName, onCl
 /* ---------------------------------------------------------
    Permits to work
 --------------------------------------------------------- */
-export function PermitsView({ permits, devices, suppliers, areas, locationName, onSave, onClose }) {
+export function PermitsView({ onExtend, permits, devices, suppliers, areas, locationName, onSave, onClose }) {
   const [editing, setEditing] = useState(null);
   const [filter, setFilter] = useState("open");
   const list = permits.filter((p) => filter === "all" || (filter === "open" ? p.status === "open" : p.status !== "open")).sort((a, b) => String(b.issuedAt).localeCompare(String(a.issuedAt)));
@@ -760,19 +767,21 @@ export function PermitsView({ permits, devices, suppliers, areas, locationName, 
           {list.map((p) => {
             const expired = p.status === "open" && p.validTo && new Date(p.validTo).getTime() < Date.now();
             return (
-              <div key={p.id} style={{ background: "#fff", border: "1px solid #E1E4E8", borderLeft: `3px solid ${p.status !== "open" ? "#8A94A0" : expired ? "#C53030" : "#D97706"}`, borderRadius: 12, padding: 11 }}>
+              <div key={p.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${p.status !== "open" ? "#8A94A0" : expired ? "#C53030" : "#D97706"}`, borderRadius: 12, padding: 11 }}>
                 <button onClick={() => setEditing(p)} style={{ width: "100%", background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                     <span style={{ fontSize: 13.5, fontWeight: 700 }}><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{p.ref}</span> · {p.type}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: p.status === "open" ? (expired ? "#C53030" : "#B7791F") : "#5B6672" }}>{p.status === "open" ? (expired ? "Expired — close it" : "Open") : p.status === "cancelled" ? "Cancelled" : "Closed"}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: p.status === "open" ? (expired ? "var(--danger)" : "var(--warn)") : "var(--muted)" }}>{p.status === "open" ? (expired ? "Expired — close it" : "Open") : p.status === "cancelled" ? "Cancelled" : "Closed"}</span>
                   </div>
-                  <div style={{ fontSize: 11.3, color: "#8A94A0" }}>{[p.contractor, p.company, p.area].filter(Boolean).join(" · ")} · {fmtDT(p.validFrom)} → {fmtDT(p.validTo)}</div>
-                  <div style={{ fontSize: 12.3, color: "#3A4451", marginTop: 2 }}>{p.description}</div>
+                  <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{[p.contractor, p.company, p.area].filter(Boolean).join(" · ")} · {fmtDT(p.validFrom)} → {fmtDT(p.validTo)}</div>
+                  <div style={{ fontSize: 12.3, color: "var(--text-2)", marginTop: 2 }}>{p.description}</div>
+                  {(p.extensions || []).length > 0 && <div style={{ fontSize: 11, color: "var(--warn)" }}>Extended {p.extensions.length}× — last: {p.extensions[p.extensions.length - 1].reason}</div>}
                 </button>
                 {ACTIVE_CAN_EDIT && p.status === "open" && (
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                    <button onClick={() => onClose(p.id, "closed")} style={{ flex: 1, background: "#EAF4EE", color: "#2F6B4A", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Work done — close permit</button>
-                    <button onClick={() => printPermit(p, devices, locationName)} style={{ background: "#EEF0F2", color: "#2B4562", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Printer size={13} /> Print</button>
+                    <button onClick={() => { const hrs = window.prompt("Extend by how many hours?", "4"); if (!hrs || isNaN(Number(hrs))) return; const reason = window.prompt("Reason for the extension:", "Work not finished") || ""; onExtend?.(p.id, new Date(Math.max(Date.now(), new Date(p.validTo).getTime()) + Number(hrs) * 3600000).toISOString(), reason); }} style={{ background: "var(--warn-soft)", color: "var(--warn)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Extend</button>
+                    <button onClick={() => onClose(p.id, "closed")} style={{ flex: 1, background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Work done — close permit</button>
+                    <button onClick={() => printPermit(p, devices, locationName)} style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Printer size={13} /> Print</button>
                   </div>
                 )}
               </div>
@@ -822,24 +831,24 @@ export function PermitModal({ existing, devices, suppliers, areas, locationName,
           <Field label="Valid from"><TextInput type="datetime-local" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} /></Field>
           <Field label="Valid until"><TextInput type="datetime-local" value={validTo} onChange={(e) => setValidTo(e.target.value)} /></Field>
         </div>
-        <div style={{ background: "#FDF1E0", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#8A5A0B" }}>Precautions confirmed</div>
+        <div style={{ background: "var(--warn-soft)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warn)" }}>Precautions confirmed</div>
           {precautions.map((x) => (
             <label key={x} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, cursor: "pointer" }}>
               <input type="checkbox" checked={checks.includes(x)} disabled={readOnly} onChange={(e) => setChecks((p) => e.target.checked ? [...p, x] : p.filter((y) => y !== x))} style={{ margin: 0 }} /> {x}
             </label>
           ))}
           <TextInput value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Additional precautions (optional)" style={{ fontSize: 12.5 }} />
-          {!allChecked && <span style={{ fontSize: 11, color: "#9B2C2C", fontWeight: 600 }}>Tick every precaution before the work starts.</span>}
+          {!allChecked && <span style={{ fontSize: 11, color: "var(--danger)", fontWeight: 600 }}>Tick every precaution before the work starts.</span>}
         </div>
         {!readOnly && ACTIVE_CAN_EDIT && (
           <>
             <PrimaryButton onClick={() => description.trim() && contractor.trim() && onSave(payload(), true)}><Printer size={15} /> {existing ? "Save & print" : "Issue & print permit"}</PrimaryButton>
-            <button onClick={() => description.trim() && contractor.trim() && onSave(payload(), false)} style={{ background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>{existing ? "Save" : "Issue without printing"}</button>
-            {existing && <button onClick={() => onCancelPermit(existing.id)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancel this permit</button>}
+            <button onClick={() => description.trim() && contractor.trim() && onSave(payload(), false)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{existing ? "Save" : "Issue without printing"}</button>
+            {existing && <button onClick={() => onCancelPermit(existing.id)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancel this permit</button>}
           </>
         )}
-        {readOnly && <div style={{ fontSize: 12, color: "#5B6672" }}>{existing.status === "cancelled" ? "Cancelled" : "Closed"} by {existing.closedBy} on {new Date(existing.closedAt).toLocaleString("en-GB")}.</div>}
+        {readOnly && <div style={{ fontSize: 12, color: "var(--muted)" }}>{existing.status === "cancelled" ? "Cancelled" : "Closed"} by {existing.closedBy} on {new Date(existing.closedAt).toLocaleString("en-GB")}.</div>}
       </div>
     </Modal>
   );
@@ -869,7 +878,20 @@ export function WasteView({ waste, suppliers, onSave, onDelete }) {
           {byStream.map(([k, v]) => <div key={k} title={`${WASTE_STREAMS[k]} ${Math.round(v)} kg`} style={{ width: `${(v / total) * 100}%`, background: { general: "#5B6672", mixed: "#2F855A", cardboard: "#B7791F", food: "#8E4585", glass: "#2B6CB0", paper: "#2B7A78", weee: "#C05621", hazardous: "#C53030" }[k] }} />)}
         </div>
       )}
-      {byStream.length > 0 && <div style={{ fontSize: 11, color: "#5B6672", marginBottom: 10 }}>{byStream.map(([k, v]) => `${WASTE_STREAMS[k]} ${Math.round(v)} kg`).join(" · ")}</div>}
+      {ytd.length > 0 && (() => {
+        const months = MONTH_LABELS.map((m, i) => { const list = ytd.filter((w) => new Date(w.date).getMonth() === i); const tot = list.reduce((t, w) => t + (Number(w.weightKg) || 0), 0); const gen = list.filter((w) => w.stream === "general" || w.stream === "hazardous").reduce((t, w) => t + (Number(w.weightKg) || 0), 0); return { m, recycled: Math.round(tot - gen), general: Math.round(gen) }; }).slice(0, new Date().getMonth() + 1);
+        return (
+          <div style={{ height: 150, marginBottom: 8 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={months} margin={{ top: 5, right: 5, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="m" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip formatter={(v) => `${v} kg`} /><Legend wrapperStyle={{ fontSize: 10.5 }} />
+                <Bar dataKey="recycled" name="Recycled" stackId="a" fill="#2F855A" /><Bar dataKey="general" name="General / hazardous" stackId="a" fill="#8A94A0" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })()}
+      {byStream.length > 0 && <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>{byStream.map(([k, v]) => `${WASTE_STREAMS[k]} ${Math.round(v)} kg`).join(" · ")}</div>}
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Recycle size={15} /> Log a collection</PrimaryButton>}
         {waste.length > 0 && <ExportButton label="CSV" filename="waste-log.csv" rows={[["Date", "Stream", "Weight (kg)", "Carrier", "Waste transfer note", "Cost", "Logged by"], ...waste.map((w) => [w.date, WASTE_STREAMS[w.stream] || w.stream, w.weightKg, suppliers.find((s) => s.id === w.supplierId)?.name || w.carrier || "", w.wtn || "", w.cost || "", w.by || ""])]} />}
@@ -879,10 +901,10 @@ export function WasteView({ waste, suppliers, onSave, onDelete }) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {[...waste].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 60).map((w) => (
-            <button key={w.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(w)} style={{ background: "#fff", border: "1px solid #E1E4E8", borderRadius: 10, padding: "8px 10px", display: "flex", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+            <button key={w.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(w)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 650 }}>{WASTE_STREAMS[w.stream]}</div>
-                <div style={{ fontSize: 11, color: "#8A94A0" }}>{fmtDate(w.date)}{(suppliers.find((s) => s.id === w.supplierId)?.name || w.carrier) ? ` · ${suppliers.find((s) => s.id === w.supplierId)?.name || w.carrier}` : ""}{w.wtn ? ` · WTN ${w.wtn}` : ""}</div>
+                <div style={{ fontSize: 11, color: "var(--faint)" }}>{fmtDate(w.date)}{(suppliers.find((s) => s.id === w.supplierId)?.name || w.carrier) ? ` · ${suppliers.find((s) => s.id === w.supplierId)?.name || w.carrier}` : ""}{w.wtn ? ` · WTN ${w.wtn}` : ""}</div>
               </div>
               <b style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>{w.weightKg} kg</b>
             </button>
@@ -938,10 +960,33 @@ export function ReadingsImportModal({ meters, onClose, onImport }) {
   return (
     <Modal title="Import meter readings" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>Paste three columns — <b>meter name (or serial), date, reading</b> — from a spreadsheet or your energy supplier's export.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Paste three columns — <b>meter name (or serial), date, reading</b> — from a spreadsheet or your energy supplier's export.</div>
         <TextArea value={text} onChange={(e) => setText(e.target.value)} placeholder={`Main electricity\t01/09/2026\t15230\nMain electricity\t01/10/2026\t16010`} style={{ minHeight: 110, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace" }} />
-        {parsed.length > 0 && <div style={{ fontSize: 12, color: good.length === parsed.length ? "#2F6B4A" : "#B7791F", fontWeight: 600 }}>{good.length} of {parsed.length} rows ready{parsed.length > good.length ? " — rows with an unknown meter or bad date are skipped" : ""}</div>}
+        {parsed.length > 0 && <div style={{ fontSize: 12, color: good.length === parsed.length ? "var(--ok)" : "var(--warn)", fontWeight: 600 }}>{good.length} of {parsed.length} rows ready{parsed.length > good.length ? " — rows with an unknown meter or bad date are skipped" : ""}</div>}
         <PrimaryButton onClick={() => good.length && onImport(good.map((p) => ({ meterId: p.meter.id, date: p.date, value: p.value })))}><Upload size={15} /> Import {good.length} reading{good.length === 1 ? "" : "s"}</PrimaryButton>
+      </div>
+    </Modal>
+  );
+}
+
+export function StockTakeModal({ spares, onClose, onSave }) {
+  const [counts, setCounts] = useState({});
+  const changed = spares.filter((sp) => counts[sp.id] !== undefined && counts[sp.id] !== "" && Number(counts[sp.id]) !== Number(sp.qty));
+  return (
+    <Modal title="Stock take" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Count what's actually on the shelf. Leave a box blank if you didn't count that item.</div>
+        {[...spares].sort((a, b) => String(a.store || "~").localeCompare(String(b.store || "~")) || a.name.localeCompare(b.name)).map((sp) => {
+          const v = counts[sp.id]; const diff = v !== undefined && v !== "" ? Number(v) - Number(sp.qty) : 0;
+          return (
+            <div key={sp.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12.8, fontWeight: 650 }}>{sp.name}</div><div style={{ fontSize: 10.8, color: "var(--faint)" }}>{sp.store || "—"} · system says {sp.qty}</div></div>
+              {diff !== 0 && <span style={{ fontSize: 11.5, fontWeight: 700, color: diff < 0 ? "var(--danger)" : "var(--ok)" }}>{diff > 0 ? "+" : ""}{diff}</span>}
+              <TextInput type="number" min="0" value={v ?? ""} onChange={(e) => setCounts((p) => ({ ...p, [sp.id]: e.target.value }))} placeholder="count" style={{ width: 70, padding: "5px 7px" }} />
+            </div>
+          );
+        })}
+        <PrimaryButton onClick={() => onSave(counts)}><CheckCircle2 size={15} /> Save stock take{changed.length ? ` (${changed.length} change${changed.length === 1 ? "" : "s"})` : ""}</PrimaryButton>
       </div>
     </Modal>
   );

@@ -1,6 +1,6 @@
 // Services list: filters, bulk actions, booking, chase emails, quick log, QR scanner.
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, FileSpreadsheet, HardHat, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, FileSpreadsheet, HardHat, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, Send, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
 import { Badge, CategoryBadge, ConfirmDeleteButton, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SignOffSection, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
 import { buildChaseEmail, printBulkStickers, printStickers } from "../lib/reports.js";
@@ -10,7 +10,7 @@ import { CONDITION_GRADES, CRITICALITY } from "../lib/constants.js";
 /* ---------------------------------------------------------
    Devices Tab
 --------------------------------------------------------- */
-export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
+export function DevicesTab({ history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
   const [chaseFocus, setChaseFocus] = useState(null); // null = closed, "all" or a deviceId
   const overdueList = chaseDevices.filter((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n < 0; });
   const [qrFor, setQrFor] = useState(null);
@@ -23,6 +23,7 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkMore, setBulkMore] = useState(false);
   const [chaseAllOpen, setChaseAllOpen] = useState(false);
+  const [remindOpen, setRemindOpen] = useState(false);
   const [bookFor, setBookFor] = useState(null);
   const toggleSel = (id) => setSelected((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
   const catsPresent = CATEGORY_KEYS.filter((k) => devices.some((d) => (d.serviceCategory || "maintenance") === k));
@@ -67,12 +68,12 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
       {(onQuickLog || onScan) && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
           {ACTIVE_CAN_EDIT && onQuickLog && (
-            <button onClick={onQuickLog} style={{ flex: 2, minHeight: 50, background: "#D97706", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 750, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <button onClick={onQuickLog} style={{ flex: 2, minHeight: 50, background: "#D97706", color: "var(--on-accent)", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 750, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               <Camera size={18} /> Quick log visit
             </button>
           )}
           {onScan && (
-            <button onClick={onScan} style={{ flex: 1, minHeight: 50, background: "#1B2430", color: "#fff", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <button onClick={onScan} style={{ flex: 1, minHeight: 50, background: "var(--head)", color: "var(--on-accent)", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
               <QrCode size={18} /> Scan
             </button>
           )}
@@ -82,17 +83,17 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
         <Search size={16} color="#8A94A0" style={{ position: "absolute", left: 11, top: 11 }} />
         <TextInput placeholder="Search services, tags, categories…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: "100%", paddingLeft: 34 }} />
       </div>
-      <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10, cursor: "pointer", fontSize: 12, color: "#5B6672", fontWeight: 600 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10, cursor: "pointer", fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
         <input type="checkbox" checked={searchAllLocations} onChange={(e) => onToggleSearchAll(e.target.checked)} style={{ margin: 0 }} />
         Search all locations
       </label>
       {overdueList.length > 0 && (
         <button onClick={() => setChaseFocus("all")} style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 10, background: "#FBEAEA", border: "1px solid #F3C6C6",
+          width: "100%", display: "flex", alignItems: "center", gap: 10, background: "var(--danger-soft)", border: "1px solid #F3C6C6",
           borderRadius: 10, padding: "10px 12px", marginBottom: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
         }}>
           <ShieldAlert size={16} color="#C53030" style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1, fontSize: 12.5, color: "#9B2C2C", fontWeight: 650 }}>
+          <span style={{ flex: 1, fontSize: 12.5, color: "var(--danger)", fontWeight: 650 }}>
             {overdueList.length} job{overdueList.length === 1 ? "" : "s"} not completed on time — tap to chase suppliers
           </span>
           <Mail size={15} color="#9B2C2C" />
@@ -111,15 +112,21 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
         )}
       </div>
       {ACTIVE_CAN_EDIT && onChaseAll && (() => { const od = devices.filter((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n < 0 && d.supplierId; }); return od.length > 1 ? (
-        <button onClick={() => setChaseAllOpen(true)} style={{ width: "100%", marginTop: -6, marginBottom: 10, background: "#FBEAEA", color: "#9B2C2C", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        <button onClick={() => setChaseAllOpen(true)} style={{ width: "100%", marginTop: -6, marginBottom: 10, background: "var(--danger-soft)", color: "var(--danger)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <Mail size={14} /> Chase all {od.length} overdue — one email per supplier
         </button>
       ) : null; })()}
+      {ACTIVE_CAN_EDIT && onRemindAll && dueFilter !== "archived" && devices.some((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n >= 0 && n <= 14 && d.supplierId; }) && (
+        <button onClick={() => setRemindOpen(true)} style={{ width: "100%", marginTop: -4, marginBottom: 10, background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Send size={14} /> Remind suppliers of visits due in the next 14 days
+        </button>
+      )}
+      {remindOpen && <ChaseAllModal mode="remind" devices={devices} suppliers={allSupplierList} locationName={locationName} userName={currentUserName} onClose={() => setRemindOpen(false)} onSent={() => {}} />}
       {chaseAllOpen && <ChaseAllModal devices={devices} suppliers={allSupplierList} locationName={locationName} userName={currentUserName} onClose={() => setChaseAllOpen(false)} onSent={(ids, sid) => onChaseAll(ids, sid)} />}
       <div style={{ display: "flex", gap: 8, marginTop: -6, marginBottom: 14 }}>
-        <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #D7DCE1", borderRadius: 8, padding: "0 8px" }}>
+        <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "0 8px" }}>
           <ArrowUpDown size={13} color="#8A94A0" />
-          <select value={sortBy} onChange={(e) => onPrefs({ sortBy: e.target.value })} style={{ flex: 1, border: "none", background: "none", fontSize: 12.5, padding: "7px 0", fontFamily: "inherit", color: "#1B2430", outline: "none" }}>
+          <select value={sortBy} onChange={(e) => onPrefs({ sortBy: e.target.value })} style={{ flex: 1, border: "none", background: "none", fontSize: 12.5, padding: "7px 0", fontFamily: "inherit", color: "var(--text)", outline: "none" }}>
             <option value="due">Sort: next due first</option>
             <option value="name">Sort: name A–Z</option>
             <option value="category">Sort: category</option>
@@ -130,13 +137,13 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
           </select>
         </label>
         {allTags.length > 0 && (
-          <select value={tagFilter} onChange={(e) => onPrefs({ tag: e.target.value })} style={{ flex: 1, border: "1px solid #D7DCE1", borderRadius: 8, background: tagFilter ? "#EAF1F8" : "#fff", fontSize: 12.5, padding: "7px 8px", fontFamily: "inherit", color: "#1B2430", outline: "none" }}>
+          <select value={tagFilter} onChange={(e) => onPrefs({ tag: e.target.value })} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, background: tagFilter ? "var(--accent-soft)" : "var(--card)", fontSize: 12.5, padding: "7px 8px", fontFamily: "inherit", color: "var(--text)", outline: "none" }}>
             <option value="">All tags</option>
             {allTags.map((t) => <option key={t} value={t}>#{t}</option>)}
           </select>
         )}
         {catsPresent.length > 1 && (
-          <select value={catFilter} onChange={(e) => onPrefs({ cat: e.target.value })} style={{ flex: 1, border: "1px solid #D7DCE1", borderRadius: 8, background: catFilter === "all" ? "#fff" : "#EAF1F8", fontSize: 12.5, padding: "7px 8px", fontFamily: "inherit", color: "#1B2430", outline: "none" }}>
+          <select value={catFilter} onChange={(e) => onPrefs({ cat: e.target.value })} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, background: catFilter === "all" ? "var(--card)" : "var(--accent-soft)", fontSize: 12.5, padding: "7px 8px", fontFamily: "inherit", color: "var(--text)", outline: "none" }}>
             <option value="all">All categories</option>
             {catsPresent.map((k) => <option key={k} value={k}>{CATEGORY_META[k].label}</option>)}
           </select>
@@ -151,42 +158,42 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
           {filteredDevices.map((d) => {
             const status = dueStatus(d.nextServiceDate, !!d.lastServiceDate);
             return (
-              <div key={d.id} style={{ background: "#fff", borderRadius: 12, padding: 14, border: "1px solid #E1E4E8" }}>
+              <div key={d.id} style={{ background: "var(--card)", borderRadius: 12, padding: 14, border: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                   {selecting && (
                     <button onClick={() => toggleSel(d.id)} title="Select" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", marginTop: 1 }}>
                       {selected.includes(d.id) ? <CheckSquare size={20} color="#2B4562" /> : <Square size={20} color="#A3ABB4" />}
                     </button>
                   )}
-                  {d.photo && <img src={d.photo} alt="" onClick={() => onHistory(d.id)} style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: "1px solid #E1E4E8", cursor: "pointer" }} />}
+                  {d.photo && <img src={d.photo} alt="" onClick={() => onHistory(d.id)} style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: "1px solid var(--border)", cursor: "pointer" }} />}
                   <button onClick={() => selecting ? toggleSel(d.id) : onEdit(d)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>{d.name}</div>
-                    {(d.area || d.assignee) && <div style={{ fontSize: 11.5, color: "#5B6672", fontWeight: 600, marginTop: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                    {(d.area || d.assignee) && <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600, marginTop: 1, display: "flex", alignItems: "center", gap: 8 }}>
                       {d.area && <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><MapPin size={11} /> {d.area}</span>}
-                      {d.assignee && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: d.assignee === currentUserName ? "#2B6CB0" : "#5B6672" }}><UserCheck size={11} /> {d.assignee === currentUserName ? "You" : d.assignee}</span>}
+                      {d.assignee && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: d.assignee === currentUserName ? "#2B6CB0" : "var(--muted)" }}><UserCheck size={11} /> {d.assignee === currentUserName ? "You" : d.assignee}</span>}
                     </div>}
                     {searchAllLocations && (
                       <div style={{ fontSize: 11, color: "#D97706", fontWeight: 650, marginTop: 2 }}>{locationLabel(d)}</div>
                     )}
-                    <div style={{ fontSize: 12.5, color: "#8A94A0", display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 12.5, color: "var(--faint)", display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
                       {d.assetTag && <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>#{d.assetTag}</span>}
                       {d.category && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Tag size={11} />{d.category}</span>}
                       {d.budgetPerVisit ? <span>{gbp(d.budgetPerVisit)}/visit budget</span> : null}
                     </div>
                     {(faultsByDevice[d.id] >= 3 || (d.pausedUntil && d.pausedUntil >= new Date().toISOString().slice(0, 10)) || d.certRequired || d.condition || (d.criticality && d.criticality !== "normal") || d.tags?.length > 0) && (
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
-                        {d.pausedUntil && d.pausedUntil >= new Date().toISOString().slice(0, 10) && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#5B6672", background: "#EEF0F2", borderRadius: 5, padding: "2px 6px", display: "inline-flex", alignItems: "center", gap: 3 }}><PauseCircle size={10} /> Paused until {fmtDate(d.pausedUntil)}</span>}
-                        {faultsByDevice[d.id] >= 3 && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#9B2C2C", background: "#FBEAEA", borderRadius: 5, padding: "2px 6px" }}>{faultsByDevice[d.id]} faults in 12 mo</span>}
-                        {d.criticality && d.criticality !== "normal" && <span style={{ fontSize: 10.5, fontWeight: 700, color: CRITICALITY[d.criticality].color, background: "#fff", border: `1px solid ${CRITICALITY[d.criticality].color}`, borderRadius: 5, padding: "1px 6px" }}>{CRITICALITY[d.criticality].label}</span>}
+                        {d.pausedUntil && d.pausedUntil >= new Date().toISOString().slice(0, 10) && <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--muted)", background: "var(--card-hi)", borderRadius: 5, padding: "2px 6px", display: "inline-flex", alignItems: "center", gap: 3 }}><PauseCircle size={10} /> Paused until {fmtDate(d.pausedUntil)}</span>}
+                        {faultsByDevice[d.id] >= 3 && <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 5, padding: "2px 6px" }}>{faultsByDevice[d.id]} faults in 12 mo</span>}
+                        {d.criticality && d.criticality !== "normal" && <span style={{ fontSize: 10.5, fontWeight: 700, color: CRITICALITY[d.criticality].color, background: "var(--card)", border: `1px solid ${CRITICALITY[d.criticality].color}`, borderRadius: 5, padding: "1px 6px" }}>{CRITICALITY[d.criticality].label}</span>}
                         {d.condition && <span style={{ fontSize: 10.5, fontWeight: 700, color: CONDITION_GRADES[d.condition].color, background: CONDITION_GRADES[d.condition].bg, borderRadius: 5, padding: "2px 6px" }}>Condition {d.condition}</span>}
-                        {(d.tags || []).map((t) => <span key={t} style={{ fontSize: 10.5, fontWeight: 600, color: "#5B6672", background: "#EEF0F2", borderRadius: 5, padding: "2px 6px" }}>#{t}</span>)}
-                        {d.certRequired && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#2B4562", background: "#EAF1F8", borderRadius: 5, padding: "2px 6px" }}>Certificate required</span>}
+                        {(d.tags || []).map((t) => <span key={t} style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)", background: "var(--card-hi)", borderRadius: 5, padding: "2px 6px" }}>#{t}</span>)}
+                        {d.certRequired && <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)", background: "var(--accent-soft)", borderRadius: 5, padding: "2px 6px" }}>Certificate required</span>}
                       </div>
                     )}
                     {(d.ramsRequired || d.permits?.length > 0 || (replacementYear(d) && replacementYear(d) <= new Date().getFullYear() + 1)) && (
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
-                        {d.ramsRequired && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#8A5A0B", background: "#FDF1E0", borderRadius: 5, padding: "2px 6px" }}>RAMS</span>}
-                        {(d.permits || []).map((p) => <span key={p} style={{ fontSize: 10.5, fontWeight: 700, color: "#9B2C2C", background: "#FBEAEA", borderRadius: 5, padding: "2px 6px", display: "inline-flex", alignItems: "center", gap: 3 }}><HardHat size={10} /> {p}</span>)}
+                        {d.ramsRequired && <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 5, padding: "2px 6px" }}>RAMS</span>}
+                        {(d.permits || []).map((p) => <span key={p} style={{ fontSize: 10.5, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 5, padding: "2px 6px", display: "inline-flex", alignItems: "center", gap: 3 }}><HardHat size={10} /> {p}</span>)}
                         {replacementYear(d) && replacementYear(d) <= new Date().getFullYear() + 1 && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#5B21B6", background: "#EFE9FB", borderRadius: 5, padding: "2px 6px" }}>Replace {replacementYear(d)}</span>}
                       </div>
                     )}
@@ -209,7 +216,7 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
                     {doneThisMonth(d) && !isFinished(d) ? <Badge tone="ok">✓ Done {fmtDate(d.lastServiceDate)}</Badge> : <Badge tone={status.tone}>{status.label}</Badge>}
                     <CategoryBadge category={d.serviceCategory} subCategory={d.subCategory} />
                   </div>
-                  <span style={{ fontSize: 12, color: "#8A94A0", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: "var(--faint)", display: "flex", alignItems: "center", gap: 8 }}>
                     {d.archived ? <span>Archived {d.archivedAt ? fmtDate(d.archivedAt.slice(0, 10)) : ""}</span> : <>Next: {fmtDate(d.nextServiceDate)}</>}
                     {!d.archived && d.nextServiceDate && onBook && ACTIVE_CAN_EDIT && (() => {
                       const b = currentBooking(d); const n = daysUntil(d.nextServiceDate);
@@ -222,27 +229,27 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
                       );
                     })()}
                     {daysUntil(d.nextServiceDate) !== null && daysUntil(d.nextServiceDate) < 0 && (
-                      <button onClick={() => setChaseFocus(d.id)} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#C53030", color: "#fff", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      <button onClick={() => setChaseFocus(d.id)} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#C53030", color: "var(--on-accent)", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                         <Mail size={11} /> Chase
                       </button>
                     )}
                   </span>
                 </div>
                 {d.chaseLog && d.chaseLog.length > 0 && daysUntil(d.nextServiceDate) !== null && daysUntil(d.nextServiceDate) < 0 && (
-                  <div style={{ fontSize: 11, color: "#9B2C2C", marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }}>
                     Chased {d.chaseLog.length}× · last {relativeDays(d.chaseLog[d.chaseLog.length - 1].at)} by {d.chaseLog[d.chaseLog.length - 1].by}
                   </div>
                 )}
                 {d.archived ? (
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  {ACTIVE_CAN_EDIT && <button onClick={() => onRestore?.(d.id)} style={{ flex: 1, background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><ArchiveRestore size={13} /> Restore</button>}
-                  <button onClick={() => onHistory(d.id)} style={{ flex: 1, background: "#EEF0F2", color: "#2B4562", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>History</button>
+                  {ACTIVE_CAN_EDIT && <button onClick={() => onRestore?.(d.id)} style={{ flex: 1, background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><ArchiveRestore size={13} /> Restore</button>}
+                  <button onClick={() => onHistory(d.id)} style={{ flex: 1, background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>History</button>
                 </div>
                 ) : selecting ? null : (
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  {ACTIVE_CAN_EDIT && <button onClick={() => onLogService(d.id)} style={{ flex: 1, background: "#2B4562", color: "#fff", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Log visit</button>}
-                  <button onClick={() => onHistory(d.id)} style={{ flex: 1, background: "#EEF0F2", color: "#2B4562", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>History</button>
-                  {ACTIVE_CAN_EDIT && <button onClick={() => onAddWork(d.id)} style={{ flex: 1, background: "#F5F1E8", color: "#8A5A0B", border: "1px solid #E6D9BC", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Extra work</button>}
+                  {ACTIVE_CAN_EDIT && <button onClick={() => onLogService(d.id)} style={{ flex: 1, background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Log visit</button>}
+                  <button onClick={() => onHistory(d.id)} style={{ flex: 1, background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>History</button>
+                  {ACTIVE_CAN_EDIT && <button onClick={() => onAddWork(d.id)} style={{ flex: 1, background: "#F5F1E8", color: "var(--warn)", border: "1px solid #E6D9BC", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Extra work</button>}
                 </div>
                 )}
               </div>
@@ -256,11 +263,11 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
           onChased={onChased} onClose={() => setChaseFocus(null)} />
       )}
       {selecting && (
-        <div style={{ position: "fixed", bottom: 86, left: "50%", transform: "translateX(-50%)", width: "min(420px, calc(100vw - 32px))", background: "#1B2430", borderRadius: 14, padding: 10, display: "flex", alignItems: "center", gap: 8, zIndex: 40, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
+        <div style={{ position: "fixed", bottom: 86, left: "50%", transform: "translateX(-50%)", width: "min(420px, calc(100vw - 32px))", background: "var(--head)", borderRadius: 14, padding: 10, display: "flex", alignItems: "center", gap: 8, zIndex: 40, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
           <span style={{ color: "#fff", fontSize: 12.5, fontWeight: 650, flex: 1, paddingLeft: 4 }}>{selected.length} selected</span>
           <button onClick={() => setSelected(selected.length === filteredDevices.length ? [] : filteredDevices.map((d) => d.id))} style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{selected.length === filteredDevices.length ? "None" : "All"}</button>
           {onBulkUpdate && <button disabled={!selected.length} onClick={() => setBulkMore(true)} title="More actions" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 9px", cursor: selected.length ? "pointer" : "default", display: "flex" }}><MoreHorizontal size={16} /></button>}
-          <button disabled={!selected.length} onClick={() => setBulkOpen(true)} style={{ background: selected.length ? "#D97706" : "#5B6672", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: selected.length ? "pointer" : "default", fontFamily: "inherit" }}>Log visits</button>
+          <button disabled={!selected.length} onClick={() => setBulkOpen(true)} style={{ background: selected.length ? "#D97706" : "#5B6672", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: selected.length ? "pointer" : "default", fontFamily: "inherit" }}>Log visits</button>
         </div>
       )}
       {bulkOpen && (
@@ -268,12 +275,12 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
           onSave={(opts) => { onBulkLog(selected, opts); setBulkOpen(false); setSelecting(false); setSelected([]); }} />
       )}
       {ACTIVE_CAN_EDIT && onImport && dueFilter !== "archived" && (
-        <button onClick={onImport} style={{ width: "100%", marginTop: 14, background: "none", border: "1px dashed #C7D0DA", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        <button onClick={onImport} style={{ width: "100%", marginTop: 14, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <FileSpreadsheet size={14} /> Import services from a spreadsheet
         </button>
       )}
       {ACTIVE_CAN_EDIT && onLibrary && dueFilter !== "archived" && (
-        <button onClick={onLibrary} style={{ width: "100%", marginTop: 8, background: "none", border: "1px dashed #C7D0DA", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        <button onClick={onLibrary} style={{ width: "100%", marginTop: 8, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <BookOpen size={14} /> Add several from the service library
         </button>
       )}
@@ -283,7 +290,7 @@ export function DevicesTab({ onChaseAll, allSupplierList = [], locationName = ""
         </div>
       )}
       {onDataHealth && dueFilter !== "archived" && devices.length > 0 && (
-        <button onClick={onDataHealth} style={{ width: "100%", marginTop: 8, background: "none", border: "none", padding: "8px 12px", fontSize: 12, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        <button onClick={onDataHealth} style={{ width: "100%", marginTop: 8, background: "none", border: "none", padding: "8px 12px", fontSize: 12, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <ShieldCheck size={13} /> Check data quality
         </button>
       )}
@@ -312,19 +319,19 @@ export function ServiceQrModal({ device, locationLabel, onClose }) {
   return (
     <Modal title={`QR stickers — ${device.name}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>Print these and stick them on or near the asset. Anyone can scan the first one to report an issue; the second takes staff straight to this service's record.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Print these and stick them on or near the asset. Anyone can scan the first one to report an issue; the second takes staff straight to this service's record.</div>
         <div style={{ display: "flex", gap: 10 }}>
           {stickers.map((s) => (
-            <div key={s.key} style={{ flex: 1, border: "1px solid #E1E4E8", borderRadius: 10, padding: 10, textAlign: "center", background: "#fff" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#1B2430", marginBottom: 6 }}>{s.title}</div>
+            <div key={s.key} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 10, padding: 10, textAlign: "center", background: "var(--card)" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{s.title}</div>
               <img src={qrImageUrl(s.url, 220)} alt={s.title} style={{ width: "100%", maxWidth: 150, aspectRatio: "1", display: "block", margin: "0 auto" }} />
-              <div style={{ fontSize: 10, color: "#8A94A0", marginTop: 6, wordBreak: "break-all" }}>{s.url}</div>
+              <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6, wordBreak: "break-all" }}>{s.url}</div>
             </div>
           ))}
         </div>
         <PrimaryButton onClick={() => setPrintBlocked(!printStickers(device, locationLabel, stickers))}><Printer size={15} /> Print stickers</PrimaryButton>
-        {printBlocked && <div style={{ fontSize: 11.5, color: "#9B2C2C" }}>Your browser blocked the print window — allow pop-ups for this site, or long-press / right-click the codes above to save them.</div>}
-        <div style={{ fontSize: 10.5, color: "#A3ABB4" }}>QR images are generated by api.qrserver.com from the link shown — the link only contains this service's ID. Stickers work on your deployed (Vercel) site; links from inside the Claude preview won't open for other people.</div>
+        {printBlocked && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>Your browser blocked the print window — allow pop-ups for this site, or long-press / right-click the codes above to save them.</div>}
+        <div style={{ fontSize: 10.5, color: "var(--faint)" }}>QR images are generated by api.qrserver.com from the link shown — the link only contains this service's ID. Stickers work on your deployed (Vercel) site; links from inside the Claude preview won't open for other people.</div>
       </div>
     </Modal>
   );
@@ -342,7 +349,7 @@ export function BulkLogModal({ devices, defaultTech, onClose, onSave }) {
   return (
     <Modal title={`Log ${devices.length} visit${devices.length === 1 ? "" : "s"}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 12, color: "#5B6672", background: "#F7F8F9", borderRadius: 9, padding: "8px 10px", maxHeight: 110, overflowY: "auto" }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", background: "var(--card-hi)", borderRadius: 9, padding: "8px 10px", maxHeight: 110, overflowY: "auto" }}>
           {devices.map((d) => d.name).join(" · ")}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -350,11 +357,11 @@ export function BulkLogModal({ devices, defaultTech, onClose, onSave }) {
           <Field label="Technician"><TextInput value={technician} onChange={(e) => setTechnician(e.target.value)} placeholder={defaultTech || "Name"} /></Field>
         </div>
         <Field label="Notes (applied to every visit)"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Weekly clean completed" /></Field>
-        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "#3A4451", cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
           <input type="checkbox" checked={useBudgetCost} onChange={(e) => setUseBudgetCost(e.target.checked)} style={{ margin: 0 }} />
           Record each service's budget per visit as its cost{total ? ` (${gbp(total)} total)` : ""}
         </label>
-        <div style={{ fontSize: 11, color: "#8A94A0" }}>Each service moves on to its next due date. Checklists, photos and signatures can be added afterwards by editing a visit.</div>
+        <div style={{ fontSize: 11, color: "var(--faint)" }}>Each service moves on to its next due date. Checklists, photos and signatures can be added afterwards by editing a visit.</div>
         <PrimaryButton onClick={() => date && onSave({ date, technician: technician.trim(), notes: notes.trim(), useBudgetCost })}><CheckCircle2 size={15} /> Log {devices.length} visit{devices.length === 1 ? "" : "s"}</PrimaryButton>
       </div>
     </Modal>
@@ -373,7 +380,7 @@ export function BookingModal({ supplier = null, locationName = "", device, onClo
   return (
     <Modal title={`Book visit — ${device.name}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 12, color: "#5B6672" }}>Due {fmtDate(device.nextServiceDate)}. The booking resets automatically once this visit is logged.</div>
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>Due {fmtDate(device.nextServiceDate)}. The booking resets automatically once this visit is logged.</div>
         <div style={{ display: "flex", gap: 6 }}>
           <ToggleButton active={status === "booked"} onClick={() => setStatus("booked")}>Requested / booked</ToggleButton>
           <ToggleButton active={status === "confirmed"} onClick={() => setStatus("confirmed")}>Confirmed by supplier</ToggleButton>
@@ -388,7 +395,7 @@ export function BookingModal({ supplier = null, locationName = "", device, onClo
             <button type="button" onClick={() => {
               const body = `Hi${supplier?.managerName ? ` ${supplier.managerName.split(" ")[0]}` : ""},\n\nPlease can you confirm your visit for ${device.name}${device.assetTag ? ` (#${device.assetTag})` : ""} on ${fmtDate(date)}${time ? ` at ${time}` : ""}${ref ? ` (your ref ${ref})` : ""}.\n\n${[device.accessNotes && `Access: ${device.accessNotes}`, (device.ramsRequired || device.permits?.length) && `Before starting: ${[device.ramsRequired && "send RAMS in advance", ...(device.permits || []).map((p) => `${p} permit needed`)].filter(Boolean).join(", ")}`, siteInfoText()].filter(Boolean).join("\n")}\n\nKind regards`;
               window.location.href = `mailto:${encodeURIComponent(supplier?.managerEmail || "")}?subject=${encodeURIComponent(`Visit booking — ${device.name} — ${fmtDate(date)}${time ? ` ${time}` : ""}`)}&body=${encodeURIComponent(body)}`;
-            }} style={{ flex: 1, background: "#EAF1F8", border: "none", borderRadius: 9, padding: "9px 10px", fontSize: 12.3, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><Mail size={13} /> Ask supplier to confirm</button>
+            }} style={{ flex: 1, background: "var(--accent-soft)", border: "none", borderRadius: 9, padding: "9px 10px", fontSize: 12.3, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><Mail size={13} /> Ask supplier to confirm</button>
             <button type="button" onClick={() => {
               const dt = (d, t) => d.replace(/-/g, "") + (t ? `T${t.replace(":", "")}00` : "");
               const endT = time ? (() => { const [h, m] = time.split(":").map(Number); return `${String(Math.min(23, h + 2)).padStart(2, "0")}:${String(m).padStart(2, "0")}`; })() : "";
@@ -396,11 +403,11 @@ export function BookingModal({ supplier = null, locationName = "", device, onClo
               const esc = (t) => String(t || "").replace(/[,;\\]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
               const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//PPM Service Book//EN", "BEGIN:VEVENT", `UID:booking-${device.id}-${date}@ppm`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`, time ? `DTSTART:${dt(date, time)}` : `DTSTART;VALUE=DATE:${dt(date)}`, time ? `DTEND:${dt(date, endT)}` : `DTEND;VALUE=DATE:${dt(nextDay)}`, `SUMMARY:${esc(`${device.name} — ${supplier?.name || "supplier"} visit`)}`, `LOCATION:${esc(locationName)}`, `DESCRIPTION:${esc([ref && `Ref ${ref}`, device.accessNotes].filter(Boolean).join(" · "))}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
               downloadBlob(new Blob([ics], { type: "text/calendar" }), `visit-${device.name.replace(/[^a-z0-9]+/gi, "-")}-${date}.ics`);
-            }} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 10px", fontSize: 12.3, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><CalendarPlus size={13} /> Add to my calendar</button>
+            }} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 10px", fontSize: 12.3, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><CalendarPlus size={13} /> Add to my calendar</button>
           </div>
         )}
         <PrimaryButton onClick={() => onSave({ status, date: date || null, time, ref: ref.trim() })}><CalendarCheck size={15} /> Save booking</PrimaryButton>
-        {b && <button onClick={() => onSave(null)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Clear booking</button>}
+        {b && <button onClick={() => onSave(null)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Clear booking</button>}
       </div>
     </Modal>
   );
@@ -428,7 +435,7 @@ export function BulkActionsModal({ locations = [], count, suppliers, areas, onCl
         {action === "reschedule" && (
           <>
             <Field label="New next-due date"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-            <div style={{ fontSize: 11.5, color: "#8A94A0" }}>Matching planned visits and unspent Budget Plan lines move too. Each move is recorded in the service's reschedule history.</div>
+            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Matching planned visits and unspent Budget Plan lines move too. Each move is recorded in the service's reschedule history.</div>
             <PrimaryButton onClick={() => date && onApply("reschedule", date)}><Calendar size={15} /> Move {count} service{count === 1 ? "" : "s"}</PrimaryButton>
           </>
         )}
@@ -466,13 +473,13 @@ export function BulkActionsModal({ locations = [], count, suppliers, areas, onCl
         {action === "pause" && (
           <>
             <Field label="Pause until"><TextInput type="date" value={pauseUntil} onChange={(e) => setPauseUntil(e.target.value)} /></Field>
-            <div style={{ fontSize: 12, color: "#5B6672" }}>No overdue alerts until then; planned visits and unspent budget lines inside the pause are removed. Useful when an area is closed or being refurbished.</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>No overdue alerts until then; planned visits and unspent budget lines inside the pause are removed. Useful when an area is closed or being refurbished.</div>
             <PrimaryButton onClick={() => pauseUntil && onApply("pause", { until: pauseUntil, drop: true })}><PauseCircle size={15} /> Pause {count}</PrimaryButton>
           </>
         )}
         {action === "qr" && (
           <>
-            <div style={{ fontSize: 12, color: "#5B6672" }}>Prints a sheet with two small stickers per service: "Report a problem" for anyone, and "Staff: service record" for your team.</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>Prints a sheet with two small stickers per service: "Report a problem" for anyone, and "Staff: service record" for your team.</div>
             <PrimaryButton onClick={() => onApply("qr")}><QrCode size={15} /> Print {count * 2} stickers</PrimaryButton>
           </>
         )}
@@ -481,7 +488,7 @@ export function BulkActionsModal({ locations = [], count, suppliers, areas, onCl
             <Field label="Copy to">
               <Select value={copyTo} onChange={(e) => setCopyTo(e.target.value)}>{locations.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</Select>
             </Field>
-            <div style={{ fontSize: 12, color: "#5B6672" }}>Creates matching services at that site — same names, categories, checklists, schedules and safety notes, without history, photos, asset tags or serial numbers. Handy when opening a new site.</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>Creates matching services at that site — same names, categories, checklists, schedules and safety notes, without history, photos, asset tags or serial numbers. Handy when opening a new site.</div>
             <PrimaryButton onClick={() => copyTo && onApply("copy", copyTo)}><MapPinned size={15} /> Copy {count} service{count === 1 ? "" : "s"}</PrimaryButton>
           </>
         )}
@@ -490,7 +497,7 @@ export function BulkActionsModal({ locations = [], count, suppliers, areas, onCl
             <button onClick={() => onApply("archive")} style={{ background: "#9B2C2C", color: "#fff", border: "none", borderRadius: 9, padding: "10px 12px", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Yes, archive {count} service{count === 1 ? "" : "s"}</button>
           ) : (
             <>
-              <div style={{ fontSize: 12, color: "#5B6672" }}>Archived services keep their history but leave day-to-day lists; future planned visits and unspent budget lines are removed. You can undo straight after.</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>Archived services keep their history but leave day-to-day lists; future planned visits and unspent budget lines are removed. You can undo straight after.</div>
               <PrimaryButton onClick={() => setConfirmArchive(true)}><Archive size={15} /> Archive {count}…</PrimaryButton>
             </>
           )
@@ -511,14 +518,14 @@ export function ChaseModal({ devices, supplierById, locationLabel, currentUserNa
   return (
     <Modal title="Chase outstanding jobs" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {devices.length === 0 && <div style={{ fontSize: 13, color: "#8A94A0" }}>Nothing overdue — all caught up.</div>}
+        {devices.length === 0 && <div style={{ fontSize: 13, color: "var(--faint)" }}>Nothing overdue — all caught up.</div>}
         {keys.map((key) => {
           const jobs = groups[key].sort((a, b) => (a.nextServiceDate || "").localeCompare(b.nextServiceDate || ""));
           if (key === "__none") {
             return (
-              <div key={key} style={{ border: "1px solid #E1E4E8", borderRadius: 10, padding: 12 }}>
+              <div key={key} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12 }}>
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>No supplier assigned</div>
-                <div style={{ fontSize: 12, color: "#8A94A0", margin: "2px 0 8px" }}>Edit these services and set a default supplier to chase them.</div>
+                <div style={{ fontSize: 12, color: "var(--faint)", margin: "2px 0 8px" }}>Edit these services and set a default supplier to chase them.</div>
                 {jobs.map((d) => <div key={d.id} style={{ fontSize: 12.5, padding: "3px 0" }}>{d.name} — due {fmtDate(d.nextServiceDate)}</div>)}
               </div>
             );
@@ -532,25 +539,25 @@ export function ChaseModal({ devices, supplierById, locationLabel, currentUserNa
             onChased?.(jobs.map((d) => d.id), key);
           }
           return (
-            <div key={key} style={{ border: "1px solid #E1E4E8", borderRadius: 10, padding: 12 }}>
+            <div key={key} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
-                  <div style={{ fontSize: 12, color: s.managerEmail ? "#5B6672" : "#C05621", marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: s.managerEmail ? "var(--muted)" : "#C05621", marginTop: 2 }}>
                     {s.managerEmail ? `${s.managerName || "Manager"} · ${s.managerEmail}` : "No manager email — add one in Suppliers"}
                     {s.managerPhone ? ` · ${s.managerPhone}` : ""}
                   </div>
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#9B2C2C", background: "#FBEAEA", padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>{jobs.length} overdue</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>{jobs.length} overdue</span>
               </div>
               <div style={{ margin: "8px 0", display: "flex", flexDirection: "column", gap: 4 }}>
                 {jobs.map((d) => {
                   const late = -daysUntil(d.nextServiceDate);
                   const last = d.chaseLog?.[d.chaseLog.length - 1];
                   return (
-                    <div key={d.id} style={{ fontSize: 12.5, background: "#F7F8F9", borderRadius: 7, padding: "6px 8px" }}>
-                      <b>{d.name}</b> — due {fmtDate(d.nextServiceDate)} · <span style={{ color: "#C53030", fontWeight: 650 }}>{late}d overdue</span>
-                      {last && <div style={{ fontSize: 10.5, color: "#8A94A0" }}>Last chased {relativeDays(last.at)} by {last.by} ({d.chaseLog.length}× total)</div>}
+                    <div key={d.id} style={{ fontSize: 12.5, background: "var(--card-hi)", borderRadius: 7, padding: "6px 8px" }}>
+                      <b>{d.name}</b> — due {fmtDate(d.nextServiceDate)} · <span style={{ color: "var(--danger)", fontWeight: 650 }}>{late}d overdue</span>
+                      {last && <div style={{ fontSize: 10.5, color: "var(--faint)" }}>Last chased {relativeDays(last.at)} by {last.by} ({d.chaseLog.length}× total)</div>}
                     </div>
                   );
                 })}
@@ -558,19 +565,19 @@ export function ChaseModal({ devices, supplierById, locationLabel, currentUserNa
               <div style={{ display: "flex", gap: 8 }}>
                 {mailto ? (
                   <a href={mailto} target="_blank" rel="noreferrer" onClick={() => onChased?.(jobs.map((d) => d.id), key)} style={{
-                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#2B4562", color: "#fff",
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "var(--accent)", color: "var(--on-accent)",
                     borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, textDecoration: "none",
                   }}><Mail size={14} /> Email {s.managerName ? s.managerName.split(" ")[0] : "manager"}</a>
                 ) : null}
-                <button onClick={copy} style={{ flex: mailto ? "0 0 auto" : 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit" }}>
+                <button onClick={copy} style={{ flex: mailto ? "0 0 auto" : 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>
                   {copied === key ? "Copied ✓" : "Copy text"}
                 </button>
               </div>
-              {copied === "fail" && <div style={{ fontSize: 11, color: "#C53030", marginTop: 4 }}>Couldn't copy automatically on this device.</div>}
+              {copied === "fail" && <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 4 }}>Couldn't copy automatically on this device.</div>}
             </div>
           );
         })}
-        <div style={{ fontSize: 10.5, color: "#A3ABB4" }}>"Email" opens your own mail app with the message ready to send — nothing is sent automatically. Each chase is recorded on the job with the date and your name.</div>
+        <div style={{ fontSize: 10.5, color: "var(--faint)" }}>"Email" opens your own mail app with the message ready to send — nothing is sent automatically. Each chase is recorded on the job with the date and your name.</div>
       </div>
     </Modal>
   );
@@ -624,22 +631,22 @@ export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUser
     return (
       <Modal title="Quick log — pick a service" onClose={onClose}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button onClick={onScan} style={{ ...big, background: "#1B2430", color: "#fff", border: "none" }}><QrCode size={20} /> Scan QR code or asset tag</button>
+          <button onClick={onScan} style={{ ...big, background: "var(--head)", color: "var(--on-accent)", border: "none" }}><QrCode size={20} /> Scan QR code or asset tag</button>
           <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="…or search by name / asset tag" style={{ fontSize: 15, padding: "12px 14px" }} />
           {list.map((d) => {
             const n = daysUntil(d.nextServiceDate);
             const tone = n === null ? "#8A94A0" : n < 0 ? "#C53030" : n <= 7 ? "#B7791F" : "#2F855A";
             return (
-              <button key={d.id} onClick={() => setDeviceId(d.id)} style={{ ...big, justifyContent: "space-between", background: "#fff", border: "1px solid #E1E4E8", borderLeft: `4px solid ${(CATEGORY_META[d.serviceCategory] || CATEGORY_META.maintenance).color}`, padding: "10px 14px", textAlign: "left" }}>
+              <button key={d.id} onClick={() => setDeviceId(d.id)} style={{ ...big, justifyContent: "space-between", background: "var(--card)", border: "1px solid var(--border)", borderLeft: `4px solid ${(CATEGORY_META[d.serviceCategory] || CATEGORY_META.maintenance).color}`, padding: "10px 14px", textAlign: "left" }}>
                 <span style={{ minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: 15 }}>{d.name}</span>
-                  {d.assetTag && <span style={{ display: "block", fontSize: 11.5, color: "#8A94A0", fontWeight: 500 }}>{d.assetTag}</span>}
+                  {d.assetTag && <span style={{ display: "block", fontSize: 11.5, color: "var(--faint)", fontWeight: 500 }}>{d.assetTag}</span>}
                 </span>
                 <span style={{ fontSize: 12, color: tone, fontWeight: 700, whiteSpace: "nowrap" }}>{n === null ? "—" : n < 0 ? `${-n}d overdue` : n === 0 ? "Due today" : `Due in ${n}d`}</span>
               </button>
             );
           })}
-          {list.length === 0 && <div style={{ fontSize: 13, color: "#A3ABB4", textAlign: "center", padding: 12 }}>No services match.</div>}
+          {list.length === 0 && <div style={{ fontSize: 13, color: "var(--faint)", textAlign: "center", padding: 12 }}>No services match.</div>}
         </div>
       </Modal>
     );
@@ -647,39 +654,39 @@ export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUser
   return (
     <Modal title={device.name} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {!initialDeviceId && <button onClick={() => setDeviceId(null)} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#2B4562", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>‹ Change service</button>}
-        <label style={{ ...big, minHeight: photo ? 0 : 120, background: photo ? "transparent" : "#2B4562", color: "#fff", flexDirection: "column", border: "none", padding: photo ? 0 : 12 }}>
+        {!initialDeviceId && <button onClick={() => setDeviceId(null)} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "var(--accent)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>‹ Change service</button>}
+        <label style={{ ...big, minHeight: photo ? 0 : 120, background: photo ? "transparent" : "var(--accent)", color: "var(--on-accent)", flexDirection: "column", border: "none", padding: photo ? 0 : 12 }}>
           {photo ? <img src={photo} alt="" style={{ width: "100%", borderRadius: 12 }} /> : <>{busy ? <Loader2 size={30} style={{ animation: "spin 1s linear infinite" }} /> : <Camera size={32} />}<span>Take photo of work / certificate</span></>}
           <input type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} />
         </label>
-        {photo && <label style={{ ...big, minHeight: 40, fontSize: 13, background: "#EEF0F2", color: "#2B4562" }}><Camera size={15} /> Retake<input type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} /></label>}
+        {photo && <label style={{ ...big, minHeight: 40, fontSize: 13, background: "var(--card-hi)", color: "var(--accent)" }}><Camera size={15} /> Retake<input type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} /></label>}
         <div style={{ display: "flex", gap: 10 }}>
           <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" inputMode="decimal" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" style={{ fontSize: 20, padding: "12px 14px", fontWeight: 700 }} /></Field>
           <Field label="Technician"><TextInput value={technician} onChange={(e) => setTechnician(e.target.value)} placeholder="Name" style={{ fontSize: 15, padding: "12px 14px" }} /></Field>
         </div>
         {checks.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#5B6672" }}>Checklist ({checks.filter((c) => c.result).length}/{checks.length})</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)" }}>Checklist ({checks.filter((c) => c.result).length}/{checks.length})</div>
             {checks.map((c, i) => (
-              <div key={i} style={{ background: c.result === "fail" ? "#FBEAEA" : "#F7F8F9", borderRadius: 10, padding: 10 }}>
+              <div key={i} style={{ background: c.result === "fail" ? "var(--danger-soft)" : "var(--card-hi)", borderRadius: 10, padding: 10 }}>
                 <div style={{ fontSize: 14, fontWeight: 650, marginBottom: 8 }}>{c.item}</div>
                 <div style={{ display: "flex", gap: 6 }}>
                   {[["pass", "Pass", "#2F855A"], ["fail", "Fail", "#C53030"], ["na", "N/A", "#8A94A0"]].map(([k, l, col]) => (
                     <button key={k} type="button" onClick={() => setChecks((p) => p.map((x, idx) => idx === i ? { ...x, result: x.result === k ? "" : k } : x))}
-                      style={{ flex: 1, minHeight: 44, borderRadius: 9, border: `2px solid ${col}`, background: c.result === k ? col : "#fff", color: c.result === k ? "#fff" : col, fontSize: 14, fontWeight: 750, cursor: "pointer", fontFamily: "inherit" }}>{l}</button>
+                      style={{ flex: 1, minHeight: 44, borderRadius: 9, border: `2px solid ${col}`, background: c.result === k ? col : "var(--card)", color: c.result === k ? "#fff" : col, fontSize: 14, fontWeight: 750, cursor: "pointer", fontFamily: "inherit" }}>{l}</button>
                   ))}
                 </div>
                 {c.result === "fail" && <TextInput value={c.note} onChange={(e) => setChecks((p) => p.map((x, idx) => idx === i ? { ...x, note: e.target.value } : x))} placeholder="What's wrong?" style={{ width: "100%", marginTop: 8, fontSize: 14 }} />}
               </div>
             ))}
-            {checks.some((c) => c.result === "fail") && <div style={{ fontSize: 11.5, color: "#9B2C2C" }}>Failed checks create high-priority follow-up jobs in Works.</div>}
+            {checks.some((c) => c.result === "fail") && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>Failed checks create high-priority follow-up jobs in Works.</div>}
           </div>
         )}
         <CustomFieldInputs appliesTo="visit" category={device.serviceCategory} values={custom} onChange={setCustom} large />
         <Field label="Notes (optional)"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything to report?" style={{ fontSize: 14 }} /></Field>
         <SignOffSection signatures={signatures} onChange={setSignatures} gps={gps} onGps={setGps} defaultTechName={technician} />
-        {err && <div style={{ fontSize: 12.5, color: "#C53030" }}>{err}</div>}
-        <button onClick={save} style={{ ...big, background: "#2F855A", color: "#fff", border: "none", position: "sticky", bottom: 0 }}><CheckCircle2 size={20} /> Save visit</button>
+        {err && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{err}</div>}
+        <button onClick={save} style={{ ...big, background: "#2F855A", color: "var(--on-accent)", border: "none", position: "sticky", bottom: 0 }}><CheckCircle2 size={20} /> Save visit</button>
       </div>
     </Modal>
   );
@@ -742,43 +749,49 @@ export function ScannerModal({ onResult, onClose }) {
             <div style={{ position: "absolute", inset: "18%", border: "3px solid rgba(217,119,6,0.9)", borderRadius: 14, pointerEvents: "none" }} />
           </div>
         )}
-        {err && <div style={{ fontSize: 12.5, color: "#9B2C2C", background: "#FBEAEA", borderRadius: 9, padding: 10 }}>{err}</div>}
-        {miss && <div style={{ fontSize: 12, color: "#8A5A0B", background: "#FDF1E0", borderRadius: 9, padding: 8 }}>Read "{miss.length > 60 ? miss.slice(0, 60) + "…" : miss}" but it doesn't match any service. Set it as a service's asset tag to link them.</div>}
+        {err && <div style={{ fontSize: 12.5, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 9, padding: 10 }}>{err}</div>}
+        {miss && <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 9, padding: 8 }}>Read "{miss.length > 60 ? miss.slice(0, 60) + "…" : miss}" but it doesn't match any service. Set it as a service's asset tag to link them.</div>}
         <div style={{ display: "flex", gap: 8 }}>
           <TextInput value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Type asset tag, e.g. AHU-003" style={{ flex: 1, fontSize: 15 }}
             onKeyDown={(e) => { if (e.key === "Enter" && manual.trim()) { if (!onResult(manual)) setMiss(manual); } }} />
-          <button onClick={() => { if (manual.trim() && !onResult(manual)) setMiss(manual); }} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 9, padding: "0 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Go</button>
+          <button onClick={() => { if (manual.trim() && !onResult(manual)) setMiss(manual); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 9, padding: "0 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Go</button>
         </div>
-        <div style={{ fontSize: 10.5, color: "#A3ABB4" }}>Reads the app's QR stickers and barcodes/QR codes printed with an asset tag. Point the camera at the code and hold steady.</div>
+        <div style={{ fontSize: 10.5, color: "var(--faint)" }}>Reads the app's QR stickers and barcodes/QR codes printed with an asset tag. Point the camera at the code and hold steady.</div>
       </div>
     </Modal>
   );
 }
 
-export function ChaseAllModal({ devices, suppliers, locationName, userName, onClose, onSent }) {
+export function ChaseAllModal({ mode = "chase", devices, suppliers, locationName, userName, onClose, onSent }) {
   const groups = {};
-  devices.forEach((d) => { const n = daysUntil(d.nextServiceDate); if (n !== null && n < 0 && d.supplierId) (groups[d.supplierId] = groups[d.supplierId] || []).push(d); });
+  const remind = mode === "remind";
+  devices.forEach((d) => { const n = daysUntil(d.nextServiceDate); if (n !== null && (remind ? n >= 0 && n <= 14 : n < 0) && d.supplierId) (groups[d.supplierId] = groups[d.supplierId] || []).push(d); });
   const [sent, setSent] = useState([]);
   function send(sid) {
     const sup = suppliers.find((s) => s.id === sid); const list = groups[sid];
-    const lines = list.map((d) => `- ${d.name}${d.assetTag ? ` (#${d.assetTag})` : ""} — due ${fmtDate(d.nextServiceDate)} (${-daysUntil(d.nextServiceDate)} days overdue)`);
+    const lines = list.map((d) => `- ${d.name}${d.assetTag ? ` (#${d.assetTag})` : ""} — due ${fmtDate(d.nextServiceDate)}${remind ? (currentBooking(d) ? ` (booked ${currentBooking(d).date ? fmtDate(currentBooking(d).date) : ""} ${currentBooking(d).time || ""})` : " (not yet booked — please propose a date)") : ` (${-daysUntil(d.nextServiceDate)} days overdue)`}${d.ramsRequired || d.permits?.length ? " — RAMS/permit required" : ""}`);
+    if (remind) {
+      const rb = `Hi${sup?.managerName ? ` ${sup.managerName.split(" ")[0]}` : ""},\n\nA reminder of visits due at ${locationName} in the next two weeks:\n\n${lines.join("\n")}\n\n${siteInfoText()}\n\nPlease confirm attendance and send any RAMS in advance.\n\nKind regards,\n${userName || ""}`;
+      window.location.href = `mailto:${encodeURIComponent(sup?.managerEmail || "")}?subject=${encodeURIComponent(`Upcoming visits — ${locationName}`)}&body=${encodeURIComponent(rb)}`;
+      setSent((p) => [...p, sid]); return;
+    }
     const body = `Hi${sup?.managerName ? ` ${sup.managerName.split(" ")[0]}` : ""},\n\nThe following ${list.length === 1 ? "visit is" : `${list.length} visits are`} overdue at ${locationName}:\n\n${lines.join("\n")}\n\nPlease confirm dates for these as soon as possible.\n\nKind regards,\n${userName || ""}`;
     window.location.href = `mailto:${encodeURIComponent(sup?.managerEmail || "")}?subject=${encodeURIComponent(`Overdue visits — ${locationName}`)}&body=${encodeURIComponent(body)}`;
     onSent(list.map((d) => d.id), sid); setSent((p) => [...p, sid]);
   }
   return (
-    <Modal title="Chase overdue visits" onClose={onClose}>
+    <Modal title={remind ? "Remind suppliers" : "Chase overdue visits"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontSize: 12.5, color: "#5B6672" }}>One email per supplier listing all their overdue visits. Each chase is recorded on the services.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{remind ? "One email per supplier listing their visits due in the next 14 days, with booking status and site details." : "One email per supplier listing all their overdue visits. Each chase is recorded on the services."}</div>
         {Object.entries(groups).map(([sid, list]) => {
           const sup = suppliers.find((s) => s.id === sid);
           return (
-            <div key={sid} style={{ background: "#F7F8F9", borderRadius: 10, padding: 10, display: "flex", alignItems: "center", gap: 8 }}>
+            <div key={sid} style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{sup?.name || "Supplier"}</div>
-                <div style={{ fontSize: 11.3, color: "#8A94A0" }}>{list.length} overdue: {list.map((d) => d.name).join(", ")}{!sup?.managerEmail ? " · no email saved" : ""}</div>
+                <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{list.length} {remind ? "due" : "overdue"}: {list.map((d) => d.name).join(", ")}{!sup?.managerEmail ? " · no email saved" : ""}</div>
               </div>
-              <button onClick={() => send(sid)} style={{ background: sent.includes(sid) ? "#EAF4EE" : "#2B4562", color: sent.includes(sid) ? "#2F6B4A" : "#fff", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{sent.includes(sid) ? "Sent ✓" : "Email"}</button>
+              <button onClick={() => send(sid)} style={{ background: sent.includes(sid) ? "var(--ok-soft)" : "var(--accent)", color: sent.includes(sid) ? "var(--ok)" : "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{sent.includes(sid) ? "Sent ✓" : "Email"}</button>
             </div>
           );
         })}

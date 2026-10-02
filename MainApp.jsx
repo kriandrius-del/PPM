@@ -1,8 +1,8 @@
 // The main app: loads and saves all data, works out alerts, and lays out the header, tabs and pop-ups.
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Activity, AlertTriangle, Bell, Calendar, ChevronDown, ChevronRight, CloudOff, FileCheck, FileText, Globe2, HardDrive, HelpCircle, History, LayoutDashboard, Loader2, Plus, PoundSterling, Receipt, Search, ShieldAlert, SlidersHorizontal, Undo2, User, Users as UsersIcon, Wrench, X } from "lucide-react";
+import { Activity, AlertTriangle, Bell, Calendar, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock, CloudOff, FileCheck, FileText, Flame, Globe2, HardDrive, HardHat, HelpCircle, History, LayoutDashboard, Loader2, Package, Plus, PoundSterling, Receipt, Search, ShieldAlert, Siren, SlidersHorizontal, Timer, TrendingUp, Undo2, User, Users, Users as UsersIcon, Wrench, X } from "lucide-react";
 import { EmptyState, StatChip, ToggleButton } from "./components/ui.jsx";
-import { BUILTIN_TEMPLATES, DEFAULT_AUDIT_TEMPLATES, INCIDENT_TYPES, MONTH_LABELS, ONBOARDING_ITEMS, PKEYS, SKEYS, SLA_DAYS, WASTE_STREAMS, WATER_LIMITS } from "./lib/constants.js";
+import { BUILTIN_TEMPLATES, DEFAULT_AUDIT_TEMPLATES, INCIDENT_TYPES, LOG_TEMPLATES, MONTH_LABELS, ONBOARDING_ITEMS, PKEYS, SKEYS, SLA_DAYS, WASTE_STREAMS, WATER_LIMITS } from "./lib/constants.js";
 import { ACTIVE_CAN_EDIT, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
 import { LAST_LOCAL_WRITE, loadPersonal, loadShared, savePersonal, saveShared, set_SAVE_STATUS_LISTENER } from "./lib/storage.js";
 import { addDays, addMonths, currentBooking, currentDowntime, daysUntil, downloadBlob, fmtDate, gbp, inBlackout, isMirrored, meterStats, replacementYear, shiftDate, uid, workSla } from "./lib/utils.js";
@@ -16,8 +16,10 @@ import { DevicesTab, QuickLogModal, ScannerModal } from "./tabs/ServicesTab.jsx"
 import { AuditsView, IncidentsView, KeysView, MetersTab, PermitsView, SiteTab, SparesView, WasteView } from "./tabs/SiteTab.jsx";
 import { AddSupplierModal, SuppliersTab } from "./tabs/SuppliersTab.jsx";
 import { ProjectsView, WorksTab } from "./tabs/WorksTab.jsx";
-import { DocumentsView, DrillsView, TrainingView, WaterTempsView } from "./tabs/SafetyViews.jsx";
+import { DocumentsView, DrillsView, LogsView, TrainingView, WaterTempsView } from "./tabs/SafetyViews.jsx";
 import { FinanceView } from "./tabs/FinanceView.jsx";
+import { THEME_CSS } from "./lib/theme.js";
+import { PageHeader } from "./components/PageHeader.jsx";
 
 /* ---------------------------------------------------------
    Main App
@@ -61,6 +63,9 @@ export function MainApp() {
   const [drills, setDrills] = useState([]);
   const [budgetView, setBudgetView] = useState("budget");
   const [trash, setTrash] = useState([]);
+  const [notices, setNotices] = useState([]);
+  const [logEntries, setLogEntries] = useState([]);
+  const [savings, setSavings] = useState([]);
   const [showHelp, setShowHelp] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showData, setShowData] = useState(false);
@@ -108,10 +113,12 @@ export function MainApp() {
     }));
     return () => { set_SAVE_STATUS_LISTENER(null); };
   }, []);
-  // Dark mode: invert the page colours at the root (keeps fixed pop-ups positioned correctly).
+  // Theme: "light" (Clear Light) or "midnight". Older devices may still have the old dark switch on.
+  const themeKey = display.theme || (display.dark ? "midnight" : "light");
   useEffect(() => {
-    document.documentElement.classList.toggle("ppm-dark", !!display.dark);
-  }, [display.dark]);
+    document.documentElement.classList.remove("ppm-dark");
+    document.documentElement.classList.toggle("ppm-midnight", themeKey === "midnight");
+  }, [themeKey]);
   // Daily device notification (if switched on in Display): one summary of urgent items per day.
   useEffect(() => {
     if (loading || !display.notify || typeof Notification === "undefined" || Notification.permission !== "granted") return;
@@ -123,6 +130,12 @@ export function MainApp() {
     }
     saveDisplay({ ...display, lastNotified: today });
   }, [loading, display.notify, selectedLocationId]);
+  // Recently viewed services (this device only).
+  useEffect(() => {
+    if (!historyFor || loading) return;
+    const list = [historyFor, ...(display.recent || []).filter((x) => x !== historyFor)].slice(0, 8);
+    saveDisplay({ ...display, recent: list });
+  }, [historyFor]);
   // Remember the open tab and the Services list filters/sorting on this device.
   useEffect(() => {
     if (loading) return;
@@ -157,7 +170,7 @@ export function MainApp() {
 
   useEffect(() => {
     (async () => {
-      const [u, c, l, d, s, w, sup, b, bl, dt, vb, nav, st, act, mt, mr, si, sn, sp, ky, rm, disp, au, inc, pr, pm, ws, po, inv, wo, wr, tr, dr, trs] = await Promise.all([
+      const [u, c, l, d, s, w, sup, b, bl, dt, vb, nav, st, act, mt, mr, si, sn, sp, ky, rm, disp, au, inc, pr, pm, ws, po, inv, wo, wr, tr, dr, trs, nts, lge, svs] = await Promise.all([
         loadShared(SKEYS.users), loadShared(SKEYS.countries), loadShared(SKEYS.locations),
         loadShared(SKEYS.devices), loadShared(SKEYS.services), loadShared(SKEYS.works),
         loadShared(SKEYS.suppliers), loadShared(SKEYS.budgets), loadShared(SKEYS.budgetLines),
@@ -168,7 +181,7 @@ export function MainApp() {
         loadShared(SKEYS.audits), loadShared(SKEYS.incidents), loadShared(SKEYS.projects),
         loadShared(SKEYS.permits), loadShared(SKEYS.waste),
         loadShared(SKEYS.purchaseOrders), loadShared(SKEYS.invoices), loadShared(SKEYS.waterOutlets), loadShared(SKEYS.waterReadings), loadShared(SKEYS.training), loadShared(SKEYS.drills),
-        loadShared(SKEYS.trash),
+        loadShared(SKEYS.trash), loadShared(SKEYS.notices), loadShared(SKEYS.logEntries), loadShared(SKEYS.savings),
       ]);
       setUsers(u); setCountries(c); setLocations(l); setDevices(d);
       setServices(s); setWorks(w); setSuppliers(sup); setBudgets(b); setBudgetLines(bl); setDeviceTasks(dt); setVisitBudgets(vb);
@@ -183,6 +196,7 @@ export function MainApp() {
       setPurchaseOrders(Array.isArray(po) ? po : []); setInvoices(Array.isArray(inv) ? inv : []);
       setWaterOutlets(Array.isArray(wo) ? wo : []); setWaterReadings(Array.isArray(wr) ? wr : []);
       setTraining(Array.isArray(tr) ? tr : []); setDrills(Array.isArray(dr) ? dr : []);
+      setNotices(Array.isArray(nts) ? nts : []); setLogEntries(Array.isArray(lge) ? lge : []); setSavings(Array.isArray(svs) ? svs : []);
       setTrash(Array.isArray(trs) ? trs.filter((t) => Date.now() - new Date(t.deletedAt).getTime() < 30 * 86400000) : []);
       let migrated = false;
       const blFixed = bl.map((line) => {
@@ -215,7 +229,7 @@ export function MainApp() {
   // Live refresh when a shared database is connected: pull the latest data when the app
   // comes back into view and every minute, so everyone sees each other's changes.
   const REMOTE = typeof window !== "undefined" && !!window.storage?.__remote;
-  const SHARED_SETTERS = { users: setUsers, countries: setCountries, locations: setLocations, devices: setDevices, services: setServices, works: setWorks, suppliers: setSuppliers, budgets: setBudgets, budgetLines: setBudgetLines, deviceTasks: setDeviceTasks, visitBudgets: setVisitBudgets, activity: setActivity, meters: setMeters, meterReadings: setMeterReadings, signins: setSignins, spares: setSpares, keys: setKeysList, reminders: setReminders, audits: setAudits, incidents: setIncidents, projects: setProjects, permits: setPermits, waste: setWaste, purchaseOrders: setPurchaseOrders, invoices: setInvoices, waterOutlets: setWaterOutlets, waterReadings: setWaterReadings, training: setTraining, drills: setDrills, trash: setTrash };
+  const SHARED_SETTERS = { users: setUsers, countries: setCountries, locations: setLocations, devices: setDevices, services: setServices, works: setWorks, suppliers: setSuppliers, budgets: setBudgets, budgetLines: setBudgetLines, deviceTasks: setDeviceTasks, visitBudgets: setVisitBudgets, activity: setActivity, meters: setMeters, meterReadings: setMeterReadings, signins: setSignins, spares: setSpares, keys: setKeysList, reminders: setReminders, audits: setAudits, incidents: setIncidents, projects: setProjects, permits: setPermits, waste: setWaste, purchaseOrders: setPurchaseOrders, invoices: setInvoices, waterOutlets: setWaterOutlets, waterReadings: setWaterReadings, training: setTraining, drills: setDrills, trash: setTrash, notices: setNotices, logEntries: setLogEntries, savings: setSavings };
   // When two people save the same list at once, the shared-storage layer merges both sets of
   // changes and tells us the merged result, so this screen shows everyone's edits.
   useEffect(() => {
@@ -289,6 +303,9 @@ export function MainApp() {
     training: useCallback((next) => { setTraining(next); saveShared(SKEYS.training, next); }, []),
     drills: useCallback((next) => { setDrills(next); saveShared(SKEYS.drills, next); }, []),
     trash: useCallback((next) => { setTrash(next); saveShared(SKEYS.trash, next); }, []),
+    notices: useCallback((next) => { setNotices(next); saveShared(SKEYS.notices, next); }, []),
+    logEntries: useCallback((next) => { setLogEntries(next); saveShared(SKEYS.logEntries, next); }, []),
+    savings: useCallback((next) => { setSavings(next); saveShared(SKEYS.savings, next); }, []),
   };
   function saveNav(patch) {
     const next = { currentUserId, selectedCountryId, selectedLocationId, tab, listPrefs, ...patch };
@@ -518,6 +535,12 @@ export function MainApp() {
       const projected = (used / dayOfYear) * 365;
       if (used > 0 && projected > Number(m.annualTarget) * 1.05) extra.push({ key: `mt-${m.id}-${yrS}`, tone: "warn", title: `${m.name} heading over target`, detail: `On course for ${Math.round(projected).toLocaleString("en-GB")} ${m.unit} against a target of ${Number(m.annualTarget).toLocaleString("en-GB")}`, tab: "meters" });
     });
+    // Site logs with a regular frequency (e.g. weekly fire alarm test).
+    (settings.logDefs || LOG_TEMPLATES.filter((t) => t.id === "firealarm")).filter((d) => d.everyDays && (!d.locationId || d.locationId === selectedLocationId) && (settings.logDefs ? true : false)).forEach((d) => {
+      const last = logEntries.filter((x) => x.logId === d.id && x.locationId === selectedLocationId).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+      const age = last ? -daysUntil(last.date) : null;
+      if (!last || age > d.everyDays) extra.push({ key: `log-${d.id}-${last?.date || "none"}`, tone: d.id === "firealarm" || d.firealarm ? "warn" : "info", title: `${d.name} due`, detail: last ? `Last entry ${fmtDate(last.date)} (${age} days ago)` : "No entries yet", tab: "meters" });
+    });
     // Assets out of service.
     locDevices.forEach((d) => {
       const dt = currentDowntime(d); if (!dt) return;
@@ -579,7 +602,7 @@ export function MainApp() {
       if (Number(pj.budget) && Number(pj.spent) > Number(pj.budget)) extra.push({ key: `pjb-${pj.id}`, tone: "warn", title: `Project over budget: ${pj.name}`, detail: `${gbp(pj.spent)} of ${gbp(pj.budget)}`, tab: "works" });
     });
     return [...alerts, ...extra];
-  }, [alerts, locMeters, locReadings, locSpares, locKeys, locReminders, locSuppliers, locIncidents, locProjects, faultsByDevice, locDevices, locServices, locPermits, locInvoices, locPOs, locOutlets, locWaterReadings, locTraining, locDrills, settings.siteDocs]);
+  }, [alerts, locMeters, locReadings, locSpares, locKeys, locReminders, locSuppliers, locIncidents, locProjects, faultsByDevice, locDevices, locServices, locPermits, locInvoices, locPOs, locOutlets, locWaterReadings, locTraining, locDrills, settings.siteDocs, settings.logDefs, logEntries]);
   const visibleAlerts = useMemo(() => allAlerts.filter((a) => !(snoozed[a.key] && snoozed[a.key] >= todayISO)), [allAlerts, snoozed, todayISO]);
   const snoozedCount = allAlerts.length - visibleAlerts.length;
   function snoozeAlert(key, days) {
@@ -633,8 +656,8 @@ export function MainApp() {
   const openWorksCount = locWorks.filter((w) => w.status === "quoted" || w.status === "approved").length;
 
   /* ---- undo: take a snapshot before a delete, restore it if the user taps Undo ---- */
-  const UNDO_KEYS = ["devices", "services", "works", "suppliers", "budgetLines", "deviceTasks", "visitBudgets", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "signins", "trash"]; // archive also uses undo
-  const currentCollections = { devices, services, works, suppliers, budgetLines, deviceTasks, visitBudgets, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, signins, trash };
+  const UNDO_KEYS = ["devices", "services", "works", "suppliers", "budgetLines", "deviceTasks", "visitBudgets", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "signins", "trash", "notices", "logEntries", "savings"]; // archive also uses undo
+  const currentCollections = { devices, services, works, suppliers, budgetLines, deviceTasks, visitBudgets, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, signins, trash, notices, logEntries, savings };
   function withUndo(fn) {
     const snap = { ...currentCollections };
     fn();
@@ -647,7 +670,7 @@ export function MainApp() {
     showToast("Undone — deleted item restored");
   }
   /* ---- backup & restore ---- */
-  const allData = { users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash };
+  const allData = { users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings };
   function downloadBackup() {
     const payload = { app: "PPM Service Book", version: 1, exportedAt: new Date().toISOString(), exportedBy: currentUser?.name || "", data: allData };
     downloadBlob(new Blob([JSON.stringify(payload)], { type: "application/json" }), `ppm-backup-${new Date().toISOString().slice(0, 10)}.json`);
@@ -662,9 +685,33 @@ export function MainApp() {
     });
     if (d.settings && !Array.isArray(d.settings)) persist.settings(d.settings);
     if (Array.isArray(d.activity)) { setActivity(d.activity); saveShared(SKEYS.activity, d.activity); }
-    ["meters", "meterReadings", "signins", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "trash"].forEach((k) => { if (Array.isArray(d[k])) persist[k](d[k]); });
+    ["meters", "meterReadings", "signins", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "trash", "notices", "logEntries", "savings"].forEach((k) => { if (Array.isArray(d[k])) persist[k](d[k]); });
     showToast("Backup restored", payload.exportedAt ? `from ${fmtDate(payload.exportedAt.slice(0, 10))}` : "");
     return null;
+  }
+  const noticeOps = makeRecordOps("notices", notices, "Notice", (r) => String(r.text).slice(0, 60));
+  const savingOps = makeRecordOps("savings", savings, "Saving", (r) => `${r.description} ${gbp(r.amount)}`);
+  const logEntryOps = makeRecordOps("logEntries", logEntries, "Log entry", (r) => `${(settings.logDefs || []).find((d) => d.id === r.logId)?.name || "Log"} ${fmtDate(r.date)}`);
+  function saveLogDefs(list) { persist.settings({ ...settings, logDefs: list }); }
+  function importSuppliers(rows) {
+    persist.suppliers([...suppliers, ...rows.map((r) => ({ ...r, id: uid(), locationId: selectedLocationId }))]);
+    showToast(`${rows.length} suppliers imported`);
+  }
+  function markKeyLost(id, note) {
+    const k = keysList.find((x) => x.id === id); if (!k) return;
+    persist.keys(keysList.map((x) => x.id === id ? { ...x, lost: true, lostAt: new Date().toISOString(), lostNote: note, log: [{ at: new Date().toISOString(), by: currentUser?.name, action: "lost", holder: x.holder, holderCompany: x.holderCompany }, ...(x.log || [])] } : x));
+    addReminder({ text: `Lost key "${k.label}" — decide if locks need changing (${k.opens || "check what it opens"})`, due: new Date().toISOString().slice(0, 10), assignee: null, repeat: "none" });
+    showToast("Key marked lost — reminder added", k.label);
+  }
+  function extendPermit(id, until, reason) {
+    const pm = permits.find((x) => x.id === id);
+    persist.permits(permits.map((x) => x.id === id ? { ...x, validTo: until, extensions: [...(x.extensions || []), { from: x.validTo, to: until, reason, by: currentUser?.name, at: new Date().toISOString() }] } : x));
+    showToast("Permit extended", `${pm?.ref} until ${new Date(until).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`);
+  }
+  function stockTake(counts) {
+    const at = new Date().toISOString(); let changed = 0;
+    persist.spares(spares.map((sp) => { if (counts[sp.id] === undefined || counts[sp.id] === "" || Number(counts[sp.id]) === Number(sp.qty)) return sp; changed++; const delta = Number(counts[sp.id]) - Number(sp.qty); return { ...sp, qty: Number(counts[sp.id]), lastCounted: at, log: [{ at, by: currentUser?.name, delta, note: "Stock take" }, ...(sp.log || [])].slice(0, 200) }; }));
+    showToast("Stock take saved", `${changed} item${changed === 1 ? "" : "s"} adjusted`);
   }
   function convertWorkToProject(work) {
     const dev = deviceById[work.deviceId];
@@ -1113,15 +1160,15 @@ export function MainApp() {
   }
   // Logging a NEW visit completes the occurrence that is currently due — however early or late
   // it's logged — and moves the service on to the following one.
-  function advanceSchedule(deviceId, visitDate, updatedServices) {
+  function advanceSchedule(deviceId, visitDate, updatedServices, override) {
     const dev = deviceById[deviceId];
     if (!dev) return null;
     const due = dev.nextServiceDate || visitDate;
     const twoWeeksBefore = (() => { const x = new Date(visitDate + "T00:00:00"); x.setDate(x.getDate() - 14); return x.toISOString().slice(0, 10); })();
     const anchor = due > twoWeeksBefore ? due : twoWeeksBefore; // a very late visit also covers occurrences it overlapped
-    const next = nextDueAfter(dev, anchor, due);
+    const next = override || nextDueAfter(dev, anchor, due);
     const lastDate = updatedServices.filter((s) => s.deviceId === deviceId && s.date).reduce((m, s) => (s.date > m ? s.date : m), visitDate);
-    persist.devices(devices.map((d) => d.id === deviceId ? { ...d, lastServiceDate: lastDate, nextServiceDate: next } : d));
+    persist.devices(devices.map((d) => d.id === deviceId ? { ...d, lastServiceDate: lastDate, nextServiceDate: next, ...(override ? { rescheduleLog: [...(d.rescheduleLog || []), { from: nextDueAfter(dev, anchor, due), to: override, by: currentUser?.name || "Unknown", at: new Date().toISOString(), reason: "Set when logging visit" }] } : {}) } : d));
     return due;
   }
   // After editing or deleting a visit, rebuild from the latest remaining visit.
@@ -1191,7 +1238,7 @@ export function MainApp() {
       showToast("Visit skipped — next one scheduled", `${deviceById[record.deviceId]?.name || ""} — ${record.skipReason || ""}`);
       return;
     }
-    const completedDue = isEdit ? null : advanceSchedule(record.deviceId, record.date || new Date().toISOString().slice(0, 10), next);
+    const completedDue = isEdit ? null : advanceSchedule(record.deviceId, record.date || new Date().toISOString().slice(0, 10), next, record.nextDueOverride || null);
     if (isEdit) recomputeSchedule(record.deviceId, next);
     if (record.date && record.cost) syncBudgetLineForVisit(record.deviceId, record.date, record.cost, visitId, completedDue);
     // Failed checklist items become high-priority follow-up works — only for items that
@@ -1438,8 +1485,71 @@ export function MainApp() {
     const chars = Object.values(allData).reduce((sum, v) => sum + JSON.stringify(v || "").length, 0);
     const limit = 5 * 1024 * 1024;
     return { local, chars, pct: Math.min(100, Math.round((chars / limit) * 100)) };
-  }, [users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash]);
+  }, [users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings]);
 
+  // Page headers: title and four key figures for each tab, in the bento style.
+  const pageHeaders = (() => {
+    const t0 = new Date().toISOString().slice(0, 10); const ym = t0.slice(0, 7); const yr = t0.slice(0, 4);
+    const dn = (d) => daysUntil(d?.nextServiceDate);
+    const overdueN = locDevices.filter((d) => dn(d) !== null && dn(d) < 0).length;
+    const weekN = locDevices.filter((d) => dn(d) !== null && dn(d) >= 0 && dn(d) <= 7).length;
+    const monthN = locDevices.filter((d) => d.nextServiceDate && d.nextServiceDate.slice(0, 7) === ym).length;
+    const notBookedN = locDevices.filter((d) => dn(d) !== null && dn(d) >= 0 && dn(d) <= 14 && !currentBooking(d)).length;
+    const bookedN = locDevices.filter((d) => currentBooking(d)).length;
+    const visitsYr = locServices.filter((v) => String(v.date).startsWith(yr) && !v.aborted && !v.skipped);
+    const visitsMo = visitsYr.filter((v) => String(v.date).startsWith(ym));
+    const failsMo = visitsMo.reduce((t, v) => t + (v.checklistResults || []).filter((r) => r.result === "fail").length, 0);
+    const certMissing = locDevices.filter((d) => { if (!d.certRequired) return false; const last = locServices.filter((v) => v.deviceId === d.id && !v.aborted && !v.skipped).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0]; return last && !last.certificatePhoto; }).length;
+    const openW = locWorks.filter((w) => !["completed", "rejected"].includes(w.status));
+    const lateW = openW.filter((w) => workSla(w)?.breached).length;
+    const reqW = locWorks.filter((w) => w.status === "requested").length;
+    const doneW = locWorks.filter((w) => w.status === "completed" && String(w.completedAt || "").startsWith(ym)).length;
+    const annual = (x) => (x.costFrequency === "annual" ? Number(x.costAmount) || 0 : (Number(x.costAmount) || 0) * 12);
+    const ending = locSuppliers.filter((x) => x.contractEnd && daysUntil(x.contractEnd) >= 0 && daysUntil(x.contractEnd) <= 90).length;
+    const flagged = locSuppliers.filter((x) => x.status === "blocked" || x.status === "probation").length;
+    const toApprove = locInvoices.filter((i) => i.status === "received").length;
+    const lowStock = locSpares.filter((x) => x.minQty !== "" && x.minQty != null && Number(x.qty) <= Number(x.minQty)).length;
+    const onSite = locSignins.filter((x) => !x.outAt).length;
+    const openInc = locIncidents.filter((i) => i.status !== "closed").length;
+    const openPtw = locPermits.filter((p) => p.status === "open").length;
+    return {
+      devices: { title: "Services", subtitle: `${locDevices.length} active${locArchivedDevices.length ? ` · ${locArchivedDevices.length} archived` : ""}`, kpis: [
+        { label: "Services", value: locDevices.length, icon: Wrench },
+        { label: "Overdue", value: overdueN, tone: overdueN ? "danger" : "ok", icon: Clock },
+        { label: "Due this month", value: monthN, icon: Calendar },
+        { label: "Not booked", value: notBookedN, sub: "due within 14 days", tone: notBookedN ? "warn" : undefined, icon: CalendarCheck } ] },
+      schedule: { title: "Schedule", subtitle: "Planned visits and tasks", kpis: [
+        { label: "This week", value: weekN, icon: Calendar },
+        { label: "This month", value: monthN, icon: CalendarDays },
+        { label: "Overdue", value: overdueN, tone: overdueN ? "danger" : "ok", icon: Clock },
+        { label: "Booked", value: bookedN, sub: "with a confirmed date", icon: CalendarCheck } ] },
+      certificates: { title: "Completed", subtitle: "Visits, certificates and checks", kpis: [
+        { label: `Visits ${yr}`, value: visitsYr.length, icon: CheckCircle2 },
+        { label: "This month", value: visitsMo.length, icon: Calendar },
+        { label: "Failed checks", value: failsMo, sub: "this month", tone: failsMo ? "danger" : "ok", icon: AlertTriangle },
+        { label: "Certificates missing", value: certMissing, tone: certMissing ? "warn" : "ok", icon: FileCheck } ] },
+      works: { title: "Works", subtitle: worksView === "projects" ? "Projects" : "Reactive works", kpis: [
+        { label: "Open", value: openW.length, icon: Wrench },
+        { label: "Past target", value: lateW, tone: lateW ? "danger" : "ok", icon: Timer },
+        { label: "New requests", value: reqW, tone: reqW ? "warn" : undefined, icon: Bell },
+        { label: "Done this month", value: doneW, tone: "ok", icon: CheckCircle2 } ] },
+      suppliers: { title: "Suppliers", subtitle: `${locSuppliers.length} on file`, kpis: [
+        { label: "Suppliers", value: locSuppliers.length, icon: Users },
+        { label: "Contracts / year", value: gbp(locSuppliers.reduce((t, x) => t + annual(x), 0)), icon: PoundSterling },
+        { label: "Ending in 90 days", value: ending, tone: ending ? "warn" : undefined, icon: Calendar },
+        { label: "Flagged", value: flagged, sub: "probation or do not use", tone: flagged ? "danger" : undefined, icon: AlertTriangle } ] },
+      budget: { title: "Budget", subtitle: `${spendSummary.yr} · ${budgetView === "finance" ? "POs & invoices" : "plan and spend"}`, kpis: [
+        { label: "Spent so far", value: gbp(spendSummary.spent), icon: PoundSterling },
+        { label: "Budget", value: spendSummary.budget ? gbp(spendSummary.budget) : "—", icon: Receipt },
+        { label: "Forecast", value: spendSummary.forecast != null ? gbp(spendSummary.forecast) : "—", tone: spendSummary.budget && spendSummary.forecast > spendSummary.budget ? "danger" : "ok", icon: TrendingUp },
+        { label: "Invoices to approve", value: toApprove, tone: toApprove ? "warn" : undefined, icon: FileText } ] },
+      meters: { title: "Site", subtitle: "Safety, records and building", kpis: [
+        { label: "On site now", value: onSite, sub: "contractors", icon: HardHat },
+        { label: "Open incidents", value: openInc, tone: openInc ? "warn" : "ok", icon: Siren },
+        { label: "Open permits", value: openPtw, icon: Flame },
+        { label: "Low stock", value: lowStock, tone: lowStock ? "warn" : undefined, icon: Package } ] },
+    };
+  })();
   const navItems = [
     { key: "home", label: "Home", icon: LayoutDashboard },
     { key: "devices", label: "Services", icon: Wrench },
@@ -1453,7 +1563,7 @@ export function MainApp() {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 400, color: "#8A94A0", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 400, color: "var(--faint)", fontFamily: "'IBM Plex Sans', sans-serif" }}>
         <Loader2 size={20} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} /> Loading service book…
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
@@ -1478,7 +1588,7 @@ export function MainApp() {
   const needsLocation = !needsProfile && !selectedLocation;
 
   return (
-    <div style={{ background: "#D7DCE1", minHeight: "100%", display: "flex", justifyContent: "center" }}>
+    <div style={{ background: "var(--track)", minHeight: "100%", display: "flex", justifyContent: "center" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
         * { box-sizing: border-box; }
@@ -1487,18 +1597,14 @@ export function MainApp() {
         button:hover { opacity: 0.88; }
         button:active { opacity: 0.7; }
         .ppm-shell { width: 100%; max-width: 100%; }
-        html.ppm-dark { filter: invert(0.9) hue-rotate(180deg); background: #fff; }
-        html.ppm-dark img, html.ppm-dark .recharts-surface { filter: invert(1) hue-rotate(180deg); }
-        @media (min-width: 640px) {
-          .ppm-shell { max-width: 460px; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 24px 70px rgba(0,0,0,0.18); }
-        }
       `}</style>
-      <div className="ppm-shell" style={{ zoom: display.scale && display.scale !== 1 ? display.scale : undefined, fontFamily: "'IBM Plex Sans', system-ui, sans-serif", background: "#EEF0F2", color: "#1B2430", display: "flex", flexDirection: "column" }}>
+      <style>{THEME_CSS}</style>
+      <div className="ppm-shell" style={{ zoom: display.scale && display.scale !== 1 ? display.scale : undefined, fontFamily: "'IBM Plex Sans', system-ui, sans-serif", background: "var(--ground)", color: "var(--text)", display: "flex", flexDirection: "column" }}>
       {/* Header */}
-      <div style={{ background: "#1B2430", padding: "16px 18px", color: "#fff" }}>
+      <div style={{ background: "var(--head)", padding: "16px 18px", color: "var(--head-text)", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: "#2B4562", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Wrench size={18} color="#D97706" />
             </div>
             <div>
@@ -1518,7 +1624,7 @@ export function MainApp() {
               <button onClick={() => setShowAlerts(true)} title="Notifications" style={{ position: "relative", background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 20, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                 <Bell size={15} color="#fff" />
                 {visibleAlerts.filter((a) => a.tone !== "info").length > 0 && (
-                  <span style={{ position: "absolute", top: -3, right: -3, minWidth: 16, height: 16, borderRadius: 8, background: "#D97706", color: "#fff", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+                  <span style={{ position: "absolute", top: -3, right: -3, minWidth: 16, height: 16, borderRadius: 8, background: "#D97706", color: "var(--on-accent)", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
                     {visibleAlerts.filter((a) => a.tone !== "info").length}
                   </span>
                 )}
@@ -1584,7 +1690,7 @@ export function MainApp() {
         </div>
       ) : (
         <>
-          <div style={{ display: "flex", background: "#fff", borderBottom: "1px solid #E1E4E8", overflowX: "auto" }}>
+          <div style={{ display: "flex", background: "var(--card)", borderBottom: "1px solid var(--border)", overflowX: "auto" }}>
             {navItems.map((n) => {
               const active = tab === n.key;
               const Icon = n.icon;
@@ -1592,8 +1698,8 @@ export function MainApp() {
                 <button key={n.key} onClick={() => setTab(n.key)} style={{
                   flex: "1 0 auto", background: "none", border: "none", cursor: "pointer", padding: "11px 8px",
                   display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                  borderBottom: active ? "2.5px solid #2B4562" : "2.5px solid transparent",
-                  color: active ? "#1B2430" : "#8A94A0", fontFamily: "inherit",
+                  borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent",
+                  color: active ? "var(--text)" : "var(--muted)", fontFamily: "inherit",
                 }}>
                   <div style={{ position: "relative" }}>
                     <Icon size={17} />
@@ -1606,9 +1712,9 @@ export function MainApp() {
           </div>
 
           {REMOTE && pendingCount > 0 && Object.keys(saveErrors).length === 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "#FDF1E0", borderBottom: "1px solid #F5D9A8", padding: "8px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "var(--warn-soft)", borderBottom: "1px solid #F5D9A8", padding: "8px 16px" }}>
               <CloudOff size={15} color="#8A5A0B" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12.3, color: "#8A5A0B", fontWeight: 650 }}>Offline — {pendingCount} change{pendingCount === 1 ? "" : "s"} saved on this device, will upload automatically when you're back online.</span>
+              <span style={{ fontSize: 12.3, color: "var(--warn)", fontWeight: 650 }}>Offline — {pendingCount} change{pendingCount === 1 ? "" : "s"} saved on this device, will upload automatically when you're back online.</span>
             </div>
           )}
           {Object.keys(saveErrors).length > 0 && (
@@ -1621,19 +1727,19 @@ export function MainApp() {
             </button>
           )}
           {storageInfo.local && storageInfo.pct >= 80 && !Object.keys(saveErrors).length && (
-            <button onClick={() => setShowData(true)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "#FDF1E0", border: "none", borderBottom: "1px solid #F5D9A8", padding: "10px 16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+            <button onClick={() => setShowData(true)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "var(--warn-soft)", border: "none", borderBottom: "1px solid #F5D9A8", padding: "10px 16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
               <HardDrive size={15} color="#8A5A0B" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12.5, color: "#8A5A0B", fontWeight: 650, flex: 1 }}>Storage {storageInfo.pct}% full — mostly photos. Download a backup and remove old photos.</span>
+              <span style={{ fontSize: 12.5, color: "var(--warn)", fontWeight: 650, flex: 1 }}>Storage {storageInfo.pct}% full — mostly photos. Download a backup and remove old photos.</span>
               <ChevronRight size={14} color="#8A5A0B" />
             </button>
           )}
           {overdueCount > 0 && tab !== "schedule" && (
             <button onClick={() => setTab("schedule")} style={{
-              display: "flex", alignItems: "center", gap: 8, width: "100%", background: "#FBEAEA", border: "none",
+              display: "flex", alignItems: "center", gap: 8, width: "100%", background: "var(--danger-soft)", border: "none",
               borderBottom: "1px solid #F3C6C6", padding: "10px 16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left",
             }}>
               <ShieldAlert size={15} color="#9B2C2C" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12.5, color: "#9B2C2C", fontWeight: 650, flex: 1 }}>
+              <span style={{ fontSize: 12.5, color: "var(--danger)", fontWeight: 650, flex: 1 }}>
                 {overdueCount} service{overdueCount === 1 ? "" : "s"} overdue — tap to review
               </span>
               <ChevronRight size={14} color="#9B2C2C" />
@@ -1641,30 +1747,32 @@ export function MainApp() {
           )}
 
           {ACTIVE_CAN_EDIT && !backupNagHidden && locDevices.length > 0 && storageInfo.local && (!settings.lastBackupAt || (Date.now() - new Date(settings.lastBackupAt).getTime()) > 14 * 86400000) && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "#EAF1F8", borderBottom: "1px solid #C9D9EA", padding: "8px 12px 8px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "var(--accent-soft)", borderBottom: "1px solid #C9D9EA", padding: "8px 12px 8px 16px" }}>
               <HardDrive size={15} color="#2B4562" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12.3, color: "#2B4562", fontWeight: 600, flex: 1 }}>
+              <span style={{ fontSize: 12.3, color: "var(--accent)", fontWeight: 600, flex: 1 }}>
                 {settings.lastBackupAt ? `Last backup was ${Math.floor((Date.now() - new Date(settings.lastBackupAt).getTime()) / 86400000)} days ago.` : "You haven't backed up yet."}
               </span>
-              <button onClick={downloadBackup} style={{ background: "#2B4562", color: "#fff", border: "none", borderRadius: 7, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Back up now</button>
+              <button onClick={downloadBackup} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 7, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Back up now</button>
               <button onClick={() => setBackupNagHidden(true)} title="Hide for now" style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}><X size={14} color="#5B6672" /></button>
             </div>
           )}
-          <div style={{ flex: 1, padding: 16, paddingBottom: 90 }}>
+          <div className={`ppm-content${tab === "home" ? "" : " narrow"}`} style={{ flex: 1, padding: 16, paddingBottom: 90 }}>
+            {tab !== "home" && pageHeaders[tab] && <PageHeader {...pageHeaders[tab]} />}
             {tab === "meters" && (
               <SiteTab
                 meters={<MetersTab onImportReadings={(list) => { persist.meterReadings([...list.map((r) => ({ ...r, id: uid(), by: currentUser?.name, at: new Date().toISOString(), imported: true })), ...meterReadings]); showToast(`${list.length} readings imported`); }} meters={locMeters} readings={locReadings} suppliers={locSuppliers}
                   onSaveMeter={saveMeter} onArchiveMeter={archiveMeter} onAddReading={addReading} onDeleteReading={deleteReading} />}
-                spares={<SparesView spares={locSpares} suppliers={locSuppliers} devices={locDevices} senderName={currentUser?.name}
+                spares={<SparesView onStockTake={stockTake} spares={locSpares} suppliers={locSuppliers} devices={locDevices} senderName={currentUser?.name}
                   onSave={saveSpare} onAdjust={adjustSpare} onDelete={deleteSpare} />}
-                keys={<KeysView locationName={locationLabel({ locationId: selectedLocationId })} keys={locKeys} onSave={saveKey} onIssue={issueKey} onReturn={returnKey} onDelete={deleteKey} />}
-                permits={<PermitsView permits={locPermits} devices={locDevices} suppliers={locSuppliers} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })} onSave={savePermit} onClose={closePermit} />}
+                keys={<KeysView onLost={markKeyLost} locationName={locationLabel({ locationId: selectedLocationId })} keys={locKeys} onSave={saveKey} onIssue={issueKey} onReturn={returnKey} onDelete={deleteKey} />}
+                permits={<PermitsView onExtend={extendPermit} permits={locPermits} devices={locDevices} suppliers={locSuppliers} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })} onSave={savePermit} onClose={closePermit} />}
                 waste={<WasteView waste={locWaste} suppliers={locSuppliers} onSave={saveWaste} onDelete={deleteWaste} />}
                 openPermits={locPermits.filter((x) => x.status === "open").length}
                 water={<WaterTempsView outlets={locOutlets} readings={locWaterReadings} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })}
                   onSaveOutlet={outletOps.save} onDeleteOutlet={outletOps.remove} onAddReadings={addWaterReadings} />}
                 training={<TrainingView records={locTraining} onSave={trainingOps.save} onDelete={trainingOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 docs={<DocumentsView docs={(settings.siteDocs || []).filter((d) => d.locationId === selectedLocationId)} onSave={saveSiteDocs} locationName={locationLabel({ locationId: selectedLocationId })} />}
+                logs={<LogsView defs={settings.logDefs || []} entries={logEntries.filter((x) => x.locationId === selectedLocationId)} onSaveDefs={saveLogDefs} onSave={logEntryOps.save} onDelete={logEntryOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 drills={<DrillsView drills={locDrills} onSave={drillOps.save} onDelete={drillOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 audits={<AuditsView audits={locAudits} templates={settings.auditTemplates || DEFAULT_AUDIT_TEMPLATES} suppliers={locSuppliers} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []}
                   locationName={locationLabel({ locationId: selectedLocationId })} senderName={currentUser?.name}
@@ -1686,6 +1794,10 @@ export function MainApp() {
                 emergency={(settings.emergencyContacts || {})[selectedLocationId] || null} onSaveEmergency={saveEmergencyContacts}
                 pendingCount={pendingCount} hiddenCards={display.homeHidden || []}
                 todayItems={todayItems} weekAhead={weekAhead}
+                notices={notices.filter((n) => n.locationId === selectedLocationId)} onSaveNotice={noticeOps.save} onDeleteNotice={noticeOps.remove}
+                recentDevices={(display.recent || []).map((id) => locDevices.find((d) => d.id === id)).filter(Boolean)}
+                overdueBySupplier={(() => { const m = {}; locDevices.forEach((d) => { if (d.nextServiceDate && daysUntil(d.nextServiceDate) < 0) { const k = d.supplierId || ""; m[k] = (m[k] || 0) + 1; } }); return Object.entries(m).map(([id, n]) => ({ name: supplierById[id]?.name || "No supplier", n })).sort((a, b) => b.n - a.n); })()}
+                onQuick={(what) => { if (what === "visit") setTab("devices"); else if (what === "work") { if (locDevices.length) setAddWorkFor(locDevices[0].id); } else if (what === "incident") setTab("meters"); else if (what === "service") setDeviceModal({}); }}
                 siteInfo={(settings.siteInfo || {})[selectedLocationId] || null} onSaveSiteInfo={saveSiteInfo}
                 customStatutory={settings.customStatutory || []} onSaveCustomStatutory={saveCustomStatutory} pinnedDevices={pinnedIds.map((id) => locDevices.find((d) => d.id === id)).filter(Boolean)} onUnpin={togglePin}
                 setup={{ suppliers: locSuppliers.length, devices: locDevices.length, budgets: locBudgets.length + locBudgetLines.length, visits: locServices.length, backup: !!settings.lastBackupAt || REMOTE, shared: REMOTE, hidden: !!display.hideSetup }}
@@ -1695,7 +1807,7 @@ export function MainApp() {
                 onGo={(t) => t === "alerts" ? setShowAlerts(true) : setTab(t)} onOpenDevice={setHistoryFor} />
             )}
             {tab === "devices" && (
-              <DevicesTab onChaseAll={recordChase} allSupplierList={locSuppliers} locationName={locationLabel({ locationId: selectedLocationId })} pinned={pinnedIds} onTogglePin={togglePin} onDataHealth={() => setShowHealth(true)} onLibrary={() => setShowLibrary(true)} faultsByDevice={faultsByDevice} onImport={() => setShowImport(true)} allLocations={locations.filter((l) => l.id !== selectedLocationId).map((l) => ({ id: l.id, label: `${countryById[l.countryId]?.name || ""} · ${l.name}` }))} onCopyTo={copyDevicesToLocation} onBulkUpdate={bulkUpdateDevices} allSuppliers={locSuppliers} archivedDevices={locArchivedDevices} onRestore={restoreDevice} onBulkLog={bulkLogVisits} onBook={saveBooking} prefs={listPrefs} onPrefs={(patch) => setListPrefs((p) => ({ ...p, ...patch }))} devices={searchAllLocations ? globalFilteredDevices : filteredDevices} search={search} setSearch={setSearch}
+              <DevicesTab history={locServices} onRemindAll={recordChase} onChaseAll={recordChase} allSupplierList={locSuppliers} locationName={locationLabel({ locationId: selectedLocationId })} pinned={pinnedIds} onTogglePin={togglePin} onDataHealth={() => setShowHealth(true)} onLibrary={() => setShowLibrary(true)} faultsByDevice={faultsByDevice} onImport={() => setShowImport(true)} allLocations={locations.filter((l) => l.id !== selectedLocationId).map((l) => ({ id: l.id, label: `${countryById[l.countryId]?.name || ""} · ${l.name}` }))} onCopyTo={copyDevicesToLocation} onBulkUpdate={bulkUpdateDevices} allSuppliers={locSuppliers} archivedDevices={locArchivedDevices} onRestore={restoreDevice} onBulkLog={bulkLogVisits} onBook={saveBooking} prefs={listPrefs} onPrefs={(patch) => setListPrefs((p) => ({ ...p, ...patch }))} devices={searchAllLocations ? globalFilteredDevices : filteredDevices} search={search} setSearch={setSearch}
                 onAdd={() => setDeviceModal({})} onEdit={(record) => setDeviceModal({ record })}
                 onLogService={(id) => setServiceModal({ deviceId: id })} onAddWork={setAddWorkFor}
                 onDelete={deleteDevice} onHistory={setHistoryFor}
@@ -1728,14 +1840,14 @@ export function MainApp() {
               <ProjectsView projects={locProjects} devices={locDevices} suppliers={locSuppliers} onSave={saveProject} onDelete={deleteProject} />
             )}
             {tab === "works" && worksView === "reactive" && (
-              <WorksTab onConvertToProject={convertWorkToProject} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
+              <WorksTab invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={convertWorkToProject} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
                 onUpdate={updateWork} onDelete={deleteWork} currentUserName={currentUser?.name}
                 approvalThreshold={Number(settings.approvalThreshold) || 0} onSetThreshold={(v) => { persist.settings({ ...settings, approvalThreshold: v }); showToast("Approval rule saved"); }}
                 onConvertToPlan={convertWorkToPlanLine} onConvertToService={convertWorkToService}
                 onAdd={() => setAddWorkFor(locDevices[0]?.id ?? null)} hasDevices={locDevices.length > 0} />
             )}
             {tab === "suppliers" && (
-              <SuppliersTab packData={{ devices: locDevices, services: locServices, works: locWorks, invoices: locInvoices }} locationName={locationLabel({ locationId: selectedLocationId })} onFollowUpDone={setContactFollowUpDone} invoices={locInvoices} userName={currentUser?.name} onAddContact={addSupplierContact} onMerge={mergeSuppliers} suppliers={locSuppliers} onAdd={() => setSupplierModal({})} onEdit={(record) => setSupplierModal({ record })} onDelete={deleteSupplier}
+              <SuppliersTab onImport={importSuppliers} packData={{ devices: locDevices, services: locServices, works: locWorks, invoices: locInvoices }} locationName={locationLabel({ locationId: selectedLocationId })} onFollowUpDone={setContactFollowUpDone} invoices={locInvoices} userName={currentUser?.name} onAddContact={addSupplierContact} onMerge={mergeSuppliers} suppliers={locSuppliers} onAdd={() => setSupplierModal({})} onEdit={(record) => setSupplierModal({ record })} onDelete={deleteSupplier}
                 devices={locDevices} services={locServices} works={locWorks} budgetLines={locBudgetLines} visitBudgets={locVisitBudgets} />
             )}
             {tab === "budget" && (
@@ -1745,7 +1857,7 @@ export function MainApp() {
               </div>
             )}
             {tab === "budget" && budgetView === "finance" && (
-              <FinanceView userName={currentUser?.name} pos={locPOs} invoices={locInvoices} suppliers={locSuppliers} works={locWorks} deviceById={deviceById}
+              <FinanceView savings={savings.filter((x) => x.locationId === selectedLocationId)} onSaveSaving={savingOps.save} onDeleteSaving={savingOps.remove} userName={currentUser?.name} pos={locPOs} invoices={locInvoices} suppliers={locSuppliers} works={locWorks} deviceById={deviceById}
                 onSavePO={poOps.save} onDeletePO={poOps.remove} onSaveInvoice={invOps.save} onDeleteInvoice={invOps.remove} />
             )}
             {tab === "budget" && budgetView === "budget" && (
@@ -1759,15 +1871,15 @@ export function MainApp() {
 
           {tab === "devices" && ACTIVE_CAN_EDIT && (
             <button onClick={() => setDeviceModal({})} style={{
-              position: "fixed", bottom: 20, right: "max(20px, calc((100vw - 460px) / 2 + 20px))", width: 54, height: 54, borderRadius: "50%",
-              background: "#D97706", color: "#fff", border: "none", boxShadow: "0 6px 16px rgba(217,119,6,0.4)",
+              position: "fixed", bottom: 20, right: "max(20px, calc((100vw - var(--shell-w)) / 2 + 20px))", width: 54, height: 54, borderRadius: "50%",
+              background: "#D97706", color: "var(--on-accent)", border: "none", boxShadow: "0 6px 16px rgba(217,119,6,0.4)",
               display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
             }}><Plus size={24} /></button>
           )}
           {tab === "suppliers" && ACTIVE_CAN_EDIT && (
             <button onClick={() => setSupplierModal({})} style={{
-              position: "fixed", bottom: 20, right: "max(20px, calc((100vw - 460px) / 2 + 20px))", width: 54, height: 54, borderRadius: "50%",
-              background: "#D97706", color: "#fff", border: "none", boxShadow: "0 6px 16px rgba(217,119,6,0.4)",
+              position: "fixed", bottom: 20, right: "max(20px, calc((100vw - var(--shell-w)) / 2 + 20px))", width: 54, height: 54, borderRadius: "50%",
+              background: "#D97706", color: "var(--on-accent)", border: "none", boxShadow: "0 6px 16px rgba(217,119,6,0.4)",
               display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
             }}><Plus size={24} /></button>
           )}
@@ -1854,13 +1966,13 @@ export function MainApp() {
       )}
       {toast && (
         <div style={{
-          position: "fixed", bottom: 86, left: "50%", transform: "translateX(-50%)", background: "#1B2430", color: "#fff",
+          position: "fixed", bottom: 86, left: "50%", transform: "translateX(-50%)", background: "var(--head)", color: "var(--on-accent)",
           padding: toast.undo ? "6px 6px 6px 16px" : "9px 16px", borderRadius: 20, fontSize: 12.5, fontWeight: 600, boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
           zIndex: 60, whiteSpace: "nowrap", pointerEvents: toast.undo ? "auto" : "none", display: "flex", alignItems: "center", gap: 10,
         }}>
           <span>{toast.msg}</span>
           {toast.undo && ACTIVE_CAN_EDIT && (
-            <button onClick={undoLast} style={{ background: "#D97706", color: "#fff", border: "none", borderRadius: 14, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+            <button onClick={undoLast} style={{ background: "#D97706", color: "var(--on-accent)", border: "none", borderRadius: 14, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
               <Undo2 size={13} /> Undo
             </button>
           )}

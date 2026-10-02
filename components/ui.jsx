@@ -37,15 +37,15 @@ export function CategoryBadge({ category, subCategory }) {
 export function Field({ label, children }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13.5 }}>
-      <span style={{ fontWeight: 600, color: "#3A4451" }}>{label}</span>
+      <span style={{ fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
       {children}
     </label>
   );
 }
 
 export const inputStyle = {
-  border: "1px solid #D7DCE1", borderRadius: 8, padding: "9px 11px",
-  fontSize: 14, fontFamily: "inherit", color: "#1B2430", background: "#fff", outline: "none",
+  border: "1px solid var(--border)", borderRadius: 8, padding: "9px 11px",
+  fontSize: 14, fontFamily: "inherit", color: "var(--text)", background: "var(--input)", outline: "none",
 };
 
 export function TextInput(props) { return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />; }
@@ -77,12 +77,12 @@ export function Modal({ title, onClose, children, width = 480 }) {
   return (
     <div data-modal-open="1" style={{ position: "fixed", inset: 0, background: "rgba(20,26,33,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        background: "#fff", width: "100%", maxWidth: width, maxHeight: "88vh", overflowY: "auto",
+        background: "var(--card)", width: "100%", maxWidth: width, maxHeight: "88vh", overflowY: "auto",
         borderRadius: "16px 16px 0 0", padding: 20, boxShadow: "0 -8px 30px rgba(0,0,0,0.2)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#1B2430", fontFamily: "'IBM Plex Sans', sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background: "#EEF0F2", border: "none", borderRadius: 8, padding: 6, cursor: "pointer", display: "flex" }}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--text)", fontFamily: "'IBM Plex Sans', sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: 6, cursor: "pointer", display: "flex" }}>
             <X size={17} color="#5B6672" />
           </button>
         </div>
@@ -95,7 +95,7 @@ export function Modal({ title, onClose, children, width = 480 }) {
 export function PrimaryButton({ children, style, ...rest }) {
   return (
     <button {...rest} style={{
-      background: "#2B4562", color: "#fff", border: "none", borderRadius: 9, padding: "10px 16px",
+      background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 9, padding: "10px 16px",
       fontSize: 14, fontWeight: 650, cursor: "pointer", display: "flex", alignItems: "center",
       gap: 7, justifyContent: "center", fontFamily: "inherit", ...style,
     }}>{children}</button>
@@ -105,20 +105,20 @@ export function PrimaryButton({ children, style, ...rest }) {
 export function DetailRow({ label, value }) {
   return (
     <div>
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: "#8A94A0", textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
-      <div style={{ fontSize: 14, color: "#1B2430", marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--faint)", textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
+      <div style={{ fontSize: 14, color: "var(--text)", marginTop: 2 }}>{value}</div>
     </div>
   );
 }
 
 export function EmptyState({ icon: Icon, title, body, actionLabel, onAction }) {
   return (
-    <div style={{ background: "#fff", border: "1px dashed #D7DCE1", borderRadius: 14, padding: "40px 24px", textAlign: "center", marginTop: 20 }}>
-      <div style={{ width: 46, height: 46, borderRadius: "50%", background: "#EEF0F2", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+    <div style={{ background: "var(--card)", border: "1px dashed var(--border)", borderRadius: 14, padding: "40px 24px", textAlign: "center", marginTop: 20 }}>
+      <div style={{ width: 46, height: 46, borderRadius: "50%", background: "var(--card-hi)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
         <Icon size={20} color="#8A94A0" />
       </div>
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{title}</div>
-      <div style={{ fontSize: 13, color: "#8A94A0", maxWidth: 280, margin: "0 auto" }}>{body}</div>
+      <div style={{ fontSize: 13, color: "var(--faint)", maxWidth: 280, margin: "0 auto" }}>{body}</div>
       {actionLabel && <PrimaryButton onClick={onAction} style={{ margin: "16px auto 0" }}><Plus size={15} /> {actionLabel}</PrimaryButton>}
     </div>
   );
@@ -132,8 +132,8 @@ export function ConfirmDeleteButton({ onConfirm, size = 15 }) {
   if (confirming) {
     return (
       <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-        <button onClick={onConfirm} style={{ background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 6, padding: "4px 8px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Delete</button>
-        <button onClick={() => setConfirming(false)} style={{ background: "#EEF0F2", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10.5, fontWeight: 700, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+        <button onClick={onConfirm} style={{ background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 6, padding: "4px 8px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Delete</button>
+        <button onClick={() => setConfirming(false)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10.5, fontWeight: 700, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
       </div>
     );
   }
@@ -147,7 +147,7 @@ export function ConfirmDeleteButton({ onConfirm, size = 15 }) {
 export function ExportButton({ rows, filename, label = "Export CSV" }) {
   return (
     <a href={csvHref(rows)} download={filename} style={{
-      display: "inline-flex", alignItems: "center", gap: 6, background: "#EEF0F2", color: "#2B4562",
+      display: "inline-flex", alignItems: "center", gap: 6, background: "var(--card-hi)", color: "var(--accent)",
       border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, textDecoration: "none",
     }}><Download size={13} /> {label}</a>
   );
@@ -179,7 +179,7 @@ export function BudgetTypeTag({ type }) {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 650,
-      color: isBudgeted ? "#2F6B4A" : "#9B5B0B", background: isBudgeted ? "#EAF4EE" : "#FDF1E0",
+      color: isBudgeted ? "var(--ok)" : "#9B5B0B", background: isBudgeted ? "var(--ok-soft)" : "var(--warn-soft)",
       padding: "3px 8px", borderRadius: 20,
     }}>
       {isBudgeted ? null : <ShieldAlert size={11} />} {isBudgeted ? "Budgeted" : "Non-controllable"}
@@ -190,7 +190,7 @@ export function BudgetTypeTag({ type }) {
 export function ToggleButton({ active, children, ...rest }) {
   return (
     <button {...rest} style={{
-      flex: 1, background: active ? "#2B4562" : "#fff", color: active ? "#fff" : "#5B6672",
+      flex: 1, background: active ? "var(--accent)" : "var(--card)", color: active ? "var(--on-accent)" : "var(--muted)",
       border: "1px solid " + (active ? "#2B4562" : "#E1E4E8"), borderRadius: 9, padding: "8px 10px",
       fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit",
     }}>{children}</button>
@@ -200,8 +200,8 @@ export function ToggleButton({ active, children, ...rest }) {
 export function MetricBlock({ label, value, tone }) {
   const color = tone === "danger" ? "#C53030" : tone === "ok" ? "#2F855A" : "#1B2430";
   return (
-    <div style={{ background: "#F7F8F9", borderRadius: 9, padding: "9px 10px" }}>
-      <div style={{ fontSize: 10.5, color: "#8A94A0", fontWeight: 600, marginBottom: 2 }}>{label}</div>
+    <div style={{ background: "var(--card-hi)", borderRadius: 9, padding: "9px 10px" }}>
+      <div style={{ fontSize: 10.5, color: "var(--faint)", fontWeight: 600, marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: 700, color, fontFamily: "'IBM Plex Mono', monospace" }}>{value}</div>
     </div>
   );
@@ -212,11 +212,11 @@ export function ConfirmTextDelete({ label, onConfirm }) {
   if (!ACTIVE_CAN_EDIT) return null;
   return c ? (
     <div style={{ display: "flex", gap: 8 }}>
-      <button onClick={onConfirm} style={{ flex: 1, background: "#FBEAEA", color: "#9B2C2C", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
-      <button onClick={() => setC(false)} style={{ flex: 1, background: "#EEF0F2", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+      <button onClick={onConfirm} style={{ flex: 1, background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>
+      <button onClick={() => setC(false)} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
     </div>
   ) : (
-    <button onClick={() => setC(true)} style={{ background: "none", border: "none", color: "#9B2C2C", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}><Trash2 size={13} /> {label}</button>
+    <button onClick={() => setC(true)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: 4 }}><Trash2 size={13} /> {label}</button>
   );
 }
 
@@ -244,17 +244,17 @@ export function SignaturePad({ value, onChange, height = 130 }) {
   function up() { if (!drawing.current) return; drawing.current = false; if (dirty.current) onChange(canvasRef.current.toDataURL("image/png")); }
   if (value) {
     return (
-      <div style={{ position: "relative", border: "1px solid #D7DCE1", borderRadius: 10, background: "#fff", height, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ position: "relative", border: "1px solid var(--border)", borderRadius: 10, background: "var(--card)", height, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <img src={value} alt="signature" style={{ maxWidth: "100%", maxHeight: height - 8 }} />
-        <button type="button" onClick={() => { dirty.current = false; onChange(null); }} style={{ position: "absolute", top: 6, right: 6, background: "#EEF0F2", border: "none", borderRadius: 7, padding: "4px 9px", fontSize: 11.5, fontWeight: 650, color: "#5B6672", cursor: "pointer", fontFamily: "inherit" }}>Clear</button>
+        <button type="button" onClick={() => { dirty.current = false; onChange(null); }} style={{ position: "absolute", top: 6, right: 6, background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "4px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit" }}>Clear</button>
       </div>
     );
   }
   return (
     <div style={{ position: "relative" }}>
       <canvas ref={canvasRef} width={600} height={height * 2} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up}
-        style={{ width: "100%", height, border: "1px dashed #9AA5B1", borderRadius: 10, background: "#FAFBFC", touchAction: "none", display: "block", cursor: "crosshair" }} />
-      <span style={{ position: "absolute", left: 12, bottom: 8, fontSize: 11, color: "#A3ABB4", pointerEvents: "none" }}>Sign here with your finger</span>
+        style={{ width: "100%", height, border: "1px dashed var(--border-strong)", borderRadius: 10, background: "#FAFBFC", touchAction: "none", display: "block", cursor: "crosshair" }} />
+      <span style={{ position: "absolute", left: 12, bottom: 8, fontSize: 11, color: "var(--faint)", pointerEvents: "none" }}>Sign here with your finger</span>
     </div>
   );
 }
@@ -272,19 +272,19 @@ export function GpsStamp({ value, onChange }) {
   }
   if (value) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#EEF0F2", borderRadius: 9, padding: "9px 11px", fontSize: 12.5 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--card-hi)", borderRadius: 9, padding: "9px 11px", fontSize: 12.5 }}>
         <MapPin size={15} color="#2B4562" />
-        <span style={{ flex: 1 }}>{value.lat.toFixed(5)}, {value.lng.toFixed(5)}{value.accuracy ? ` (±${value.accuracy} m)` : ""} · <a href={`https://www.google.com/maps?q=${value.lat},${value.lng}`} target="_blank" rel="noreferrer" style={{ color: "#2B4562", fontWeight: 650 }}>map</a></span>
+        <span style={{ flex: 1 }}>{value.lat.toFixed(5)}, {value.lng.toFixed(5)}{value.accuracy ? ` (±${value.accuracy} m)` : ""} · <a href={`https://www.google.com/maps?q=${value.lat},${value.lng}`} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontWeight: 650 }}>map</a></span>
         <button type="button" onClick={() => onChange(null)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><X size={14} color="#8A94A0" /></button>
       </div>
     );
   }
   return (
     <div>
-      <button type="button" onClick={stamp} disabled={busy} style={{ width: "100%", minHeight: 44, background: "#fff", border: "1px solid #D7DCE1", borderRadius: 10, fontSize: 13.5, fontWeight: 650, color: "#2B4562", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+      <button type="button" onClick={stamp} disabled={busy} style={{ width: "100%", minHeight: 44, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 13.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
         {busy ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <MapPin size={15} />} {busy ? "Getting location…" : "Add location stamp"}
       </button>
-      {err && <div style={{ fontSize: 11.5, color: "#C53030", marginTop: 4 }}>{err}</div>}
+      {err && <div style={{ fontSize: 11.5, color: "var(--danger)", marginTop: 4 }}>{err}</div>}
     </div>
   );
 }
@@ -294,17 +294,17 @@ export function SignOffSection({ signatures, onChange, gps, onGps, defaultTechNa
   const clear = (who) => { const n = { ...signatures }; delete n[who]; onChange(n); };
   const block = (who, label, placeholder) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#5B6672" }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{label}</div>
       <TextInput value={signatures[who]?.name ?? (who === "technician" ? defaultTechName : "")} onChange={(e) => set(who, { name: e.target.value })} placeholder={placeholder} />
       <SignaturePad value={signatures[who]?.image || null} onChange={(img) => img ? set(who, { image: img, name: signatures[who]?.name ?? (who === "technician" ? defaultTechName : "") }) : clear(who)} />
     </div>
   );
   return (
-    <div style={{ background: "#F7F8F9", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ background: "var(--card-hi)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 700 }}>Sign-off</div>
       {block("technician", "Technician", "Technician name")}
       {block("site", "Site contact", "Site contact name")}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#5B6672" }}>Location</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Location</div>
       <GpsStamp value={gps} onChange={onGps} />
     </div>
   );
@@ -324,7 +324,7 @@ export function CustomFieldInputs({ appliesTo, category, values = {}, onChange, 
           <Field key={f.id} label={label}>
             <div style={{ display: "flex", gap: 6 }}>
               {[[true, "Yes"], [false, "No"]].map(([val, l]) => (
-                <button key={l} type="button" disabled={readOnly} onClick={() => set(f.id, v === val ? undefined : val)} style={{ flex: 1, minHeight: large ? 44 : 36, borderRadius: 8, border: `1.5px solid ${v === val ? "#2B4562" : "#D7DCE1"}`, background: v === val ? "#2B4562" : "#fff", color: v === val ? "#fff" : "#2B4562", fontWeight: 700, fontSize: 13, cursor: readOnly ? "default" : "pointer", fontFamily: "inherit" }}>{l}</button>
+                <button key={l} type="button" disabled={readOnly} onClick={() => set(f.id, v === val ? undefined : val)} style={{ flex: 1, minHeight: large ? 44 : 36, borderRadius: 8, border: `1.5px solid ${v === val ? "#2B4562" : "#D7DCE1"}`, background: v === val ? "var(--accent)" : "var(--card)", color: v === val ? "var(--on-accent)" : "var(--accent)", fontWeight: 700, fontSize: 13, cursor: readOnly ? "default" : "pointer", fontFamily: "inherit" }}>{l}</button>
               ))}
             </div>
           </Field>
@@ -362,12 +362,12 @@ export function PhotoStrip({ photos = [], onChange, max = 4, label = "Photos" })
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {photos.map((p, i) => (
           <div key={i} style={{ position: "relative" }}>
-            <img src={p} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", border: "1px solid #E1E4E8" }} />
-            {onChange && <button type="button" onClick={() => onChange(photos.filter((_, j) => j !== i))} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: 10, background: "#1B2430", color: "#fff", border: "none", cursor: "pointer", fontSize: 11, lineHeight: "20px", padding: 0 }}>×</button>}
+            <img src={p} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", border: "1px solid var(--border)" }} />
+            {onChange && <button type="button" onClick={() => onChange(photos.filter((_, j) => j !== i))} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: 10, background: "var(--head)", color: "var(--on-accent)", border: "none", cursor: "pointer", fontSize: 11, lineHeight: "20px", padding: 0 }}>×</button>}
           </div>
         ))}
         {onChange && photos.length < max && (
-          <label style={{ width: 60, height: 60, borderRadius: 8, border: "1.5px dashed #C0C6CC", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#8A94A0", fontSize: 11, textAlign: "center" }}>
+          <label style={{ width: 60, height: 60, borderRadius: 8, border: "1.5px dashed var(--border-strong)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--faint)", fontSize: 11, textAlign: "center" }}>
             {busy ? "…" : <ImagePlus size={18} />}
             <input type="file" accept="image/*" multiple capture="environment" onChange={pick} style={{ display: "none" }} />
           </label>
