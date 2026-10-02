@@ -1,6 +1,6 @@
 // Home dashboard: KPIs, reminders, contractor sign-in, emergency contacts, statutory register.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Building2, CalendarCheck, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, CloudSun, Flame, HardHat, History, ListTodo, LogIn, LogOut, Mail, Megaphone, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, Sun, UserCheck, Wrench, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Building2, CalendarCheck, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, CloudSun, Flame, HardHat, History, ListTodo, LogIn, LogOut, Mail, Megaphone, Pencil, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, Sun, UserCheck, Wrench, X } from "lucide-react";
 import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
 import { DEFAULT_EMERGENCY, REPEAT_OPTIONS, STATUTORY_ITEMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
@@ -12,7 +12,7 @@ import { OnCallCard } from "./MoreViews.jsx";
 /* ---------------------------------------------------------
    Home dashboard
 --------------------------------------------------------- */
-export function HomeTab({ complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
+export function HomeTab({ site = null, onEditSite, complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
   const today = new Date().toISOString().slice(0, 10);
   const hour = new Date().getHours();
   const comp = useMemo(() => computeCompliance(devices, visitBudgets, services), [devices, visitBudgets, services]);
@@ -233,6 +233,7 @@ export function HomeTab({ complianceMonthAgo = null, onCall = [], onSaveOnCall, 
         {show("oncall") && (onCall.length > 0 || ACTIVE_CAN_EDIT) && <div className="wrap c2"><OnCallCard rota={onCall} onSave={onSaveOnCall} /></div>}
         {show("emergency") && <div className="wrap c2"><EmergencyContacts suppliers={suppliers} contacts={emergency} onSave={onSaveEmergency} /></div>}
         {show("statutory") && <div className="wrap c2"><StatutoryRegister custom={customStatutory} onSaveCustom={onSaveCustomStatutory} devices={devices} na={statutoryNA} onNA={onStatutoryNA} onAdd={onAddStatutory} onOpenDevice={onOpenDevice} locationName={locationName} /></div>}
+        {show("siteprofile") && site && <div className="wrap c2"><SiteProfileCard site={site} onEdit={onEditSite} /></div>}
         {show("siteinfo") && <div className="wrap c2"><SiteInfoCard info={siteInfo} onSave={onSaveSiteInfo} /></div>}
 
         {show("late") && Object.keys(lateByReason).length > 0 && (
@@ -792,5 +793,46 @@ export function WeatherTile({ place }) {
         </>
       )}
     </section>
+  );
+}
+
+export function SiteProfileCard({ site, onEdit }) {
+  const [all, setAll] = useState(false);
+  const staff = site.staff || [];
+  const shown = all ? staff : staff.slice(0, 4);
+  return (
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 8 }}>
+      {site.photo && <img src={site.photo} alt="" style={{ width: "100%", height: 130, objectFit: "cover", display: "block" }} />}
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 750 }}>{site.name}</div>
+            <div style={{ fontSize: 12, color: "var(--faint)" }}>{[site.type, site.address].filter(Boolean).join(" · ") || "Add a type, address and photo"}</div>
+          </div>
+          {ACTIVE_CAN_EDIT && onEdit && <button onClick={onEdit} title="Edit site" style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 9px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 650, color: "var(--accent)", fontFamily: "inherit" }}><Pencil size={12} /> Edit</button>}
+        </div>
+        {site.description && <div style={{ fontSize: 12.8, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{site.description}</div>}
+        {(site.phone || site.email) && (
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12.5 }}>
+            {site.phone && <a href={`tel:${site.phone.replace(/[^+0-9]/g, "")}`} style={{ color: "var(--accent)", fontWeight: 650, display: "flex", alignItems: "center", gap: 4 }}><Phone size={13} /> {site.phone}</a>}
+            {site.email && <a href={`mailto:${site.email}`} style={{ color: "var(--accent)", fontWeight: 650, display: "flex", alignItems: "center", gap: 4 }}><Mail size={13} /> {site.email}</a>}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>People based here ({staff.length})</div>
+        {staff.length === 0 && <div style={{ fontSize: 12, color: "var(--faint)" }}>{ACTIVE_CAN_EDIT ? "Tap Edit to add engineers and other staff based at this site." : "No one added yet."}</div>}
+        {shown.map((p) => (
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {p.photo ? <img src={p.photo} alt="" style={{ width: 34, height: 34, borderRadius: 17, objectFit: "cover", flexShrink: 0 }} /> : <span style={{ width: 34, height: 34, borderRadius: 17, background: "var(--accent-soft)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12.5, flexShrink: 0 }}>{p.name.split(" ").map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</span>}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 650 }}>{p.name} <span style={{ fontWeight: 500, color: "var(--faint)", fontSize: 11.5 }}>{p.role}{p.company ? ` · ${p.company}` : ""}</span></div>
+              {(p.hours || p.skills) && <div style={{ fontSize: 11.3, color: "var(--faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[p.hours, p.skills].filter(Boolean).join(" · ")}</div>}
+            </div>
+            {p.phone && <a href={`tel:${p.phone.replace(/[^+0-9]/g, "")}`} title={`Call ${p.name}`} style={{ width: 34, height: 34, borderRadius: 17, background: "var(--ok-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Phone size={14} color="var(--ok)" /></a>}
+            {p.email && <a href={`mailto:${p.email}`} title={`Email ${p.name}`} style={{ width: 34, height: 34, borderRadius: 17, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Mail size={14} color="var(--accent)" /></a>}
+          </div>
+        ))}
+        {staff.length > 4 && <button onClick={() => setAll((v) => !v)} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{all ? "Show fewer" : `Show all ${staff.length}`}</button>}
+      </div>
+    </div>
   );
 }

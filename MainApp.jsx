@@ -96,6 +96,8 @@ export function MainApp() {
 
   const [showUserModal, setShowUserModal] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [editLocation, setEditLocation] = useState(null);
+  const [editCountryFor, setEditCountryFor] = useState(null);
   const [showAddCountry, setShowAddCountry] = useState(false);
   const [showAddLocation, setShowAddLocation] = useState(null); // countryId
   const [deviceModal, setDeviceModal] = useState(null); // { record? } — record present = editing; {} = adding new
@@ -1214,12 +1216,41 @@ export function MainApp() {
     saveNav({ selectedCountryId: c.id, selectedLocationId: null });
     setShowAddCountry(false);
   }
-  function addLocation(countryId, name, address) {
-    const l = { id: uid(), countryId, name: name.trim(), address: address.trim() };
+  function addLocation(loc) {
+    if (loc.id) {
+      persist.locations(locations.map((l) => l.id === loc.id ? { ...l, ...loc } : l));
+      if (loc.id === selectedLocationId && loc.countryId !== selectedCountryId) saveNav({ selectedCountryId: loc.countryId, selectedLocationId: loc.id });
+      logActivity(`Edited site: ${loc.name}`);
+      setEditLocation(null); showToast("Site saved", loc.name);
+      return;
+    }
+    const l = { ...loc, id: uid() };
     persist.locations([...locations, l]);
-    saveNav({ selectedCountryId: countryId, selectedLocationId: l.id });
+    saveNav({ selectedCountryId: l.countryId, selectedLocationId: l.id });
     setShowAddLocation(null);
     setShowLocationPicker(false);
+  }
+  // Jobs are raised against a service. A site with no services yet gets a "General building" service on request.
+  const [pendingJobFor, setPendingJobFor] = useState(null);
+  function startJob() {
+    if (locDevices.length) { setAddWorkFor(locDevices[0].id); return; }
+    if (!selectedLocationId) { showToast("Choose a site first"); setShowLocationPicker(true); return; }
+    if (!window.confirm("This site has no services yet, and jobs are raised against a service.\n\nCreate a \"General building\" service so you can raise jobs now? (You can add proper services later.)")) { setTab("devices"); return; }
+    const id = uid();
+    persist.devices([...devices, { id, locationId: selectedLocationId, name: "General building", serviceCategory: CATEGORY_KEYS.includes("maintenance") ? "maintenance" : CATEGORY_KEYS[0], checklist: [], lastServiceDate: null, nextServiceDate: null, serviceIntervalMonths: null, budgetPerVisit: 0, notesLog: [], general: true }]);
+    setPendingJobFor(id);
+  }
+  useEffect(() => { if (pendingJobFor && locDevices.some((d) => d.id === pendingJobFor)) { setAddWorkFor(pendingJobFor); setPendingJobFor(null); } }, [pendingJobFor, locDevices]);
+  function deleteLocation(id) {
+    const l = locations.find((x) => x.id === id);
+    persist.locations(locations.filter((x) => x.id !== id));
+    if (selectedLocationId === id) saveNav({ selectedLocationId: null });
+    logActivity(`Deleted site: ${l?.name || ""}`);
+    setEditLocation(null); showToast("Site deleted", l?.name);
+  }
+  function editCountry(id, name, currency) {
+    persist.countries(countries.map((c) => c.id === id ? { ...c, name: name.trim(), currency } : c));
+    setEditCountryFor(null); showToast("Country saved", name);
   }
   function chooseLocation(countryId, locationId) {
     saveNav({ selectedCountryId: countryId, selectedLocationId: locationId });
@@ -1923,7 +1954,7 @@ export function MainApp() {
                 water={<WaterTempsView outlets={locOutlets} readings={locWaterReadings} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })}
                   onSaveOutlet={outletOps.save} onDeleteOutlet={outletOps.remove} onAddReadings={addWaterReadings} />}
                 training={<TrainingView required={(settings.requiredCourses || {})[selectedLocationId] || []} onSaveRequired={saveRequiredCourses} records={locTraining} onSave={trainingOps.save} onDelete={trainingOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
-                actions={<ActionsView actions={actions.filter((a) => a.locationId === selectedLocationId)} people={users.map((u) => u.name)} onSave={actionOps.save} onDelete={actionOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
+                actions={<ActionsView actions={actions.filter((a) => a.locationId === selectedLocationId)} people={[...new Set([...users.map((u) => u.name), ...((locations.find((l) => l.id === selectedLocationId) || {}).staff || []).map((p) => p.name)])]} onSave={actionOps.save} onDelete={actionOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 spaces={<SpacesView spaces={spaces.filter((s) => s.locationId === selectedLocationId)} devices={locDevices} onSave={spaceOps.save} onDelete={spaceOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} onOpenArea={(a) => { setTab("devices"); setSearch(a); }} />}
                 walkrounds={<WalkroundsView walkrounds={walkrounds.filter((w) => w.locationId === selectedLocationId)} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} onSave={walkOps.save} onDelete={walkOps.remove} onRaiseAction={(prefill) => setActionDraft({ prefill: true, ...prefill })} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 asbestos={<AsbestosView items={asbestos.filter((a) => a.locationId === selectedLocationId)} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })} onSave={asbestosOps.save} onDelete={asbestosOps.remove} />}
@@ -1948,6 +1979,7 @@ export function MainApp() {
                 signins={locSignins} suppliers={locSuppliers} onSignIn={signIn} onSignOut={signOut}
                 expectedToday={todayItems.bookings} onSignOutAll={signOutAll} locationId={selectedLocationId}
                 complianceMonthAgo={complianceMonthAgo}
+                site={locations.find((l) => l.id === selectedLocationId) || null} onEditSite={() => setEditLocation(locations.find((l) => l.id === selectedLocationId))}
                 onCall={(settings.onCall || {})[selectedLocationId] || []} onSaveOnCall={saveOnCall}
                 onPrintBriefing={() => { const w = (() => { try { const place = (((settings.siteInfo || {})[selectedLocationId] || {}).weatherTown || locationLabel({ locationId: selectedLocationId }).split("·").pop().trim()).toLowerCase(); const c = JSON.parse(localStorage.getItem(`ppm:weather:${place}`) || "null"); const d = c?.data?.days?.[0]; return d ? `${d.min}–${d.max}°C` : ""; } catch (e) { return ""; } })();
                   openPrintReport("Daily briefing", `${locationLabel({ locationId: selectedLocationId })} · ${new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}`, buildDailyBriefing({ locationName: locationLabel({ locationId: selectedLocationId }), today: { bookings: todayItems.bookings, dueUnbooked: todayItems.dueToday.map((d) => ({ ...d, supplierName: supplierById[d.supplierId]?.name })) }, permits: todayItems.permits, onSite: locSignins.filter((x) => !x.outAt), works: locWorks.filter((x) => x.priority === "high" && !["completed", "rejected"].includes(x.status)).map((x) => ({ ...x, deviceName: deviceById[x.deviceId]?.name })), reminders: todayItems.reminders, weather: w })); }}
@@ -1966,7 +1998,7 @@ export function MainApp() {
                 notices={notices.filter((n) => n.locationId === selectedLocationId)} onSaveNotice={noticeOps.save} onDeleteNotice={noticeOps.remove}
                 recentDevices={(display.recent || []).map((id) => locDevices.find((d) => d.id === id)).filter(Boolean)}
                 overdueBySupplier={(() => { const m = {}; locDevices.forEach((d) => { if (d.nextServiceDate && daysUntil(d.nextServiceDate) < 0) { const k = d.supplierId || ""; m[k] = (m[k] || 0) + 1; } }); return Object.entries(m).map(([id, n]) => ({ name: supplierById[id]?.name || "No supplier", n })).sort((a, b) => b.n - a.n); })()}
-                onQuick={(what) => { if (what === "visit") setTab("devices"); else if (what === "work") { if (locDevices.length) setAddWorkFor(locDevices[0].id); } else if (what === "incident") setTab("meters"); else if (what === "service") setDeviceModal({}); }}
+                onQuick={(what) => { if (what === "visit") setTab("devices"); else if (what === "work") startJob(); else if (what === "incident") setTab("meters"); else if (what === "service") setDeviceModal({}); }}
                 siteInfo={(settings.siteInfo || {})[selectedLocationId] || null} onSaveSiteInfo={saveSiteInfo}
                 customStatutory={settings.customStatutory || []} onSaveCustomStatutory={saveCustomStatutory} pinnedDevices={pinnedIds.map((id) => locDevices.find((d) => d.id === id)).filter(Boolean)} onUnpin={togglePin}
                 setup={{ suppliers: locSuppliers.length, devices: locDevices.length, budgets: locBudgets.length + locBudgetLines.length, visits: locServices.length, backup: !!settings.lastBackupAt || REMOTE, shared: REMOTE, hidden: !!display.hideSetup }}
@@ -2013,7 +2045,7 @@ export function MainApp() {
                 onUpdate={updateWork} onDelete={deleteWork} currentUserName={currentUser?.name}
                 approvalThreshold={Number(settings.approvalThreshold) || 0} onSetThreshold={(v) => { persist.settings({ ...settings, approvalThreshold: v }); showToast("Approval rule saved"); }}
                 onConvertToPlan={convertWorkToPlanLine} onConvertToService={convertWorkToService}
-                onAdd={() => setAddWorkFor(locDevices[0]?.id ?? null)} hasDevices={locDevices.length > 0} />
+                onAdd={() => startJob()} hasDevices />
             )}
             {tab === "suppliers" && (
               <SuppliersTab onImport={importSuppliers} packData={{ devices: locDevices, services: locServices, works: locWorks, invoices: locInvoices }} locationName={locationLabel({ locationId: selectedLocationId })} onFollowUpDone={setContactFollowUpDone} invoices={locInvoices} userName={currentUser?.name} onAddContact={addSupplierContact} onMerge={mergeSuppliers} suppliers={locSuppliers} onAdd={() => setSupplierModal({})} onEdit={(record) => setSupplierModal({ record })} onDelete={deleteSupplier}
@@ -2063,10 +2095,14 @@ export function MainApp() {
       )}
       {showLocationPicker && (
         <LocationPickerModal countries={countries} locations={locations} onClose={() => setShowLocationPicker(false)}
-          devices={devices.filter((d) => !d.archived)} onChoose={chooseLocation} onAddCountry={() => setShowAddCountry(true)} onAddLocation={(cid) => setShowAddLocation(cid)} />
+          devices={devices.filter((d) => !d.archived)} onChoose={chooseLocation} onAddCountry={() => setShowAddCountry(true)} onAddLocation={(cid) => setShowAddLocation(cid)}
+          onEditLocation={(l) => setEditLocation(l)} onEditCountry={(c) => setEditCountryFor(c)} />
       )}
       {showAddCountry && <AddCountryModal onClose={() => setShowAddCountry(false)} onSave={addCountry} />}
-      {showAddLocation && <AddLocationModal countryId={showAddLocation} onClose={() => setShowAddLocation(null)} onSave={addLocation} />}
+      {editCountryFor && <AddCountryModal existing={editCountryFor} onClose={() => setEditCountryFor(null)} onSave={(name, cur) => editCountry(editCountryFor.id, name, cur)} />}
+      {showAddLocation && <AddLocationModal countryId={showAddLocation} countries={countries} onClose={() => setShowAddLocation(null)} onSave={addLocation} />}
+      {editLocation && <AddLocationModal existing={editLocation} countryId={editLocation.countryId} countries={countries} onClose={() => setEditLocation(null)} onSave={addLocation} onDelete={deleteLocation}
+        canDelete={!devices.some((d) => d.locationId === editLocation.id) && !suppliers.some((s) => s.locationId === editLocation.id)} />}
       {deviceModal && (
         <AddDeviceModal key={deviceModal.record?.id || (deviceModal.prefill ? `copy-${deviceModal.prefill.name}` : "new-device")}
           onPause={(id, until, drop) => { bulkUpdateDevices([id], "pause", { until, drop }); setDeviceModal(null); }}
@@ -2115,7 +2151,7 @@ export function MainApp() {
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {bookTogether && <BookTogetherModal devices={locDevices} suppliers={locSuppliers} onClose={() => setBookTogether(false)} onBook={(ids, b) => { bookMany(ids, b); setBookTogether(false); }} />}
       {mergeFor && deviceById[mergeFor] && <MergeServiceModal device={deviceById[mergeFor]} devices={locDevices} onClose={() => setMergeFor(null)} onMerge={mergeDevices} />}
-      {actionDraft && <ActionModal existing={actionDraft} people={users.map((u) => u.name)} onClose={() => setActionDraft(null)} onSave={(a) => { actionOps.save(a); setActionDraft(null); showToast("Added to the action tracker", "Site → Actions"); }} onDelete={() => setActionDraft(null)} />}
+      {actionDraft && <ActionModal existing={actionDraft} people={[...new Set([...users.map((u) => u.name), ...((locations.find((l) => l.id === selectedLocationId) || {}).staff || []).map((p) => p.name)])]} onClose={() => setActionDraft(null)} onSave={(a) => { actionOps.save(a); setActionDraft(null); showToast("Added to the action tracker", "Site → Actions"); }} onDelete={() => setActionDraft(null)} />}
       {showImport && <ImportModal areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })} suppliers={locSuppliers} existing={locAllDevices} onClose={() => setShowImport(false)} onImport={(rows) => { importDevices(rows); setShowImport(false); }} />}
       {showSearch && (
         <GlobalSearchModal extra={{ incidents: locIncidents, permits: locPermits, pos: locPOs, invoices: locInvoices, spares: locSpares, keys: locKeys, projects: locProjects }} onGoTab={(t) => { setShowSearch(false); setTab(t); }} devices={locDevices} services={locServices} works={locWorks} suppliers={locSuppliers} deviceById={deviceById} onClose={() => setShowSearch(false)}

@@ -1,8 +1,8 @@
 // App-wide pop-ups: people, locations, search, activity/backup/sharing, alerts, reports, settings.
 import { useState, useMemo, useRef } from "react";
-import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, ChevronRight, Cloud, CloudOff, Download, FileText, Globe2, HardDrive, LayoutDashboard, Lock, Mail, Moon, Palette, Plus, Printer, Search, Smartphone, Sparkles, Trash2, Type, Upload } from "lucide-react";
-import { Badge, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { ACCENTS, ALERT_GROUPS, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, START_TABS, WHATS_NEW, authSql } from "../lib/constants.js";
+import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, ChevronRight, Cloud, CloudOff, Download, FileText, Globe2, HardDrive, LayoutDashboard, Lock, Mail, Moon, Palette, Pencil, Plus, Printer, Search, Smartphone, Sparkles, Trash2, Type, Upload } from "lucide-react";
+import { Badge, ConfirmTextDelete, EmptyState, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
+import { ACCENTS, ALERT_GROUPS, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, SITE_TYPES, STAFF_ROLES, START_TABS, WHATS_NEW, authSql } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, BUILTIN_CATEGORY_META, CATEGORY_ICONS, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
 import { buildAssetRegister, buildCarbonReport, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractorHours, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMonthCalendar, buildPortfolioReport, buildSlaReport, buildSpendReport, buildSupplierReport, buildSupplierSpend, buildWallPlanner, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
 import { addDays, compressImage, daysUntil, downloadBlob, fmtDate, gbp, relativeDays, replacementYear, uid } from "../lib/utils.js";
@@ -52,7 +52,7 @@ export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreat
   );
 }
 
-export function LocationPickerModal({ devices = [], countries, locations, onClose, onChoose, onAddCountry, onAddLocation }) {
+export function LocationPickerModal({ devices = [], countries, locations, onClose, onChoose, onAddCountry, onAddLocation, onEditLocation, onEditCountry }) {
   return (
     <Modal title="Country & location" onClose={onClose}>
       {countries.length === 0 ? (
@@ -66,17 +66,20 @@ export function LocationPickerModal({ devices = [], countries, locations, onClos
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13.5, marginBottom: 8, color: "var(--text)" }}>
                   <Globe2 size={14} color="#8A94A0" /> {c.name}
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--faint)" }}>{c.currency || "GBP"}</span>
+                  {ACTIVE_CAN_EDIT && onEditCountry && <button onClick={() => onEditCountry(c)} title="Edit country" style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}><Pencil size={12} color="#8A94A0" /></button>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {locs.map((l) => (
-                    <button key={l.id} onClick={() => onChoose(c.id, l.id)} style={{
-                      display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", borderRadius: 8,
-                      border: "1px solid var(--border)", background: "var(--card)", cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                    <div key={l.id} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
+                    <button onClick={() => onChoose(c.id, l.id)} style={{
+                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", borderRadius: 8,
+                      border: "1px solid var(--border)", background: "var(--card)", cursor: "pointer", fontFamily: "inherit", textAlign: "left", color: "var(--text)",
                     }}>
-                      <Building2 size={14} color="#5B6672" />
-                      <div>
+                      {l.photo ? <img src={l.photo} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} /> : <Building2 size={14} color="#5B6672" />}
+                      <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, fontWeight: 600 }}>{l.name}</div>
-                        {l.address && <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{l.address}</div>}
+                        {(l.address || l.type) && <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{[l.type, l.address].filter(Boolean).join(" · ")}</div>}
+                        {(l.staff || []).length > 0 && <div style={{ fontSize: 11, color: "var(--faint)" }}>{l.staff.length} {l.staff.length === 1 ? "person" : "people"} based here</div>}
                       </div>
                       {(() => {
                         const ds = devices.filter((d) => d.locationId === l.id);
@@ -91,6 +94,8 @@ export function LocationPickerModal({ devices = [], countries, locations, onClos
                         );
                       })()}
                     </button>
+                    {ACTIVE_CAN_EDIT && onEditLocation && <button onClick={() => onEditLocation(l)} title="Edit site" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "0 10px", cursor: "pointer", display: "flex", alignItems: "center" }}><Pencil size={14} color="#5B6672" /></button>}
+                    </div>
                   ))}
                   {ACTIVE_CAN_EDIT && (
                     <button onClick={() => onAddLocation(c.id)} style={{
@@ -115,11 +120,11 @@ export function LocationPickerModal({ devices = [], countries, locations, onClos
   );
 }
 
-export function AddCountryModal({ onClose, onSave }) {
-  const [name, setName] = useState("");
-  const [currency, setCurrency] = useState("GBP");
+export function AddCountryModal({ existing = null, onClose, onSave }) {
+  const [name, setName] = useState(existing?.name || "");
+  const [currency, setCurrency] = useState(existing?.currency || "GBP");
   return (
-    <Modal title="Add country" onClose={onClose} width={380}>
+    <Modal title={existing ? "Edit country" : "Add country"} onClose={onClose} width={380}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Field label="Country name"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. United Kingdom" /></Field>
         <Field label="Currency">
@@ -127,21 +132,89 @@ export function AddCountryModal({ onClose, onSave }) {
             {Object.keys(CURRENCIES).map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
         </Field>
-        <PrimaryButton onClick={() => name.trim() && onSave(name, currency)}><Plus size={15} /> Save country</PrimaryButton>
+        <PrimaryButton onClick={() => name.trim() && onSave(name, currency)}><CheckCircle2 size={15} /> {existing ? "Save changes" : "Save country"}</PrimaryButton>
       </div>
     </Modal>
   );
 }
 
-export function AddLocationModal({ countryId, onClose, onSave }) {
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
+export function AddLocationModal({ countryId, existing = null, countries = [], canDelete = false, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(existing?.name || "");
+  const [cid, setCid] = useState(existing?.countryId || countryId);
+  const [address, setAddress] = useState(existing?.address || "");
+  const [description, setDescription] = useState(existing?.description || "");
+  const [type, setType] = useState(existing?.type || "");
+  const [phone, setPhone] = useState(existing?.phone || "");
+  const [email, setEmail] = useState(existing?.email || "");
+  const [photos, setPhotos] = useState(existing?.photo ? [existing.photo] : []);
+  const [staff, setStaff] = useState(existing?.staff || []);
+  const [editing, setEditing] = useState(null);
+  const save = () => name.trim() && onSave({ id: existing?.id, countryId: cid, name: name.trim(), address: address.trim(), description: description.trim(), type, phone: phone.trim(), email: email.trim(), photo: photos[0] || null, staff });
   return (
-    <Modal title="Add location" onClose={onClose} width={380}>
+    <Modal title={existing ? "Edit site" : "Add location"} onClose={onClose} width={480}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <Field label="Location name"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Manchester Distribution Centre" /></Field>
+        <Field label="Location name"><TextInput autoFocus={!existing} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Manchester Distribution Centre" /></Field>
+        {existing && countries.length > 1 && (
+          <Field label="Country"><Select value={cid} onChange={(e) => setCid(e.target.value)}>{countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+        )}
         <Field label="Address (optional)"><TextInput value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, city, postcode" /></Field>
-        <PrimaryButton onClick={() => name.trim() && onSave(countryId, name, address)}><Plus size={15} /> Save location</PrimaryButton>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Field label="Type of site"><Select value={type} onChange={(e) => setType(e.target.value)}><option value="">—</option>{SITE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></Field>
+          <Field label="Main phone"><TextInput type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+        </div>
+        <Field label="Site email (optional)"><TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. facilities.manchester@company.com" /></Field>
+        <Field label="Description"><TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. 3-storey office, 450 staff, built 2005. Plant on the roof and in the basement. Shared car park with Unit B." style={{ minHeight: 70 }} /></Field>
+        <PhotoStrip photos={photos} onChange={setPhotos} max={1} label="Site photo" />
+
+        <div style={{ background: "var(--card-hi)", borderRadius: 12, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>People based here ({staff.length})</span>
+            <button type="button" onClick={() => setEditing({})} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Add person</button>
+          </div>
+          {staff.length === 0 && <div style={{ fontSize: 12, color: "var(--faint)" }}>Engineers, technicians, site managers, security, cleaners… anyone based at this site.</div>}
+          {staff.map((p) => (
+            <button key={p.id} type="button" onClick={() => setEditing(p)} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "7px 9px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
+              {p.photo ? <img src={p.photo} alt="" style={{ width: 34, height: 34, borderRadius: 17, objectFit: "cover" }} /> : <span style={{ width: 34, height: 34, borderRadius: 17, background: "var(--accent-soft)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{p.name.split(" ").map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</span>}
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 650 }}>{p.name}</span>
+                <span style={{ display: "block", fontSize: 11.3, color: "var(--faint)" }}>{[p.role, p.company, p.phone].filter(Boolean).join(" · ")}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <PrimaryButton onClick={save}><CheckCircle2 size={15} /> {existing ? "Save changes" : "Save location"}</PrimaryButton>
+        {existing && onDelete && (canDelete
+          ? <ConfirmTextDelete label="Delete this site" onConfirm={() => onDelete(existing.id)} />
+          : <div style={{ fontSize: 11.5, color: "var(--faint)", textAlign: "center" }}>To delete this site, first remove or move its services and suppliers.</div>)}
+      </div>
+      {editing && <StaffModal existing={editing.id ? editing : null} onClose={() => setEditing(null)}
+        onSave={(p) => { setStaff((list) => p.id ? list.map((x) => x.id === p.id ? p : x) : [...list, { ...p, id: uid() }]); setEditing(null); }}
+        onDelete={(id) => { setStaff((list) => list.filter((x) => x.id !== id)); setEditing(null); }} />}
+    </Modal>
+  );
+}
+function StaffModal({ existing, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(existing?.name || ""); const [role, setRole] = useState(existing?.role || STAFF_ROLES[3]);
+  const [company, setCompany] = useState(existing?.company || ""); const [phone, setPhone] = useState(existing?.phone || "");
+  const [email, setEmail] = useState(existing?.email || ""); const [hours, setHours] = useState(existing?.hours || "");
+  const [skills, setSkills] = useState(existing?.skills || ""); const [photos, setPhotos] = useState(existing?.photo ? [existing.photo] : []);
+  return (
+    <Modal title={existing ? "Person" : "Add a person"} onClose={onClose} width={420}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Field label="Name"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Field label="Role"><Select value={role} onChange={(e) => setRole(e.target.value)}>{STAFF_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</Select></Field>
+          <Field label="Company"><TextInput value={company} onChange={(e) => setCompany(e.target.value)} placeholder="In-house or contractor name" /></Field>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Field label="Mobile"><TextInput type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+          <Field label="Email"><TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+        </div>
+        <Field label="Working hours / days (optional)"><TextInput value={hours} onChange={(e) => setHours(e.target.value)} placeholder="e.g. Mon–Fri 7am–3pm" /></Field>
+        <Field label="Skills / tickets (optional)"><TextInput value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="e.g. 18th Edition, F-Gas, IPAF, first aider" /></Field>
+        <PhotoStrip photos={photos} onChange={setPhotos} max={1} label="Photo" />
+        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), role, company: company.trim(), phone: phone.trim(), email: email.trim(), hours: hours.trim(), skills: skills.trim(), photo: photos[0] || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        {existing && <ConfirmTextDelete label="Remove this person" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
   );
