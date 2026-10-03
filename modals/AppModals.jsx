@@ -1,20 +1,22 @@
 // App-wide pop-ups: people, locations, search, activity/backup/sharing, alerts, reports, settings.
 import { useState, useMemo, useRef } from "react";
-import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, ChevronRight, Cloud, CloudOff, Download, FileText, Globe2, HardDrive, LayoutDashboard, Lock, Mail, Moon, Palette, Pencil, Plus, Printer, Search, Smartphone, Sparkles, Trash2, Type, Upload } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, ChevronRight, Cloud, CloudOff, CloudSun, Download, FileText, Globe2, HardDrive, LayoutDashboard, Lock, Mail, MapPin, Moon, Palette, Pencil, Plus, Printer, Search, Smartphone, Sparkles, Trash2, Type, Upload, X } from "lucide-react";
 import { Badge, ConfirmTextDelete, EmptyState, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { ACCENTS, ALERT_GROUPS, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, SITE_TYPES, STAFF_ROLES, START_TABS, WHATS_NEW, authSql } from "../lib/constants.js";
+import { ACCENTS, ALERT_GROUPS, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, SITE_TYPES, STAFF_ROLES, START_TABS, STATUTORY_ITEMS, WHATS_NEW, authSql } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, BUILTIN_CATEGORY_META, CATEGORY_ICONS, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
-import { buildAssetRegister, buildCarbonReport, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractorHours, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMonthCalendar, buildPortfolioReport, buildSlaReport, buildSpendReport, buildSupplierReport, buildSupplierSpend, buildWallPlanner, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
-import { addDays, compressImage, daysUntil, downloadBlob, fmtDate, gbp, relativeDays, replacementYear, uid } from "../lib/utils.js";
+import { buildAssetRegister, buildCarbonReport, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractCalendar, buildContractorHours, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMonthCalendar, buildPortfolioReport, buildReactiveVsPlanned, buildRecharges, buildRepeatFaults, buildResponseTimes, buildSlaReport, buildSpendReport, buildStatutoryCalendar, buildSupplierCompliance, buildSupplierLeague, buildSupplierReport, buildSupplierSpend, buildVatSummary, buildWallPlanner, buildWorksAgeing, buildWorstAssets, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
+import { addDays, compressImage, countryCodeFor, daysUntil, downloadBlob, findPostcode, fmtDate, gbp, placeFromCoords, placeFromPostcode, relativeDays, replacementYear, searchPlaces, uid } from "../lib/utils.js";
 import { AccountingExport } from "../tabs/BudgetTab.jsx";
 import { THEMES } from "../lib/theme.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
+import { CustomFieldsEditor } from "../tabs/MoreViews.jsx";
 
 /* ---------------------------------------------------------
    User & Location setup modals
 --------------------------------------------------------- */
-export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreate }) {
+export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreate, locations = [], onSaveSites }) {
   const [name, setName] = useState("");
+  const [sitesFor, setSitesFor] = useState("");
   const [role, setRole] = useState("admin");
   return (
     <Modal title="Profile" onClose={onClose}>
@@ -33,6 +35,18 @@ export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreat
               {u.role === "viewer" && <Badge tone="muted">Viewer</Badge>}
             </button>
           ))}
+        </div>
+      )}
+      {onSaveSites && locations.length > 1 && users.length > 0 && currentUser?.role !== "viewer" && (
+        <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, marginBottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700 }}>Which sites does each person see?</div>
+          <select value={sitesFor} onChange={(e) => setSitesFor(e.target.value)} style={{ ...inputStyle, fontSize: 12.5 }}><option value="">Choose a person…</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}{u.sites?.length ? ` (${u.sites.length} site${u.sites.length === 1 ? "" : "s"})` : " (all sites)"}</option>)}</select>
+          {sitesFor && (() => { const u = users.find((x) => x.id === sitesFor); const cur = u?.sites || []; return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {locations.map((l) => <label key={l.id} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, cursor: "pointer" }}><input type="checkbox" checked={!cur.length || cur.includes(l.id)} onChange={(e) => { const base = cur.length ? cur : locations.map((x) => x.id); const next = e.target.checked ? [...new Set([...base, l.id])] : base.filter((x) => x !== l.id); onSaveSites(u.id, next.length === locations.length ? [] : next); }} style={{ margin: 0 }} /> {l.name}</label>)}
+              <span style={{ fontSize: 10.5, color: "var(--faint)" }}>Keeps each person's site list tidy. Like the Viewer setting, it's a convenience, not a security restriction.</span>
+            </div>
+          ); })()}
         </div>
       )}
       <Field label="Add a new profile">
@@ -148,8 +162,12 @@ export function AddLocationModal({ countryId, existing = null, countries = [], c
   const [email, setEmail] = useState(existing?.email || "");
   const [photos, setPhotos] = useState(existing?.photo ? [existing.photo] : []);
   const [staff, setStaff] = useState(existing?.staff || []);
+  const [weather, setWeather] = useState(existing?.weather || null);
+  const [requestCategories, setRequestCategories] = useState((existing?.requestCategories || []).join(", "));
+  const [induction, setInduction] = useState(existing?.induction || ""); const [inductionUrl, setInductionUrl] = useState(existing?.inductionUrl || "");
+  const [tenants, setTenants] = useState(existing?.tenants || []);
   const [editing, setEditing] = useState(null);
-  const save = () => name.trim() && onSave({ id: existing?.id, countryId: cid, name: name.trim(), address: address.trim(), description: description.trim(), type, phone: phone.trim(), email: email.trim(), photo: photos[0] || null, staff });
+  const save = () => name.trim() && onSave({ id: existing?.id, countryId: cid, name: name.trim(), address: address.trim(), description: description.trim(), type, phone: phone.trim(), email: email.trim(), photo: photos[0] || null, staff, weather, requestCategories: requestCategories.split(",").map((x) => x.trim()).filter(Boolean), induction: induction.trim(), inductionUrl: inductionUrl.trim(), tenants: tenants.filter((t) => t.name.trim()) });
   return (
     <Modal title={existing ? "Edit site" : "Add location"} onClose={onClose} width={480}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -165,6 +183,24 @@ export function AddLocationModal({ countryId, existing = null, countries = [], c
         <Field label="Site email (optional)"><TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. facilities.manchester@company.com" /></Field>
         <Field label="Description"><TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. 3-storey office, 450 staff, built 2005. Plant on the roof and in the basement. Shared car park with Unit B." style={{ minHeight: 70 }} /></Field>
         <PhotoStrip photos={photos} onChange={setPhotos} max={1} label="Site photo" />
+        <details style={{ background: "var(--card-hi)", borderRadius: 12, padding: 10 }}>
+          <summary style={{ fontSize: 13, fontWeight: 700, cursor: "pointer" }}>QR pages, induction & tenants (optional)</summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+            <Field label="Problem buttons on the 'report a problem' page (comma separated)"><TextInput value={requestCategories} onChange={(e) => setRequestCategories(e.target.value)} placeholder="Leave blank for the standard set, e.g. Too hot, Too cold, Lift, Car park barrier" /></Field>
+            <Field label="Contractor induction (shown on the self sign-in page)"><TextArea value={induction} onChange={(e) => setInduction(e.target.value)} placeholder="e.g. Report to reception. Assembly point is the front car park. Hot works need a permit. Hi-vis in the yard." style={{ minHeight: 70 }} /></Field>
+            <Field label="Induction video link (optional)"><TextInput value={inductionUrl} onChange={(e) => setInductionUrl(e.target.value)} placeholder="https://…" /></Field>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Tenants for service-charge recharges ({tenants.reduce((t, x) => t + (Number(x.share) || 0), 0)}% allocated)</div>
+            {tenants.map((t, i) => (
+              <div key={i} style={{ display: "flex", gap: 6 }}>
+                <TextInput value={t.name} onChange={(e) => setTenants((p) => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} placeholder="Tenant" style={{ flex: 1 }} />
+                <TextInput type="number" min="0" max="100" value={t.share} onChange={(e) => setTenants((p) => p.map((x, j) => j === i ? { ...x, share: e.target.value } : x))} placeholder="%" style={{ width: 70 }} />
+                <button type="button" onClick={() => setTenants((p) => p.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={13} color="#A3ABB4" /></button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setTenants((p) => [...p, { name: "", share: "" }])} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>+ Add tenant</button>
+          </div>
+        </details>
+        <WeatherLocationPicker value={weather} onChange={setWeather} address={address} siteName={name} countryName={countries.find((c) => c.id === cid)?.name} />
 
         <div style={{ background: "var(--card-hi)", borderRadius: 12, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -242,6 +278,12 @@ export function GlobalSearchModal({ extra = {}, onGoTab, devices, services, work
         ...(extra.spares || []).filter((s) => hit(s.name, s.partNo, s.store)).map((s) => ({ k: `sp-${s.id}`, title: `Spare — ${s.name}`, sub: `${s.qty} in stock${s.store ? ` · ${s.store}` : ""}`, tab: "meters" })),
         ...(extra.keys || []).filter((k) => hit(k.label, k.number, k.opens, k.holder)).map((k) => ({ k: `k-${k.id}`, title: `Key — ${k.label}`, sub: k.holder ? `with ${k.holder}` : "in", tab: "meters" })),
         ...(extra.projects || []).filter((p) => hit(p.name, p.notes)).map((p) => ({ k: `pr-${p.id}`, title: `Project — ${p.name}`, sub: p.status, tab: "works" })),
+        ...(extra.people || []).filter((p) => hit(p.name, p.role, p.company, p.skills, p.phone)).map((p) => ({ k: `pp-${p.id}`, title: `Person — ${p.name}`, sub: [p.role, p.company, p.phone].filter(Boolean).join(" · "), tab: "home" })),
+        ...(extra.spaces || []).filter((x) => hit(x.name, x.floor, x.use)).map((x) => ({ k: `sp-${x.id}`, title: `Space — ${x.name}`, sub: [x.floor, x.use, x.areaM2 && `${x.areaM2} m²`].filter(Boolean).join(" · "), tab: "meters" })),
+        ...(extra.actions || []).filter((x) => hit(x.action, x.finding, x.owner, x.source, x.sourceRef)).map((x) => ({ k: `ac-${x.id}`, title: `Action — ${String(x.action || x.finding).slice(0, 60)}`, sub: `${x.source}${x.due ? ` · due ${fmtDate(x.due)}` : ""}${x.status === "done" ? " · done" : ""}`, tab: "meters" })),
+        ...(extra.coshh || []).filter((x) => hit(x.product, x.maker, x.location)).map((x) => ({ k: `co-${x.id}`, title: `COSHH — ${x.product}`, sub: x.location || "", tab: "meters" })),
+        ...(extra.equipment || []).filter((x) => hit(x.name, x.ref, x.location)).map((x) => ({ k: `eq-${x.id}`, title: `Equipment — ${x.name}`, sub: x.nextDue ? `next inspection ${fmtDate(x.nextDue)}` : "", tab: "meters" })),
+        ...(extra.asbestos || []).filter((x) => hit(x.location, x.material)).map((x) => ({ k: `as-${x.id}`, title: `Asbestos — ${x.location}`, sub: `${x.material} · ${x.risk || ""} risk`, tab: "meters" })),
       ].slice(0, 20),
     };
   }, [query, devices, services, works, suppliers]);
@@ -283,7 +325,7 @@ export function GlobalSearchModal({ extra = {}, onGoTab, devices, services, work
 /* ---------------------------------------------------------
    Activity log, backup & restore, storage usage
 --------------------------------------------------------- */
-export function DataModal({ branding = {}, onSaveBranding, trash = [], onRestoreDeleted, alertCount = 0, pendingCount = 0, remote = false, display = { scale: 1 }, onDisplay, activity, storageInfo, saveErrors, lastBackupAt, canEdit, onBackup, onRestore, onClose }) {
+export function DataModal({ customFields = [], onSaveCustomFields, branding = {}, onSaveBranding, trash = [], onRestoreDeleted, alertCount = 0, pendingCount = 0, remote = false, display = { scale: 1 }, onDisplay, activity, storageInfo, saveErrors, lastBackupAt, canEdit, onBackup, onRestore, onClose }) {
   const [view, setView] = useState("activity");
   const [filter, setFilter] = useState("");
   const [who, setWho] = useState("");
@@ -380,6 +422,7 @@ export function DataModal({ branding = {}, onSaveBranding, trash = [], onRestore
               })}
             </div>
             {onSaveBranding && canEdit && <BrandingEditor branding={branding} onSave={onSaveBranding} />}
+            {onSaveCustomFields && canEdit && <CustomFieldsEditor fields={customFields} onSave={onSaveCustomFields} />}
             <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}><Moon size={14} /> Theme</div>
             <div style={{ display: "flex", gap: 6 }}>
               {Object.entries(THEMES).map(([k, label]) => {
@@ -387,7 +430,7 @@ export function DataModal({ branding = {}, onSaveBranding, trash = [], onRestore
                 return <ToggleButton key={k} active={cur === k} onClick={() => onDisplay?.({ ...display, theme: k, dark: false })}>{label}</ToggleButton>;
               })}
             </div>
-            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Clear Light is easiest to read in bright places; Midnight is a dark theme for offices and evenings. Only changes this device.</div>
+            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Clear Light is easiest to read in bright places; Midnight is a dark theme for offices and evenings; Auto follows your phone or computer's light/dark setting. Only changes this device.</div>
             <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Makes everything bigger — handy on a tablet in the plant room or for easier reading. Only changes this device.</div>
           </div>
         )}
@@ -658,6 +701,17 @@ export function ReportsModal({ data, locationName, onClose }) {
     { title: "Works on-time (SLA) performance", desc: "Reactive works completed within target, by priority, supplier and trade, for the selected year.", go: () => run("Works on-time performance", `${locationName} · ${year}`, buildSlaReport(data, year)) },
     { title: "Incident trends", desc: "Incidents by type and month, root causes and hot-spot areas for the selected year.", go: () => run("Incident trends", `${locationName} · ${year}`, buildIncidentTrend(data, year)) },
     { title: "Wall planner", desc: "Year-at-a-glance grid of every service by month — planned and done — to print A4 landscape.", go: () => run(`PPM wall planner ${year}`, locationName, buildWallPlanner(data, year)) },
+    { title: "Statutory compliance calendar", desc: "When each statutory requirement falls due across the year, month by month.", go: () => run(`Statutory calendar ${year}`, locationName, buildStatutoryCalendar(data.devices, [...STATUTORY_ITEMS, ...((data.settingsFields || {}).customStatutory || [])], year)) },
+    { title: "VAT summary", desc: "Net, VAT and gross on recorded invoices by quarter and by VAT rate.", go: () => run(`VAT summary ${year}`, locationName, buildVatSummary(data.invoices || [], year)) },
+    { title: "Most expensive assets", desc: "The 15 services that cost the most over the last 12 months — candidates for replacement.", go: () => run("Most expensive assets", locationName, buildWorstAssets(data)) },
+    { title: "Repeat faults", desc: "Services with 3 or more reactive jobs in the last 12 months, with every job listed.", go: () => run("Repeat faults", locationName, buildRepeatFaults(data)) },
+    ...((data.tenants || []).length ? [{ title: "Service charge recharges", desc: "This year's maintenance costs split between tenants by their share (set tenants under Edit site).", go: () => run(`Recharges ${year}`, locationName, buildRecharges(data, year, data.tenants)) }] : []),
+    { title: "Works ageing", desc: "Open jobs grouped by how long they've been waiting — oldest first.", go: () => run("Works ageing", locationName, buildWorksAgeing(data)) },
+    { title: "Planned vs reactive spend", desc: "How much of the year's maintenance spend was planned (PPM) versus reactive, month by month.", go: () => run(`Planned vs reactive ${year}`, locationName, buildReactiveVsPlanned(data, year)) },
+    { title: "Supplier league table", desc: "Suppliers ranked by on-time visits, jobs on target, ratings and audit scores.", go: () => run(`Supplier league table ${year}`, locationName, buildSupplierLeague(data, year)) },
+    { title: "Response times", desc: "How quickly engineers attended reactive jobs, by priority and supplier.", go: () => run(`Response times ${year}`, locationName, buildResponseTimes(data, year)) },
+    { title: "Contract renewals calendar", desc: "Every supplier contract ending in the next 12 months, with value and renewal progress.", go: () => run("Contract renewals", locationName, buildContractCalendar(data.suppliers)) },
+    { title: "Supplier compliance", desc: "Insurance, accreditation and waste carrier registration for every supplier — expired items in red.", go: () => run("Supplier compliance", locationName, buildSupplierCompliance(data.suppliers)) },
     { title: "Contractor hours on site", desc: "Hours each company spent on site this year, from the sign-in register — check time-and-materials invoices against it.", go: () => run(`Contractor hours ${year}`, locationName, buildContractorHours(data.signins, year, data.suppliers)) },
     { title: "Energy & carbon", desc: "Consumption, cost and CO₂e by meter and month, for carbon reporting.", go: () => run(`Energy & carbon ${year}`, locationName, buildCarbonReport(data.meters || [], data.readings || [], year)) },
     { title: "Committed spend", desc: "Approved jobs not yet invoiced — money already promised that will hit the budget.", go: () => run("Committed spend", locationName, buildCommittedSpend(data)) },
@@ -968,6 +1022,58 @@ function BrandingEditor({ branding, onSave }) {
       <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Company name on reports" />
       <button onClick={() => onSave({ companyName: name.trim(), logo })} style={{ alignSelf: "flex-start", background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Save branding</button>
       <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Your logo and company name appear at the top of every printed report, permit and work order.</div>
+    </div>
+  );
+}
+
+function WeatherLocationPicker({ value, onChange, address, siteName, countryName }) {
+  const [q, setQ] = useState(""); const [results, setResults] = useState(null); const [busy, setBusy] = useState(""); const [msg, setMsg] = useState("");
+  const pc = findPostcode(address);
+  const pick = (p) => { onChange({ name: `${p.name}${p.admin && !p.name.includes(p.admin) ? `, ${p.admin}` : ""}${p.country && p.country !== "GB" ? ` (${p.country})` : ""}`, lat: p.lat, lon: p.lon }); setResults(null); setQ(""); setMsg(""); };
+  async function search() {
+    if (!q.trim()) return; setBusy("search"); setMsg("");
+    try { const r = await searchPlaces(q.trim(), countryCodeFor(countryName)); setResults(r); if (!r.length) setMsg(`No places called "${q.trim()}" found — try a nearby town or the postcode.`); }
+    catch (e) { setMsg("Couldn't reach the place search — check your connection."); }
+    setBusy("");
+  }
+  async function usePostcode() {
+    setBusy("pc"); setMsg("");
+    try { pick(await placeFromPostcode(pc)); } catch (e) { setMsg(`Couldn't look up ${pc} — check the postcode, or search for the town instead.`); }
+    setBusy("");
+  }
+  function useHere() {
+    if (!navigator.geolocation) { setMsg("This device can't share its location."); return; }
+    setBusy("gps"); setMsg("");
+    navigator.geolocation.getCurrentPosition(async (pos) => { pick(await placeFromCoords(pos.coords.latitude, pos.coords.longitude)); setBusy(""); },
+      () => { setMsg("Location permission was refused — allow it in your browser settings, or search instead."); setBusy(""); }, { enableHighAccuracy: false, timeout: 10000 });
+  }
+  const btn = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 };
+  return (
+    <div style={{ background: "var(--card-hi)", borderRadius: 12, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><CloudSun size={14} /> Weather location</div>
+      <div style={{ fontSize: 12, color: value ? "var(--ok)" : "var(--muted)", fontWeight: value ? 650 : 500 }}>
+        {value ? `📍 ${value.name}` : `Not set — the weather tile will guess from "${siteName || "the site name"}".`}
+        {value && <button type="button" onClick={() => onChange(null)} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 11.5, cursor: "pointer", fontFamily: "inherit", marginLeft: 6 }}>clear</button>}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {pc && <button type="button" onClick={usePostcode} disabled={!!busy} style={btn}>{busy === "pc" ? "Looking up…" : `Use postcode ${pc}`}</button>}
+        <button type="button" onClick={useHere} disabled={!!busy} style={btn}><MapPin size={13} /> {busy === "gps" ? "Finding you…" : "Use my current location"}</button>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <TextInput value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} placeholder="Or search a town, e.g. Feltham" style={{ flex: 1, minWidth: 0 }} />
+        <button type="button" onClick={search} disabled={!!busy} style={{ ...btn, background: "var(--accent)", color: "var(--on-accent)", border: "none" }}>{busy === "search" ? "…" : "Find"}</button>
+      </div>
+      {results && results.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Tap the right one:</div>
+          {results.map((r, i) => (
+            <button key={i} type="button" onClick={() => pick(r)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
+              <b style={{ fontSize: 13 }}>{r.name}</b> <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{[r.admin, r.country].filter(Boolean).join(" · ")}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {msg && <div style={{ fontSize: 12, color: "var(--danger)" }}>{msg}</div>}
     </div>
   );
 }

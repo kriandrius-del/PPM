@@ -1,6 +1,6 @@
 // Services list: filters, bulk actions, booking, chase emails, quick log, QR scanner.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, FileSpreadsheet, HardHat, LayoutGrid, List, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, Send, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, Copy, FileSpreadsheet, HardHat, LayoutGrid, List, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, Send, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
 import { Badge, CategoryBadge, ConfirmDeleteButton, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SignOffSection, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
 import { buildChaseEmail, printBulkStickers, printStickers } from "../lib/reports.js";
@@ -11,7 +11,7 @@ import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js
 /* ---------------------------------------------------------
    Devices Tab
 --------------------------------------------------------- */
-export function DevicesTab({ onBookTogether, history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
+export function DevicesTab({ onCopySite, spares = [], onBookTogether, history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
   const [chaseFocus, setChaseFocus] = useState(null); // null = closed, "all" or a deviceId
   const overdueList = chaseDevices.filter((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n < 0; });
   const [qrFor, setQrFor] = useState(null);
@@ -306,11 +306,12 @@ export function DevicesTab({ onBookTogether, history = [], onRemindAll, onChaseA
         <BulkLogModal devices={[...devices, ...archivedDevices].filter((d) => selected.includes(d.id))} defaultTech={currentUserName || ""} onClose={() => setBulkOpen(false)}
           onSave={(opts) => { onBulkLog(selected, opts); setBulkOpen(false); setSelecting(false); setSelected([]); }} />
       )}
-      {ACTIVE_CAN_EDIT && onImport && dueFilter !== "archived" && (
-        <button onClick={onImport} style={{ width: "100%", marginTop: 14, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+      {ACTIVE_CAN_EDIT && onImport && dueFilter !== "archived" && (<>
+        {onCopySite && ACTIVE_CAN_EDIT && <button onClick={onCopySite} style={{ background: "none", border: "1px dashed #C7D0DA", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", marginBottom: 6 }}><Copy size={14} /> Copy services from another site</button>}
+          <button onClick={onImport} style={{ width: "100%", marginTop: 14, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <FileSpreadsheet size={14} /> Import services from a spreadsheet
         </button>
-      )}
+      </>)}
       {ACTIVE_CAN_EDIT && onLibrary && dueFilter !== "archived" && (
         <button onClick={onLibrary} style={{ width: "100%", marginTop: 8, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <BookOpen size={14} /> Add several from the service library

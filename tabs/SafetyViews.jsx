@@ -1,11 +1,11 @@
 // Site tab safety records: legionella water temperatures, training & competency, fire drills.
 import { useMemo, useState } from "react";
 import { ASBESTOS_MATERIALS, DOC_TYPES, DRILL_TYPES, LOG_TEMPLATES, TRAINING_COURSES, WATER_LIMITS } from "../lib/constants.js";
-import { addMonths, daysUntil, escapeHtml, fmtDate, uid } from "../lib/utils.js";
-import { buildAsbestosRegister, openPrintReport, tableHtml } from "../lib/reports.js";
+import { addMonths, appBaseUrl, daysUntil, escapeHtml, fmtDate, qrImageUrl, uid } from "../lib/utils.js";
+import { buildAsbestosRegister, buildBlankWaterSheet, openPrintReport, tableHtml } from "../lib/reports.js";
 import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
-import { CheckCircle2, ClipboardList, Droplets, FileText, Flame, GraduationCap, Link2, Plus, Printer, ShieldAlert, X } from "lucide-react";
+import { CheckCircle2, ClipboardList, Droplets, FileText, Flame, GraduationCap, Link2, Plus, Printer, QrCode, ShieldAlert, X } from "lucide-react";
 
 /* ---------- Water temperatures (legionella control) ---------- */
 export function WaterTempsView({ outlets, readings, areas, locationName, onSaveOutlet, onDeleteOutlet, onAddReadings }) {
@@ -52,6 +52,7 @@ export function WaterTempsView({ outlets, readings, areas, locationName, onSaveO
           })}
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
             <button onClick={print} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print temperature log</button>
+            <button onClick={() => openPrintReport("Water temperature sheet (blank)", locationName, buildBlankWaterSheet(outlets, locationName))} title="Blank sheet for engineers" style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Blank sheet</button>
             <ExportButton label="CSV" filename="water-temperatures.csv" rows={[["Date", "Outlet", "Type", "Area", "Sentinel", "Temperature °C", "In range", "By"], ...[...readings].sort((a, b) => String(b.date).localeCompare(String(a.date))).map((r) => { const o = outlets.find((x) => x.id === r.outletId); return [r.date, o?.name || "", WATER_LIMITS[o?.type]?.label || "", o?.area || "", o?.sentinel ? "Yes" : "", r.temp, o && WATER_LIMITS[o.type]?.ok(Number(r.temp)) ? "Yes" : "No", r.by || ""]; })]} />
           </div>
         </div>
@@ -182,6 +183,7 @@ function TrainingModal({ existing, people, onClose, onSave, onDelete }) {
   const [certPhotos, setCertPhotos] = useState(existing?.certPhoto ? [existing.certPhoto] : []);
   const [date, setDate] = useState(existing?.date || new Date().toISOString().slice(0, 10));
   const [expiry, setExpiry] = useState(existing?.expiry || addMonths(new Date().toISOString().slice(0, 10), 36));
+  const [bookedFor, setBookedFor] = useState(existing?.bookedFor || "");
   const [provider, setProvider] = useState(existing?.provider || "");
   const listId = useMemo(() => `tp-${uid()}`, []);
   const typical = { "First Aid at Work": 36, "Emergency First Aid at Work": 36, "Fire marshal / warden": 36, "Asbestos awareness": 12, "Legionella awareness": 24, "Mental health first aid": 36 };
@@ -198,8 +200,9 @@ function TrainingModal({ existing, people, onClose, onSave, onDelete }) {
           <Field label="Expires"><TextInput type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
         </div>
         <Field label="Provider (optional)"><TextInput value={provider} onChange={(e) => setProvider(e.target.value)} /></Field>
+        <Field label="Next course booked for (optional)"><TextInput type="date" value={bookedFor} onChange={(e) => setBookedFor(e.target.value)} /></Field>
         <PhotoStrip photos={certPhotos} onChange={setCertPhotos} max={1} label="Certificate photo (optional)" />
-        <PrimaryButton onClick={() => person.trim() && onSave({ id: existing?.id, person: person.trim(), course: course === "Other" ? (other.trim() || "Other") : course, date: date || null, expiry: expiry || null, provider: provider.trim(), certPhoto: certPhotos[0] || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <PrimaryButton onClick={() => person.trim() && onSave({ id: existing?.id, person: person.trim(), course: course === "Other" ? (other.trim() || "Other") : course, date: date || null, expiry: expiry || null, provider: provider.trim(), certPhoto: certPhotos[0] || null, bookedFor: bookedFor || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this record" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -349,7 +352,7 @@ function DocModal({ existing, onClose, onSave, onDelete }) {
 }
 
 /* ---------- Site logs (custom registers) ---------- */
-export function LogsView({ defs, entries, onSaveDefs, onSave, onDelete, locationName }) {
+export function LogsView({ locationId = "", defs, entries, onSaveDefs, onSave, onDelete, locationName }) {
   const [openId, setOpenId] = useState(defs[0]?.id || null);
   const [adding, setAdding] = useState(null);
   const [building, setBuilding] = useState(false);
@@ -384,6 +387,7 @@ export function LogsView({ defs, entries, onSaveDefs, onSave, onDelete, location
                 <div style={{ fontSize: 12, color: due ? "var(--danger)" : "var(--muted)", fontWeight: due ? 700 : 500, marginBottom: 8 }}>{last ? `Last entry ${fmtDate(last.date)}${age ? ` (${age} days ago)` : " (today)"}` : "No entries yet"}{def.everyDays ? ` · due every ${def.everyDays} days` : ""}{def.firealarm ? ` · next call point: ${nextCallPoint(def)}` : ""}</div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                   {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setAdding({})} style={{ flex: 1 }}><Plus size={15} /> New entry</PrimaryButton>}
+                  {locationId && <button title="Print a QR poster so anyone can fill this in from their phone" onClick={() => { const a = window.prompt("Where will this poster go? (optional, e.g. 'Ground floor gents')", "") ?? ""; const u = `${appBaseUrl()}?check=${def.id}&site=${locationId}${a ? `&area=${encodeURIComponent(a)}` : ""}`; openPrintReport(def.name, locationName, `<div style="text-align:center;margin-top:24px"><div style="font-size:28px;font-weight:800">${escapeHtml(def.name)}</div>${a ? `<div style="font-size:18px;margin-top:4px">${escapeHtml(a)}</div>` : ""}<div style="font-size:16px;margin:10px 0 20px">Scan with your phone to record each check</div><img src="${qrImageUrl(u, 420)}" style="width:300px;height:300px"><div class="muted" style="margin-top:12px">${escapeHtml(u)}</div></div>`); }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}><QrCode size={14} color="#2B4562" /></button>}
                   {list.length > 0 && <button onClick={print} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}><Printer size={14} color="#2B4562" /></button>}
                   {list.length > 0 && <ExportButton label="CSV" filename={`${def.name.replace(/[^a-z0-9]+/gi, "-")}.csv`} rows={[["Date", ...def.fields.map((f) => f.label), "By"], ...list.map((x) => [x.date, ...def.fields.map((f) => fmtVal(f, x.values?.[f.key])), x.by || ""])]} />}
                 </div>

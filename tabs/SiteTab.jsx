@@ -1,15 +1,15 @@
 // Site tab: meters, spares, keys, audits, incidents, permits to work, waste.
 import { useState, useMemo } from "react";
-import { Activity, CheckCircle2, ClipboardCheck, FileSignature, Flame, Key, Leaf as LeafIcon, ListChecks, Mail, Megaphone, Package, Pencil, Plus, Printer, Recycle, Siren, Trash2, Upload, Wrench } from "lucide-react";
+import { Activity, Camera, CheckCircle2, ClipboardCheck, FileSignature, Flame, Key, Leaf as LeafIcon, ListChecks, Mail, Megaphone, Package, Pencil, Plus, Printer, QrCode, Recycle, Siren, Trash2, Upload, Wrench } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ConfirmDeleteButton, ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
+import { ConfirmDeleteButton, ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { DEFAULT_CO2, INCIDENT_TYPES, INVESTIGATION_STEPS, METER_TYPES, MONTH_LABELS, PERMIT_PRECAUTIONS, PERMIT_TYPES, WASTE_STREAMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE } from "../lib/globals.js";
-import { buildKeyRegister, openPrintReport, printPermit, tableHtml } from "../lib/reports.js";
-import { daysUntil, escapeHtml, fmtDate, gbp, meterStats, parseDelimited, scoreTone, toISO, uid } from "../lib/utils.js";
+import { buildBlankAudit, buildKeyRegister, openPrintReport, printPermit, tableHtml } from "../lib/reports.js";
+import { appBaseUrl, compressImage, daysUntil, escapeHtml, fmtDate, gbp, meterStats, parseDelimited, qrImageUrl, scoreTone, toISO, uid } from "../lib/utils.js";
 import { xlsxToText } from "../lib/excelTemplate.js";
 
-export function MetersTab({ onImportReadings, meters, readings, suppliers, onSaveMeter, onArchiveMeter, onAddReading, onDeleteReading }) {
+export function MetersTab({ locationName = "", onImportReadings, meters, readings, suppliers, onSaveMeter, onArchiveMeter, onAddReading, onDeleteReading }) {
   const [editing, setEditing] = useState(null);
   const [readingFor, setReadingFor] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -37,6 +37,7 @@ export function MetersTab({ onImportReadings, meters, readings, suppliers, onSav
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         {ACTIVE_CAN_EDIT ? <button onClick={() => setEditing({})} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Plus size={14} /> Add meter</button> : <span />}
         <div style={{ display: "flex", gap: 6 }}>
+          {meters.length > 0 && <button onClick={() => { const e = escapeHtml; openPrintReport("Meter QR labels", locationName, `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">${meters.map((m) => `<div style="border:1.5px solid #1B2430;border-radius:10px;padding:10px;text-align:center;page-break-inside:avoid"><img src="${qrImageUrl(`${appBaseUrl()}?meter=${m.id}`, 220)}" style="width:150px;height:150px"><div style="font-weight:800;font-size:13px;margin-top:4px">${e(m.name)}</div><div style="font-size:10.5px;color:#56616D">${e(m.serial ? `Serial ${m.serial}` : m.type || "")} · scan to submit a reading</div></div>`).join("")}</div>`); }} title="Print QR labels to stick on each meter" style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><QrCode size={13} /> QR labels</button>}
           {ACTIVE_CAN_EDIT && onImportReadings && <button onClick={() => setImportOpen(true)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Upload size={13} /> Import</button>}
           <ExportButton rows={csv} filename="meter-readings.csv" />
         </div>
@@ -99,6 +100,7 @@ export function MetersTab({ onImportReadings, meters, readings, suppliers, onSav
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
                   {[...st.rs].reverse().slice(0, 12).map((r) => (
                     <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, background: "var(--card-hi)", borderRadius: 7, padding: "5px 8px" }}>
+                      {r.viaQR && <span style={{ fontSize: 10, fontWeight: 800, color: "var(--accent)" }}>QR</span>}
                       {r.photo && <img src={r.photo} alt="" style={{ width: 28, height: 28, borderRadius: 5, objectFit: "cover" }} />}
                       <span style={{ flex: 1 }}>{fmtDate(r.date)}{r.reset ? " · new meter" : ""}{r.by ? <span style={{ color: "var(--faint)" }}> · {r.by}</span> : null}</span>
                       <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(r.value)}</b>
@@ -206,7 +208,7 @@ export function ReadingModal({ meter, last, onClose, onSave }) {
 /* ---------------------------------------------------------
    Site tab: meters, spares and keys
 --------------------------------------------------------- */
-export function SiteTab({ actions, spaces, walkrounds, asbestos, logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
+export function SiteTab({ isolations, carpark, floorplans, keydates, feedback, coshh, equipment, actions, spaces, walkrounds, asbestos, logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
   const [view, setView] = useState("meters");
   return (
     <div>
@@ -231,6 +233,13 @@ export function SiteTab({ actions, spaces, walkrounds, asbestos, logs, docs, met
         <ToggleButton active={view === "actions"} onClick={() => setView("actions")}>Actions</ToggleButton>
         <ToggleButton active={view === "spaces"} onClick={() => setView("spaces")}>Spaces</ToggleButton>
         <ToggleButton active={view === "walkrounds"} onClick={() => setView("walkrounds")}>Walk-rounds</ToggleButton>
+        <ToggleButton active={view === "coshh"} onClick={() => setView("coshh")}>COSHH</ToggleButton>
+        <ToggleButton active={view === "equipment"} onClick={() => setView("equipment")}>Equipment</ToggleButton>
+        <ToggleButton active={view === "floorplans"} onClick={() => setView("floorplans")}>Floor plans</ToggleButton>
+        <ToggleButton active={view === "keydates"} onClick={() => setView("keydates")}>Key dates</ToggleButton>
+        <ToggleButton active={view === "feedback"} onClick={() => setView("feedback")}>Feedback</ToggleButton>
+        <ToggleButton active={view === "isolations"} onClick={() => setView("isolations")}>Isolation points</ToggleButton>
+        <ToggleButton active={view === "carpark"} onClick={() => setView("carpark")}>Car park</ToggleButton>
       </div>
       {view === "meters" && meters}
       {view === "spares" && spares}
@@ -248,6 +257,13 @@ export function SiteTab({ actions, spaces, walkrounds, asbestos, logs, docs, met
       {view === "actions" && actions}
       {view === "spaces" && spaces}
       {view === "walkrounds" && walkrounds}
+      {view === "coshh" && coshh}
+      {view === "equipment" && equipment}
+      {view === "floorplans" && floorplans}
+      {view === "keydates" && keydates}
+      {view === "feedback" && feedback}
+      {view === "isolations" && isolations}
+      {view === "carpark" && carpark}
     </div>
   );
 }
@@ -512,6 +528,7 @@ export function AuditsView({ onAddAction, audits, templates, suppliers, areas, l
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><ClipboardCheck size={15} /> New audit</PrimaryButton>}
+        {templates.length > 0 && <select value="" onChange={(e) => { const t = templates.find((x) => x.id === e.target.value); if (t) openPrintReport(`${t.name} — blank form`, locationName, buildBlankAudit(t, locationName)); }} title="Print a blank form" style={{ ...inputStyle, width: 120, fontSize: 12 }}><option value="">Blank form…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>}
         {ACTIVE_CAN_EDIT && <button onClick={() => setEditTemplates(true)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Templates</button>}
       </div>
       {Object.keys(byTemplate).length > 0 && (
@@ -820,6 +837,7 @@ export function PermitsView({ onExtend, permits, devices, suppliers, areas, loca
                 {ACTIVE_CAN_EDIT && p.status === "open" && (
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button onClick={() => { const hrs = window.prompt("Extend by how many hours?", "4"); if (!hrs || isNaN(Number(hrs))) return; const reason = window.prompt("Reason for the extension:", "Work not finished") || ""; onExtend?.(p.id, new Date(Math.max(Date.now(), new Date(p.validTo).getTime()) + Number(hrs) * 3600000).toISOString(), reason); }} style={{ background: "var(--warn-soft)", color: "var(--warn)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Extend</button>
+                    <label title="Close with a photo of the area left safe" style={{ background: "var(--card-hi)", borderRadius: 8, padding: "7px 9px", cursor: "pointer", display: "flex", alignItems: "center" }}><Camera size={14} color="#2B4562" /><input type="file" accept="image/*" capture="environment" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { onClose(p.id, "closed", await compressImage(f, 720, 0.6)); } catch (x) { onClose(p.id, "closed"); } }} style={{ display: "none" }} /></label>
                     <button onClick={() => onClose(p.id, "closed")} style={{ flex: 1, background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Work done — close permit</button>
                     <button onClick={() => printPermit(p, devices, locationName)} style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Printer size={13} /> Print</button>
                   </div>
@@ -897,7 +915,7 @@ export function PermitModal({ existing, devices, suppliers, areas, locationName,
 /* ---------------------------------------------------------
    Waste & recycling
 --------------------------------------------------------- */
-export function WasteView({ waste, suppliers, onSave, onDelete }) {
+export function WasteView({ target = null, onSaveTarget, waste, suppliers, onSave, onDelete }) {
   const [editing, setEditing] = useState(null);
   const yr = String(new Date().getFullYear());
   const ytd = waste.filter((w) => String(w.date).startsWith(yr));
@@ -910,7 +928,7 @@ export function WasteView({ waste, suppliers, onSave, onDelete }) {
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
         <MetricBlock label={`Waste ${yr}`} value={total >= 1000 ? `${(total / 1000).toFixed(2)} t` : `${Math.round(total)} kg`} />
-        <MetricBlock label="Recycling rate" value={rate == null ? "—" : `${rate}%`} tone={rate == null ? undefined : rate >= 60 ? "ok" : rate < 40 ? "danger" : undefined} />
+        <MetricBlock label={target ? `Recycling (target ${target}%)` : "Recycling rate"} value={rate == null ? "—" : `${rate}%`} tone={rate == null ? undefined : target ? (rate >= target ? "ok" : "danger") : rate >= 60 ? "ok" : rate < 40 ? "danger" : undefined} />
         <MetricBlock label="Cost" value={gbp(cost)} />
       </div>
       {byStream.length > 0 && (
@@ -918,6 +936,7 @@ export function WasteView({ waste, suppliers, onSave, onDelete }) {
           {byStream.map(([k, v]) => <div key={k} title={`${WASTE_STREAMS[k]} ${Math.round(v)} kg`} style={{ width: `${(v / total) * 100}%`, background: { general: "#5B6672", mixed: "#2F855A", cardboard: "#B7791F", food: "#8E4585", glass: "#2B6CB0", paper: "#2B7A78", weee: "#C05621", hazardous: "#C53030" }[k] }} />)}
         </div>
       )}
+      {ACTIVE_CAN_EDIT && onSaveTarget && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12.5 }}><span style={{ color: "var(--muted)" }}>Recycling target</span><TextInput type="number" min="0" max="100" defaultValue={target ?? ""} onBlur={(e) => onSaveTarget(e.target.value)} placeholder="e.g. 70" style={{ width: 70, padding: "5px 8px" }} /><span style={{ color: "var(--muted)" }}>%</span></div>}
       {ytd.length > 0 && (() => {
         const months = MONTH_LABELS.map((m, i) => { const list = ytd.filter((w) => new Date(w.date).getMonth() === i); const tot = list.reduce((t, w) => t + (Number(w.weightKg) || 0), 0); const gen = list.filter((w) => w.stream === "general" || w.stream === "hazardous").reduce((t, w) => t + (Number(w.weightKg) || 0), 0); return { m, recycled: Math.round(tot - gen), general: Math.round(gen) }; }).slice(0, new Date().getMonth() + 1);
         return (

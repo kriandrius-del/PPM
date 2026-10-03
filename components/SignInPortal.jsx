@@ -13,6 +13,7 @@ export function SignInPortal({ locationId }) {
   const [suppliers, setSuppliers] = useState([]);
   const [onSite, setOnSite] = useState([]);
   const [rules, setRules] = useState("");
+  const [video, setVideo] = useState("");
   const [mode, setMode] = useState("in");
   const [kind, setKind] = useState("contractor");
   const [name, setName] = useState(""); const [company, setCompany] = useState(""); const [phone, setPhone] = useState("");
@@ -25,7 +26,8 @@ export function SignInPortal({ locationId }) {
     setSuppliers((sups || []).filter((x) => x.locationId === locationId));
     setOnSite((sis || []).filter((x) => x.locationId === locationId && !x.outAt));
     const info = st && !Array.isArray(st) ? (st.siteInfo || {})[locationId] || {} : {};
-    setRules([info.access, info.notes].filter(Boolean).join("\n"));
+    setRules(loc?.induction || [info.access, info.notes].filter(Boolean).join("\n"));
+    setVideo(loc?.inductionUrl || "");
     setLoading(false);
   }
   useEffect(() => { refresh(); }, [locationId]);
@@ -93,6 +95,7 @@ export function SignInPortal({ locationId }) {
             : <Field label="Who are you visiting?"><TextInput value={host} onChange={(e) => setHost(e.target.value)} /></Field>}
           <div style={{ background: "var(--warn-soft)", borderRadius: 10, padding: 10, fontSize: 13 }}>
             <b>Before you go in</b>
+            {video && <a href={video} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 6, fontWeight: 700, color: "var(--accent)" }}>▶ Watch the site induction video</a>}
             <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{rules || "In an emergency, leave by the nearest fire exit and go to the assembly point. Report to reception before starting any work. Hot works, roof access and isolations need a permit."}</div>
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ width: 20, height: 20, margin: 0 }} /> I've read and understood this</label>

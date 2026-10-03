@@ -1,17 +1,18 @@
 // Suppliers, supplier form and scorecard.
 import { useState } from "react";
-import { CheckCircle2, FileSpreadsheet, Gauge, Link2, Mail, Merge, MessageSquare, Pencil, Phone, Plus, Printer, Star, Trash2, Upload, Users as UsersIcon, X } from "lucide-react";
+import { CheckCircle2, FileSpreadsheet, FileWarning, Gauge, Link2, Mail, Merge, MessageSquare, Pencil, Phone, Plus, Printer, Star, Trash2, Upload, Users as UsersIcon, X } from "lucide-react";
 import { CategoryOptions, ConfirmDeleteButton, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { CONTACT_TYPES, ONBOARDING_ITEMS, RENEWAL_STEPS, SUPPLIER_STATUSES, WORK_CATEGORIES } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
 import { computeCompliance, daysUntil, fmtDate, gbp, isMirrored, parseDelimited, supplierStats, toISO, uid } from "../lib/utils.js";
 import { buildSupplierPack, openPrintReport } from "../lib/reports.js";
 import { xlsxToText } from "../lib/excelTemplate.js";
+import { ContactsEditor } from "./MoreViews.jsx";
 
 /* ---------------------------------------------------------
    Suppliers Tab
 --------------------------------------------------------- */
-export function SuppliersTab({ onImport, packData = null, locationName = "", onFollowUpDone, invoices = [], onAddContact, onMerge, userName = "", suppliers, onAdd, onEdit, onDelete, devices = [], services = [], works = [], budgetLines = [], visitBudgets = [] }) {
+export function SuppliersTab({ onPortal, onBulkEmail, onImport, packData = null, locationName = "", onFollowUpDone, invoices = [], onAddContact, onMerge, userName = "", suppliers, onAdd, onEdit, onDelete, devices = [], services = [], works = [], budgetLines = [], visitBudgets = [] }) {
   const [scoreFor, setScoreFor] = useState(null);
   const [contactFor, setContactFor] = useState(null);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -37,6 +38,7 @@ export function SuppliersTab({ onImport, packData = null, locationName = "", onF
           </select>
         </div>
       )}
+      {suppliers.length > 1 && ACTIVE_CAN_EDIT && onBulkEmail && <button onClick={onBulkEmail} style={{ order: 96, background: "none", border: "1px dashed #C7D0DA", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Mail size={14} /> Email several suppliers (site closure, access change…)</button>}
       {suppliers.length > 0 && <div style={{ order: 97, display: "flex", justifyContent: "center" }}><ExportButton label="Export suppliers (CSV)" filename="suppliers.csv" rows={[["Name", "Category", "Status", "Trades", "Contact", "Email", "Phone", "Out of hours", "Contract value", "Per", "Contract end", "Payment terms", "Insurance expiry", "Accreditation", "Accreditation expiry", "Waste carrier reg.", "Rating"], ...suppliers.map((x) => [x.name, CATEGORY_META[x.category]?.label || x.category, SUPPLIER_STATUSES[x.status || "approved"]?.label || "", (x.trades || []).join("; "), x.managerName || "", x.managerEmail || "", x.managerPhone || "", x.oohPhone || "", x.costAmount || 0, x.costFrequency || "", x.contractEnd || "", x.paymentDays ?? "", x.insuranceExpiry || "", x.accreditation || "", x.accreditationExpiry || "", x.wasteLicence || "", ratingOf(x) >= 0 ? ratingOf(x).toFixed(1) : ""])]} /></div>}
       {importOpen && <SupplierImportModal existing={suppliers} onClose={() => setImportOpen(false)} onImport={(rows) => { onImport(rows); setImportOpen(false); }} />}
       {ACTIVE_CAN_EDIT && onImport && <button onClick={() => setImportOpen(true)} style={{ order: 98, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><FileSpreadsheet size={14} /> Import suppliers from a spreadsheet</button>}
@@ -91,6 +93,7 @@ export function SuppliersTab({ onImport, packData = null, locationName = "", onF
                     {s.oohPhone && <a href={`tel:${s.oohPhone.replace(/[^+0-9]/g, "")}`} onClick={(e) => e.stopPropagation()} style={{ display: "inline-block", fontSize: 11.5, fontWeight: 700, color: "var(--danger)", marginTop: 3, textDecoration: "none" }}>☎ 24h: {s.oohPhone}</a>}
                     {s.status && s.status !== "approved" && <div style={{ fontSize: 11.5, fontWeight: 800, color: SUPPLIER_STATUSES[s.status].color, marginTop: 3 }}>{s.status === "blocked" ? "⛔ " : "⚠ "}{SUPPLIER_STATUSES[s.status].label}{s.statusReason ? ` — ${s.statusReason}` : ""}</div>}
                     {Number(s.targetOnTime) > 0 && (() => { const comp = computeCompliance(devices.filter((d) => d.supplierId === s.id), visitBudgets || [], services); if (comp.pct == null) return null; const t = Number(s.targetOnTime); const col = comp.pct >= t ? "var(--ok)" : comp.pct >= t - 10 ? "var(--warn)" : "var(--danger)"; return <div style={{ fontSize: 11.5, fontWeight: 700, color: col, marginTop: 3 }}>● On time {comp.pct}% (target {t}%)</div>; })()}
+                    {(s.contacts || []).length > 0 && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>+{s.contacts.length} contact{s.contacts.length === 1 ? "" : "s"}: {s.contacts.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`).join(", ")}</div>}
                     {(s.trades || []).length > 0 && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>{s.trades.join(" · ")}</div>}
                     {(() => {
                       const yr = String(new Date().getFullYear());
@@ -136,6 +139,8 @@ export function SuppliersTab({ onImport, packData = null, locationName = "", onF
                     {s.managerEmail && (
                       <a href={`mailto:${s.managerEmail}?subject=${encodeURIComponent(`Re: ${s.name}`)}`} title={`Email ${s.managerName || s.managerEmail}`} style={{ padding: 4, display: "flex" }}><Mail size={15} color="#2B4562" /></a>
                     )}
+                    {ACTIVE_CAN_EDIT && onPortal && <button onClick={() => { const how = s.portalToken ? window.prompt(`Supplier job link for ${s.name}:\n\n1 = email it to them\n2 = copy it\n3 = make a new link (the old one stops working)\n\nType 1, 2 or 3:`, "1") : "1"; if (how === "1") onPortal(s, "email"); else if (how === "2") onPortal(s, "copy"); else if (how === "3") onPortal(s, "new"); }} title={s.portalToken ? "Supplier job link" : "Send a job link"} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}><Link2 size={15} color={s.portalToken ? "#2F855A" : "#5B6672"} /></button>}
+                    {s.managerEmail && ACTIVE_CAN_EDIT && <button onClick={() => { const body = `Hi${s.managerName ? ` ${s.managerName.split(" ")[0]}` : ""},\n\nBefore your next visit to ${locationName}, please send:\n\n- Risk assessment and method statement (RAMS) for the work\n- Names of the engineers attending\n- Current public liability insurance certificate\n- Any permits you will need (hot works, working at height, isolations)\n\nThanks`; window.location.href = `mailto:${encodeURIComponent(s.managerEmail)}?subject=${encodeURIComponent(`RAMS request — ${locationName}`)}&body=${encodeURIComponent(body)}`; }} title="Ask for RAMS" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}><FileWarning size={15} color="#5B6672" /></button>}
                     {packData && <button onClick={() => openPrintReport(`Supplier review — ${s.name}`, `${locationName} · ${fmtDate(new Date().toISOString().slice(0, 10))}`, buildSupplierPack(s, packData))} title="Review meeting pack" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}><Printer size={15} color="#5B6672" /></button>}
                     {onAddContact && <button onClick={() => setContactFor(s)} title="Contact log" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}><MessageSquare size={15} color="#5B6672" /></button>}
                     <button onClick={() => setScoreFor(s)} title="Scorecard" style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
@@ -177,6 +182,7 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
   const [status, setStatus] = useState(existing?.status || "approved");
   const [statusReason, setStatusReason] = useState(existing?.statusReason || "");
   const [trades, setTrades] = useState(existing?.trades || []);
+  const [contacts, setContacts] = useState(existing?.contacts || []);
   const [targetOnTime, setTargetOnTime] = useState(existing?.targetOnTime != null ? String(existing.targetOnTime) : "");
   const [paymentDays, setPaymentDays] = useState(existing?.paymentDays != null ? String(existing.paymentDays) : "30");
   const [wasteLicence, setWasteLicence] = useState(existing?.wasteLicence || "");
@@ -191,7 +197,7 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
 
   function submit() {
     if (!name.trim()) return;
-    onSave({ status, statusReason: status === "approved" ? "" : statusReason.trim(), trades, paymentDays: Number(paymentDays) || 30, targetOnTime: targetOnTime === "" ? null : Number(targetOnTime), rates: { hourly: hourlyRate === "" ? null : Number(hourlyRate), callout: calloutFee === "" ? null : Number(calloutFee), outOfHours: outOfHours === "" ? null : Number(outOfHours), materialsMarkup: markup === "" ? null : Number(markup) }, id: existing?.id, category, subCategory: subCategory.trim(), name: name.trim(), contact: contact.trim(),
+    onSave({ status, statusReason: status === "approved" ? "" : statusReason.trim(), contacts, trades, paymentDays: Number(paymentDays) || 30, targetOnTime: targetOnTime === "" ? null : Number(targetOnTime), rates: { hourly: hourlyRate === "" ? null : Number(hourlyRate), callout: calloutFee === "" ? null : Number(calloutFee), outOfHours: outOfHours === "" ? null : Number(outOfHours), materialsMarkup: markup === "" ? null : Number(markup) }, id: existing?.id, category, subCategory: subCategory.trim(), name: name.trim(), contact: contact.trim(),
       managerName: managerName.trim(), managerEmail: managerEmail.trim(), managerPhone: managerPhone.trim(), oohPhone: oohPhone.trim(),
       contractStart: contractStart || null, contractEnd: contractEnd || null, noticeDays: noticeDays ? Number(noticeDays) : 60, contractRef: contractRef.trim(),
       priceHistory: existing && Number(existing.costAmount) !== (costAmount ? Number(costAmount) : 0)
@@ -221,6 +227,7 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
             <Field label="Phone"><TextInput type="tel" value={managerPhone} onChange={(e) => setManagerPhone(e.target.value)} placeholder="07…" /></Field>
           </div>
           <Field label="Out-of-hours / emergency number"><TextInput type="tel" value={oohPhone} onChange={(e) => setOohPhone(e.target.value)} placeholder="24-hour helpdesk" /></Field>
+          <ContactsEditor contacts={contacts} onChange={setContacts} />
         </div>
         <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Contract</div>

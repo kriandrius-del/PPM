@@ -1,6 +1,6 @@
 // Schedule: calendar views, capacity and blackout dates.
 import { useState, useMemo } from "react";
-import { Calendar, ChevronLeft, ChevronRight, CheckCircle2, Trash2, Plus } from "lucide-react";
+import { Calendar, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, Plus, Printer, Trash2 } from "lucide-react";
 import { CategoryBadge, EmptyState, Field, Modal, PrimaryButton, StatusDot, TextInput, ToggleButton } from "../components/ui.jsx";
 import { MONTH_LABELS, UK_BANK_HOLIDAYS, WEEKDAY_LABELS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, CATEGORY_META, emptyCatMap } from "../lib/globals.js";
@@ -12,7 +12,7 @@ import { addDays, dueStatus, fmtDate, gbp, getMonthGrid, inBlackout, toISODate, 
    Shows both upcoming due dates (ring) and completed service
    dates (filled dot) so logged history actually appears here.
 --------------------------------------------------------- */
-export function ScheduleCalendarTab({ devices, services, tasks, onLogService, onEditService, onMarkTaskDone, visitBudgets = [], suppliers = [], locationName = "", blackouts = [], avoidWeekends = false, onReschedule, onRescheduleTask, onSaveBlackouts, onShiftOutOfBlackouts }) {
+export function ScheduleCalendarTab({ onExportCalendar, onPrintLookahead, devices, services, tasks, onLogService, onEditService, onMarkTaskDone, visitBudgets = [], suppliers = [], locationName = "", blackouts = [], avoidWeekends = false, onReschedule, onRescheduleTask, onSaveBlackouts, onShiftOutOfBlackouts }) {
   const [moving, setMoving] = useState(null); // { kind: 'device'|'task', id, name, from }
   const [showBlackouts, setShowBlackouts] = useState(false);
   function doMove(item, iso) {
@@ -80,6 +80,8 @@ export function ScheduleCalendarTab({ devices, services, tasks, onLogService, on
         <ToggleButton active={view === "month"} onClick={() => setView("month")}>Month</ToggleButton>
         <ToggleButton active={view === "year"} onClick={() => setView("year")}>Year</ToggleButton>
         <ToggleButton active={view === "capacity"} onClick={() => setView("capacity")}>Capacity</ToggleButton>
+        {onExportCalendar && <button onClick={onExportCalendar} title="Add visits, key dates and contract ends to Outlook / Google / Apple Calendar" style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><CalendarPlus size={13} /> Add to my calendar</button>}
+        {onPrintLookahead && <button onClick={onPrintLookahead} title="Print the next 4 weeks" style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Printer size={13} /> 4-week lookahead</button>}
         {ACTIVE_CAN_EDIT && <button onClick={() => setShowBlackouts(true)} title="Holidays & blackouts" style={{ display: "flex", alignItems: "center", gap: 5, background: blackouts.length ? "var(--warn-soft)" : "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: blackouts.length ? "var(--warn)" : "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Blackouts{blackouts.length ? ` (${blackouts.length})` : ""}</button>}
         <button onClick={() => { const n = downloadIcs(devices, tasks, visitBudgets, suppliers, locationName); setIcsMsg(n ? `${n} visits exported — open the file to add them to your calendar` : "Nothing scheduled in the next 12 months"); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>
           <Calendar size={13} /> Add to calendar
