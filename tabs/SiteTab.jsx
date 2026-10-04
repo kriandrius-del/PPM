@@ -1,6 +1,6 @@
 // Site tab: meters, spares, keys, audits, incidents, permits to work, waste.
 import { useState, useMemo } from "react";
-import { Activity, Camera, CheckCircle2, ClipboardCheck, FileSignature, Flame, Key, Leaf as LeafIcon, ListChecks, Mail, Megaphone, Package, Pencil, Plus, Printer, QrCode, Recycle, Siren, Trash2, Upload, Wrench } from "lucide-react";
+import { Activity, BellRing, BookOpen, CalendarClock, Camera, Car, CheckCircle2, ChevronLeft, ClipboardCheck, ClipboardList, FileSignature, FileText, Flame, FlaskConical, Gauge, GraduationCap, Key, KeyRound, LayoutGrid, Leaf as LeafIcon, ListChecks, Mail, MapPin, Megaphone, Package, Pencil, Plus, Power, Printer, QrCode, Recycle, ShieldAlert, Siren, Star, Thermometer, Trash2, Upload, Wrench } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ConfirmDeleteButton, ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { DEFAULT_CO2, INCIDENT_TYPES, INVESTIGATION_STEPS, METER_TYPES, MONTH_LABELS, PERMIT_PRECAUTIONS, PERMIT_TYPES, WASTE_STREAMS } from "../lib/constants.js";
@@ -208,62 +208,61 @@ export function ReadingModal({ meter, last, onClose, onSave }) {
 /* ---------------------------------------------------------
    Site tab: meters, spares and keys
 --------------------------------------------------------- */
-export function SiteTab({ isolations, carpark, floorplans, keydates, feedback, coshh, equipment, actions, spaces, walkrounds, asbestos, logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
-  const [view, setView] = useState("meters");
+// Site sections, grouped so the page opens on a tidy overview instead of a long row of buttons.
+export const SITE_GROUPS = [
+  { key: "safety", label: "Safety & compliance", items: [
+    ["incidents", "Incidents", Siren], ["permits", "Permits to work", Flame], ["actions", "Action tracker", ListChecks], ["drills", "Fire drills", BellRing],
+    ["training", "Training", GraduationCap], ["water", "Water temperatures", Thermometer], ["asbestos", "Asbestos", ShieldAlert], ["coshh", "COSHH", FlaskConical],
+    ["equipment", "Equipment inspections", ClipboardCheck], ["audits", "Audits", ClipboardList], ["isolations", "Isolation points", Power],
+  ] },
+  { key: "building", label: "Building & assets", items: [
+    ["meters", "Meters & energy", Gauge], ["waste", "Waste & recycling", Recycle], ["spaces", "Spaces", LayoutGrid], ["floorplans", "Floor plans", MapPin],
+    ["docs", "Documents", FileText], ["keydates", "Key dates", CalendarClock], ["logs", "Logs & checks", BookOpen], ["walkrounds", "Walk-rounds", Camera],
+  ] },
+  { key: "people", label: "Security, stores & people", items: [
+    ["keys", "Keys & cards", KeyRound], ["carpark", "Car park", Car], ["spares", "Spare parts", Package], ["feedback", "Occupant feedback", Star],
+  ] },
+];
+export function SiteTab({ badges = {}, isolations, carpark, floorplans, keydates, feedback, coshh, equipment, actions, spaces, walkrounds, asbestos, logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
+  const [view, setView] = useState(() => { try { return sessionStorage.getItem("ppm:siteView") || ""; } catch (e) { return ""; } });
+  const go = (v) => { setView(v); try { sessionStorage.setItem("ppm:siteView", v); } catch (e) { /* ignore */ } window.scrollTo?.({ top: 0 }); };
+  const content = { meters, spares, keys, audits, incidents, permits, waste, water, training, drills, docs, logs, asbestos, actions, spaces, walkrounds, coshh, equipment, floorplans, keydates, feedback, isolations, carpark };
+  const b = { ...badges, spares: badges.spares ?? (counts.lowStock ? { text: `${counts.lowStock} low`, tone: "warn" } : null), keys: badges.keys ?? (counts.keysOut ? { text: `${counts.keysOut} out` } : null), incidents: badges.incidents ?? (openIncidents ? { text: `${openIncidents} open`, tone: "warn" } : null), permits: badges.permits ?? (openPermits ? { text: `${openPermits} live` } : null) };
+  const group = SITE_GROUPS.find((g) => g.items.some(([k]) => k === view));
+  const item = group?.items.find(([k]) => k === view);
+  const Badge2 = ({ x }) => x ? <span style={{ fontSize: 11, fontWeight: 750, color: x.tone === "danger" ? "var(--danger)" : x.tone === "warn" ? "var(--warn)" : "var(--accent)", background: x.tone === "danger" ? "var(--danger-soft)" : x.tone === "warn" ? "var(--warn-soft)" : "var(--accent-soft)", borderRadius: 10, padding: "2px 7px", whiteSpace: "nowrap" }}>{x.text}</span> : null;
+  if (!item) return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {SITE_GROUPS.map((g) => (
+        <div key={g.key}>
+          <div style={{ fontSize: 12, fontWeight: 750, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>{g.label}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
+            {g.items.map(([k, label, I]) => (
+              <button key={k} data-site={k} className="bcard" onClick={() => go(k)} style={{ padding: "12px 12px", gap: 6, cursor: "pointer", minHeight: 78, justifyContent: "space-between" }}>
+                <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, width: "100%" }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 9, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><I size={16} color="var(--accent)" /></span>
+                  <Badge2 x={b[k]} />
+                </span>
+                <span style={{ fontSize: 13.3, fontWeight: 700, lineHeight: 1.25, color: "var(--text)" }}>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
   return (
-    <div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-        <ToggleButton active={view === "meters"} onClick={() => setView("meters")}>Meters</ToggleButton>
-        <ToggleButton active={view === "spares"} onClick={() => setView("spares")}>Spares{counts.lowStock ? ` (${counts.lowStock} low)` : ""}</ToggleButton>
-        <ToggleButton active={view === "keys"} onClick={() => setView("keys")}>Keys{counts.keysOut ? ` (${counts.keysOut} out)` : ""}</ToggleButton>
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minWidth: 0 }}>
+        <button onClick={() => go("")} style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 9, padding: "7px 10px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}><ChevronLeft size={15} /> All sections</button>
+        <div style={{ fontSize: 17, fontWeight: 750, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item[1]}</div>
       </div>
-      <div style={{ display: "flex", gap: 6, marginTop: -6, marginBottom: 12 }}>
-        <ToggleButton active={view === "audits"} onClick={() => setView("audits")}>Audits</ToggleButton>
-        <ToggleButton active={view === "incidents"} onClick={() => setView("incidents")}>Incidents{openIncidents ? ` (${openIncidents} open)` : ""}</ToggleButton>
-        <ToggleButton active={view === "permits"} onClick={() => setView("permits")}>Permits{openPermits ? ` (${openPermits})` : ""}</ToggleButton>
-        <ToggleButton active={view === "waste"} onClick={() => setView("waste")}>Waste</ToggleButton>
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 10, WebkitOverflowScrolling: "touch", scrollbarWidth: "thin" }}>
+        {group.items.map(([k, label]) => (
+          <button key={k} onClick={() => go(k)} style={{ flexShrink: 0, background: k === view ? "var(--accent)" : "var(--card)", color: k === view ? "var(--on-accent)" : "var(--text-2)", border: `1px solid ${k === view ? "transparent" : "var(--border)"}`, borderRadius: 16, padding: "6px 11px", fontSize: 12.3, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{label}{b[k] ? ` · ${b[k].text}` : ""}</button>
+        ))}
       </div>
-      <div style={{ display: "flex", gap: 6, marginTop: -6, marginBottom: 12 }}>
-        <ToggleButton active={view === "water"} onClick={() => setView("water")}>Water temps</ToggleButton>
-        <ToggleButton active={view === "training"} onClick={() => setView("training")}>Training</ToggleButton>
-        <ToggleButton active={view === "drills"} onClick={() => setView("drills")}>Fire drills</ToggleButton>
-        <ToggleButton active={view === "docs"} onClick={() => setView("docs")}>Documents</ToggleButton>
-        <ToggleButton active={view === "logs"} onClick={() => setView("logs")}>Logs</ToggleButton>
-        <ToggleButton active={view === "asbestos"} onClick={() => setView("asbestos")}>Asbestos</ToggleButton>
-        <ToggleButton active={view === "actions"} onClick={() => setView("actions")}>Actions</ToggleButton>
-        <ToggleButton active={view === "spaces"} onClick={() => setView("spaces")}>Spaces</ToggleButton>
-        <ToggleButton active={view === "walkrounds"} onClick={() => setView("walkrounds")}>Walk-rounds</ToggleButton>
-        <ToggleButton active={view === "coshh"} onClick={() => setView("coshh")}>COSHH</ToggleButton>
-        <ToggleButton active={view === "equipment"} onClick={() => setView("equipment")}>Equipment</ToggleButton>
-        <ToggleButton active={view === "floorplans"} onClick={() => setView("floorplans")}>Floor plans</ToggleButton>
-        <ToggleButton active={view === "keydates"} onClick={() => setView("keydates")}>Key dates</ToggleButton>
-        <ToggleButton active={view === "feedback"} onClick={() => setView("feedback")}>Feedback</ToggleButton>
-        <ToggleButton active={view === "isolations"} onClick={() => setView("isolations")}>Isolation points</ToggleButton>
-        <ToggleButton active={view === "carpark"} onClick={() => setView("carpark")}>Car park</ToggleButton>
-      </div>
-      {view === "meters" && meters}
-      {view === "spares" && spares}
-      {view === "keys" && keys}
-      {view === "audits" && audits}
-      {view === "incidents" && incidents}
-      {view === "permits" && permits}
-      {view === "waste" && waste}
-      {view === "water" && water}
-      {view === "training" && training}
-      {view === "drills" && drills}
-      {view === "docs" && docs}
-      {view === "logs" && logs}
-      {view === "asbestos" && asbestos}
-      {view === "actions" && actions}
-      {view === "spaces" && spaces}
-      {view === "walkrounds" && walkrounds}
-      {view === "coshh" && coshh}
-      {view === "equipment" && equipment}
-      {view === "floorplans" && floorplans}
-      {view === "keydates" && keydates}
-      {view === "feedback" && feedback}
-      {view === "isolations" && isolations}
-      {view === "carpark" && carpark}
+      <div style={{ minWidth: 0 }}>{content[view]}</div>
     </div>
   );
 }

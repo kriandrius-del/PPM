@@ -9,7 +9,6 @@ import { addDays, compressImage, countryCodeFor, daysUntil, downloadBlob, findPo
 import { AccountingExport } from "../tabs/BudgetTab.jsx";
 import { THEMES } from "../lib/theme.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
-import { CustomFieldsEditor } from "../tabs/MoreViews.jsx";
 
 /* ---------------------------------------------------------
    User & Location setup modals
@@ -422,7 +421,6 @@ export function DataModal({ customFields = [], onSaveCustomFields, branding = {}
               })}
             </div>
             {onSaveBranding && canEdit && <BrandingEditor branding={branding} onSave={onSaveBranding} />}
-            {onSaveCustomFields && canEdit && <CustomFieldsEditor fields={customFields} onSave={onSaveCustomFields} />}
             <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}><Moon size={14} /> Theme</div>
             <div style={{ display: "flex", gap: 6 }}>
               {Object.entries(THEMES).map(([k, label]) => {

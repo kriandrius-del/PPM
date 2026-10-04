@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Activity, AlertTriangle, Bell, Calendar, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock, CloudOff, FileCheck, FileText, Flame, Globe2, HardDrive, HardHat, HelpCircle, History, LayoutDashboard, Loader2, Package, Plus, PoundSterling, Receipt, Search, ShieldAlert, Siren, SlidersHorizontal, Timer, TrendingUp, Undo2, User, Users, Users as UsersIcon, Wrench, X } from "lucide-react";
 import { EmptyState, StatChip, ToggleButton } from "./components/ui.jsx";
 import { ACCENTS, BUILTIN_TEMPLATES, DEFAULT_AUDIT_TEMPLATES, EQUIPMENT_TYPES, INCIDENT_TYPES, LOG_TEMPLATES, MONTH_LABELS, ONBOARDING_ITEMS, PKEYS, SKEYS, SLA_DAYS, WASTE_STREAMS, WATER_LIMITS, alertGroup } from "./lib/constants.js";
-import { ACTIVE_CAN_EDIT, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_BRAND, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_CUSTOM_FIELDS, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
+import { ACTIVE_CAN_EDIT, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_BRAND, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
 import { LAST_LOCAL_WRITE, loadPersonal, loadShared, savePersonal, saveShared, set_SAVE_STATUS_LISTENER } from "./lib/storage.js";
 import { addDays, addMonths, appBaseUrl, cachedWeather, computeCompliance, currentBooking, currentDowntime, daysUntil, downloadBlob, fmtDate, gbp, inBlackout, isMirrored, meterStats, replacementYear, shiftDate, siteWeatherSource, uid, workSla } from "./lib/utils.js";
 import { AddCountryModal, AddLocationModal, AlertsModal, DataHealthModal, DataModal, GlobalSearchModal, HelpModal, LocationPickerModal, ReportsModal, SettingsModal, ShortcutsModal, UserSwitchModal } from "./modals/AppModals.jsx";
@@ -22,6 +22,7 @@ import { THEME_CSS } from "./lib/theme.js";
 import { PageHeader } from "./components/PageHeader.jsx";
 import { ActionModal, ActionsView, BookTogetherModal, BulkEmailModal, CarParkView, CopySiteModal, CoshhView, EquipmentView, FeedbackView, FloorPlansView, IsolationsView, KeyDatesView, MergeServiceModal, PeopleDirectoryModal, RollCallModal, SpacesView, SubmissionsModal, TvDashboard, WalkroundsView } from "./tabs/MoreViews.jsx";
 import { buildDailyBriefing, buildEmergencySheet, buildLookahead, openPrintReport } from "./lib/reports.js";
+import { budgetModel } from "./tabs/BudgetPlus.jsx";
 
 /* ---------------------------------------------------------
    Main App
@@ -75,6 +76,7 @@ export function MainApp() {
   const [coshh, setCoshh] = useState([]);
   const [feedback, setFeedback] = useState([]);
   const [carPark, setCarPark] = useState([]);
+  const [costLines, setCostLines] = useState([]);
   const [isolations, setIsolations] = useState([]);
   const [floorplans, setFloorplans] = useState([]);
   const [keyDates, setKeyDates] = useState([]);
@@ -207,7 +209,7 @@ export function MainApp() {
 
   useEffect(() => {
     (async () => {
-      const [u, c, l, d, s, w, sup, b, bl, dt, vb, nav, st, act, mt, mr, si, sn, sp, ky, rm, disp, au, inc, pr, pm, ws, po, inv, wo, wr, tr, dr, trs, nts, lge, svs, asb, acts, spc, wlk, csh, eqp, vsub, fbk, fpl, kdt, cpk, iso] = await Promise.all([
+      const [u, c, l, d, s, w, sup, b, bl, dt, vb, nav, st, act, mt, mr, si, sn, sp, ky, rm, disp, au, inc, pr, pm, ws, po, inv, wo, wr, tr, dr, trs, nts, lge, svs, asb, acts, spc, wlk, csh, eqp, vsub, fbk, fpl, kdt, cpk, iso, cln] = await Promise.all([
         loadShared(SKEYS.users), loadShared(SKEYS.countries), loadShared(SKEYS.locations),
         loadShared(SKEYS.devices), loadShared(SKEYS.services), loadShared(SKEYS.works),
         loadShared(SKEYS.suppliers), loadShared(SKEYS.budgets), loadShared(SKEYS.budgetLines),
@@ -222,7 +224,7 @@ export function MainApp() {
         loadShared(SKEYS.actions), loadShared(SKEYS.spaces), loadShared(SKEYS.walkrounds),
         loadShared(SKEYS.coshh), loadShared(SKEYS.equipment), loadShared(SKEYS.visitSubmissions),
         loadShared(SKEYS.feedback), loadShared(SKEYS.floorplans), loadShared(SKEYS.keyDates),
-        loadShared(SKEYS.carPark), loadShared(SKEYS.isolations),
+        loadShared(SKEYS.carPark), loadShared(SKEYS.isolations), loadShared(SKEYS.costLines),
       ]);
       setUsers(u); setCountries(c); setLocations(l); setDevices(d);
       setServices(s); setWorks(w); setSuppliers(sup); setBudgets(b); setBudgetLines(bl); setDeviceTasks(dt); setVisitBudgets(vb);
@@ -239,6 +241,7 @@ export function MainApp() {
       setWaterOutlets(Array.isArray(wo) ? wo : []); setWaterReadings(Array.isArray(wr) ? wr : []);
       setTraining(Array.isArray(tr) ? tr : []); setDrills(Array.isArray(dr) ? dr : []);
       setAsbestos(Array.isArray(asb) ? asb : []);
+      setCostLines(Array.isArray(cln) ? cln : []);
       setCarPark(Array.isArray(cpk) ? cpk : []); setIsolations(Array.isArray(iso) ? iso : []);
       setFeedback(Array.isArray(fbk) ? fbk : []); setFloorplans(Array.isArray(fpl) ? fpl : []); setKeyDates(Array.isArray(kdt) ? kdt : []);
       setCoshh(Array.isArray(csh) ? csh : []); setEquipment(Array.isArray(eqp) ? eqp : []); setVisitSubmissions(Array.isArray(vsub) ? vsub : []);
@@ -276,7 +279,7 @@ export function MainApp() {
   // Live refresh when a shared database is connected: pull the latest data when the app
   // comes back into view and every minute, so everyone sees each other's changes.
   const REMOTE = typeof window !== "undefined" && !!window.storage?.__remote;
-  const SHARED_SETTERS = { users: setUsers, countries: setCountries, locations: setLocations, devices: setDevices, services: setServices, works: setWorks, suppliers: setSuppliers, budgets: setBudgets, budgetLines: setBudgetLines, deviceTasks: setDeviceTasks, visitBudgets: setVisitBudgets, activity: setActivity, meters: setMeters, meterReadings: setMeterReadings, signins: setSignins, spares: setSpares, keys: setKeysList, reminders: setReminders, audits: setAudits, incidents: setIncidents, projects: setProjects, permits: setPermits, waste: setWaste, purchaseOrders: setPurchaseOrders, invoices: setInvoices, waterOutlets: setWaterOutlets, waterReadings: setWaterReadings, training: setTraining, drills: setDrills, trash: setTrash, notices: setNotices, logEntries: setLogEntries, savings: setSavings, asbestos: setAsbestos, actions: setActions, spaces: setSpaces, walkrounds: setWalkrounds, coshh: setCoshh, equipment: setEquipment, visitSubmissions: setVisitSubmissions, feedback: setFeedback, floorplans: setFloorplans, keyDates: setKeyDates, carPark: setCarPark, isolations: setIsolations };
+  const SHARED_SETTERS = { users: setUsers, countries: setCountries, locations: setLocations, devices: setDevices, services: setServices, works: setWorks, suppliers: setSuppliers, budgets: setBudgets, budgetLines: setBudgetLines, deviceTasks: setDeviceTasks, visitBudgets: setVisitBudgets, activity: setActivity, meters: setMeters, meterReadings: setMeterReadings, signins: setSignins, spares: setSpares, keys: setKeysList, reminders: setReminders, audits: setAudits, incidents: setIncidents, projects: setProjects, permits: setPermits, waste: setWaste, purchaseOrders: setPurchaseOrders, invoices: setInvoices, waterOutlets: setWaterOutlets, waterReadings: setWaterReadings, training: setTraining, drills: setDrills, trash: setTrash, notices: setNotices, logEntries: setLogEntries, savings: setSavings, asbestos: setAsbestos, actions: setActions, spaces: setSpaces, walkrounds: setWalkrounds, coshh: setCoshh, equipment: setEquipment, visitSubmissions: setVisitSubmissions, feedback: setFeedback, floorplans: setFloorplans, keyDates: setKeyDates, carPark: setCarPark, isolations: setIsolations, costLines: setCostLines };
   // When two people save the same list at once, the shared-storage layer merges both sets of
   // changes and tells us the merged result, so this screen shows everyone's edits.
   useEffect(() => {
@@ -365,6 +368,7 @@ export function MainApp() {
     keyDates: useCallback((next) => { setKeyDates(next); saveShared(SKEYS.keyDates, next); }, []),
     carPark: useCallback((next) => { setCarPark(next); saveShared(SKEYS.carPark, next); }, []),
     isolations: useCallback((next) => { setIsolations(next); saveShared(SKEYS.isolations, next); }, []),
+    costLines: useCallback((next) => { setCostLines(next); saveShared(SKEYS.costLines, next); }, []),
   };
   function saveNav(patch) {
     const next = { currentUserId, selectedCountryId, selectedLocationId, tab, listPrefs, ...patch };
@@ -423,7 +427,7 @@ export function MainApp() {
       locBudgetLines.forEach((l) => { if (l.category === cat && l.actualAmount != null && !isMirrored(l) && new Date(l.date).getFullYear() === yr) spent += Number(l.actualAmount) || 0; });
       locSuppliers.forEach((s) => { if (s.category === cat) spent += s.costFrequency === "annual" ? Number(s.costAmount) || 0 : (Number(s.costAmount) || 0) * 12; });
       const pct = Math.round((spent / cap) * 100);
-      if (pct >= 80) out.push({ key: `bg-${cat}-${yr}`, tone: pct >= 100 ? "danger" : "warn", title: `${CATEGORY_META[cat].label} budget at ${pct}%`, detail: `${gbp(spent)} of ${gbp(cap)} cap for ${yr}`, tab: "budget" });
+      if (pct >= (Number(((settings.budgetSettings || {})[selectedLocationId] || {}).alertPct) || 80)) out.push({ key: `bg-${cat}-${yr}`, tone: pct >= 100 ? "danger" : "warn", title: `${CATEGORY_META[cat].label} budget at ${pct}%`, detail: `${gbp(spent)} of ${gbp(cap)} cap for ${yr}`, tab: "budget" });
     });
     locSuppliers.forEach((s) => {
       const n = daysUntil(s.contractEnd);
@@ -793,8 +797,8 @@ export function MainApp() {
   const openWorksCount = locWorks.filter((w) => w.status === "quoted" || w.status === "approved").length;
 
   /* ---- undo: take a snapshot before a delete, restore it if the user taps Undo ---- */
-  const UNDO_KEYS = ["devices", "services", "works", "suppliers", "budgetLines", "deviceTasks", "visitBudgets", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "signins", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations"]; // archive also uses undo
-  const currentCollections = { devices, services, works, suppliers, budgetLines, deviceTasks, visitBudgets, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, signins, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations };
+  const UNDO_KEYS = ["devices", "services", "works", "suppliers", "budgetLines", "deviceTasks", "visitBudgets", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "signins", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations", "costLines"]; // archive also uses undo
+  const currentCollections = { devices, services, works, suppliers, budgetLines, deviceTasks, visitBudgets, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, signins, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines };
   function withUndo(fn) {
     const snap = { ...currentCollections };
     fn();
@@ -807,7 +811,7 @@ export function MainApp() {
     showToast("Undone — deleted item restored");
   }
   /* ---- backup & restore ---- */
-  const allData = { users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations };
+  const allData = { users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines };
   function downloadBackup() {
     const payload = { app: "PPM Service Book", version: 1, exportedAt: new Date().toISOString(), exportedBy: currentUser?.name || "", data: allData };
     downloadBlob(new Blob([JSON.stringify(payload)], { type: "application/json" }), `ppm-backup-${new Date().toISOString().slice(0, 10)}.json`);
@@ -822,7 +826,7 @@ export function MainApp() {
     });
     if (d.settings && !Array.isArray(d.settings)) persist.settings(d.settings);
     if (Array.isArray(d.activity)) { setActivity(d.activity); saveShared(SKEYS.activity, d.activity); }
-    ["meters", "meterReadings", "signins", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations"].forEach((k) => { if (Array.isArray(d[k])) persist[k](d[k]); });
+    ["meters", "meterReadings", "signins", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations", "costLines"].forEach((k) => { if (Array.isArray(d[k])) persist[k](d[k]); });
     showToast("Backup restored", payload.exportedAt ? `from ${fmtDate(payload.exportedAt.slice(0, 10))}` : "");
     return null;
   }
@@ -928,7 +932,6 @@ export function MainApp() {
   function saveCostCodes(list) { persist.settings({ ...settings, costCodes: list }); }
   function saveRecyclingTarget(v) { persist.settings({ ...settings, recyclingTarget: { ...(settings.recyclingTarget || {}), [selectedLocationId]: v === "" ? null : Number(v) } }); }
   function savePoLimit(v) { persist.settings({ ...settings, poApprovalLimit: v === "" ? null : Number(v) }); }
-  function saveCustomFields(list) { persist.settings({ ...settings, customFields: list }); }
   function bulkInvoices(ids, status) {
     const set = new Set(ids); const at = new Date().toISOString();
     persist.invoices(invoices.map((i) => set.has(i.id) ? { ...i, status, ...(status === "approved" ? { approvedBy: currentUser?.name, approvedAt: at } : { paidAt: at }) } : i));
@@ -1734,7 +1737,56 @@ export function MainApp() {
     setSupplierModal(null);
   }
   function deleteSupplier(id) { const sup = supplierById[id]; if (sup) toTrash({ type: "supplier", name: sup.name, payload: { supplier: sup } }); withUndo(() => { persist.suppliers(suppliers.filter((s) => s.id !== id)); showToast("Supplier deleted", sup?.name); }); setSupplierModal(null); }
+  // One-time tidy-up: fields created with the short-lived "extra fields" editor become standard custom fields (values keep their keys).
+  useEffect(() => {
+    if (loading || !ACTIVE_CAN_EDIT) return;
+    const list = settings.customFields || [];
+    if (list.some((f) => !f.id && f.key)) persist.settings({ ...settings, customFields: list.map((f) => (!f.id && f.key ? { id: f.key, label: f.label, type: f.type || "text", appliesTo: "service", categories: [], options: [], required: false } : f)) });
+  }, [loading, settings.customFields]);
+  function budgetSettingsFor() { return (settings.budgetSettings || {})[selectedLocationId] || {}; }
+  function saveBudgetSettings(patch) {
+    const cur = budgetSettingsFor(); const next = { ...cur, ...patch };
+    if (patch.changeLog) next.changeLog = patch.changeLog.map((c) => (c.by ? c : { ...c, by: currentUser?.name }));
+    persist.settings({ ...settings, budgetSettings: { ...(settings.budgetSettings || {}), [selectedLocationId]: next } });
+  }
+  function logBudgetChange(year, text) {
+    const cur = budgetSettingsFor();
+    return { ...(settings.budgetSettings || {}), [selectedLocationId]: { ...cur, changeLog: [...(cur.changeLog || []), { year, at: new Date().toISOString(), by: currentUser?.name, text }].slice(-300) } };
+  }
+  // Set several category budgets for a year in one save, with a change-log entry.
+  function setBudgetsBulk(year, map, reason) {
+    let next = [...budgets]; const changes = [];
+    Object.entries(map).forEach(([cat, amount]) => {
+      const ex = next.find((b) => b.locationId === selectedLocationId && b.year === year && b.category === cat);
+      changes.push(`${CATEGORY_META[cat]?.label || cat}: ${gbp(ex ? ex.amount : 0)} → ${gbp(amount)}`);
+      next = ex ? next.map((b) => b.id === ex.id ? { ...b, amount } : b) : [...next, { id: uid(), locationId: selectedLocationId, year, category: cat, amount }];
+    });
+    persist.budgets(next);
+    persist.settings({ ...settings, budgetSettings: logBudgetChange(year, `${reason || "Budget changed"} — ${changes.join("; ")}`) });
+    showToast("Budget updated", reason || "");
+  }
+  function moveBudget(year, from, to, amount, reason) {
+    const get = (c) => Number(locBudgets.find((b) => b.year === year && b.category === c)?.amount) || 0;
+    let next = [...budgets];
+    [[from, get(from) - amount], [to, get(to) + amount]].forEach(([cat, amt]) => { const ex = next.find((b) => b.locationId === selectedLocationId && b.year === year && b.category === cat); next = ex ? next.map((b) => b.id === ex.id ? { ...b, amount: amt } : b) : [...next, { id: uid(), locationId: selectedLocationId, year, category: cat, amount: amt }]; });
+    persist.budgets(next);
+    persist.settings({ ...settings, budgetSettings: logBudgetChange(year, `Moved ${gbp(amount)} from ${CATEGORY_META[from]?.label} to ${CATEGORY_META[to]?.label}${reason ? ` — ${reason}` : ""}`) });
+    showToast("Budget moved", `${gbp(amount)} → ${CATEGORY_META[to]?.label}`);
+  }
+  // Cost lines: save new or changed lines in one go (keeps several edits from overwriting each other).
+  function saveCostLines(list) {
+    const byId = Object.fromEntries(list.filter((l) => l.id).map((l) => [l.id, l]));
+    const fresh = list.filter((l) => !l.id).map((l) => ({ ...l, id: uid(), locationId: selectedLocationId, createdBy: currentUser?.name, createdAt: new Date().toISOString() }));
+    persist.costLines([...costLines.map((l) => byId[l.id] ? { ...l, ...byId[l.id], updatedBy: currentUser?.name, updatedAt: new Date().toISOString() } : l), ...fresh]);
+    if (fresh.length) showToast(`${fresh.length} cost line${fresh.length === 1 ? "" : "s"} added`);
+  }
+  function deleteCostLine(id) { const l = costLines.find((x) => x.id === id); persist.costLines(costLines.filter((x) => x.id !== id)); logActivity(`Deleted cost line: ${l?.name || ""}`); }
+  function recordCostInvoice(inv) { invOps.save({ ...inv, status: "received", vatRate: 20, fromCostLines: true }); }
+  function bulkUpdateLines(map) { persist.budgetLines(budgetLines.map((l) => map[l.id] ? { ...l, ...map[l.id] } : l)); showToast(`${Object.keys(map).length} plan lines updated`); }
+  function bulkDeleteLines(ids) { const set = new Set(ids); persist.budgetLines(budgetLines.filter((l) => !set.has(l.id))); showToast(`${ids.length} plan lines deleted`); }
   function setCategoryBudget(year, category, amount) {
+    const prevAmt = Number(locBudgets.find((b) => b.year === year && b.category === category)?.amount) || 0;
+    if (prevAmt !== Number(amount)) persist.settings({ ...settings, budgetSettings: logBudgetChange(year, `${CATEGORY_META[category]?.label || category}: ${gbp(prevAmt)} → ${gbp(Number(amount) || 0)}`) });
     const existing = locBudgets.find((b) => b.year === year && b.category === category);
     if (existing) {
       persist.budgets(budgets.map((b) => b.id === existing.id ? { ...b, amount } : b));
@@ -1813,7 +1865,7 @@ export function MainApp() {
     const chars = Object.values(allData).reduce((sum, v) => sum + JSON.stringify(v || "").length, 0);
     const limit = 5 * 1024 * 1024;
     return { local, chars, pct: Math.min(100, Math.round((chars / limit) * 100)) };
-  }, [users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations]);
+  }, [users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines]);
 
   // Page headers: title and four key figures for each tab, in the bento style.
   const pageHeaders = (() => {
@@ -1836,6 +1888,7 @@ export function MainApp() {
     const ending = locSuppliers.filter((x) => x.contractEnd && daysUntil(x.contractEnd) >= 0 && daysUntil(x.contractEnd) <= 90).length;
     const flagged = locSuppliers.filter((x) => x.status === "blocked" || x.status === "probation").length;
     const toApprove = locInvoices.filter((i) => i.status === "received").length;
+    const budgetHead = budgetModel({ year: new Date().getFullYear(), budgets: locBudgets, services: locServices, works: locWorks, suppliers: locSuppliers, devices: locDevices, budgetLines: locBudgetLines, costLines: costLines.filter((l) => l.locationId === selectedLocationId), bs: (settings.budgetSettings || {})[selectedLocationId] || {} });
     const lowStock = locSpares.filter((x) => x.minQty !== "" && x.minQty != null && Number(x.qty) <= Number(x.minQty)).length;
     const onSite = locSignins.filter((x) => !x.outAt).length;
     const openInc = locIncidents.filter((i) => i.status !== "closed").length;
@@ -1867,9 +1920,9 @@ export function MainApp() {
         { label: "Ending in 90 days", value: ending, tone: ending ? "warn" : undefined, icon: Calendar },
         { label: "Flagged", value: flagged, sub: "probation or do not use", tone: flagged ? "danger" : undefined, icon: AlertTriangle } ] },
       budget: { title: "Budget", subtitle: `${spendSummary.yr} · ${budgetView === "finance" ? "POs & invoices" : "plan and spend"}${(() => { const m2 = spaces.filter((s) => s.locationId === selectedLocationId).reduce((t, s) => t + (Number(s.areaM2) || 0), 0) || Number(((settings.siteInfo || {})[selectedLocationId] || {}).floorArea) || 0; return m2 && spendSummary.spent ? ` · ${gbp(spendSummary.spent / m2)} per m² so far${spendSummary.forecast ? ` (forecast ${gbp(spendSummary.forecast / m2)})` : ""}` : ""; })()}`, kpis: [
-        { label: "Spent so far", value: gbp(spendSummary.spent), icon: PoundSterling },
-        { label: "Budget", value: spendSummary.budget ? gbp(spendSummary.budget) : "—", icon: Receipt },
-        { label: "Forecast", value: spendSummary.forecast != null ? gbp(spendSummary.forecast) : "—", tone: spendSummary.budget && spendSummary.forecast > spendSummary.budget ? "danger" : "ok", icon: TrendingUp },
+        { label: "Spent so far", value: gbp(budgetHead.spent), icon: PoundSterling },
+        { label: "Budget", value: budgetHead.budget ? gbp(budgetHead.budget) : "—", icon: Receipt },
+        { label: "Forecast", value: gbp(budgetHead.forecast), tone: budgetHead.budget && budgetHead.forecast > budgetHead.budget ? "danger" : "ok", icon: TrendingUp },
         { label: "Invoices to approve", value: toApprove, tone: toApprove ? "warn" : undefined, icon: FileText } ] },
       meters: { title: "Site", subtitle: "Safety, records and building", kpis: [
         { label: "On site now", value: onSite, sub: "contractors", icon: HardHat },
@@ -1902,7 +1955,7 @@ export function MainApp() {
   // synchronously before the tree below renders.
   set_ACTIVE_CURRENCY_CODE(selectedCountry?.currency || "GBP");
   applyCategorySettings(settings);
-  set_ACTIVE_CUSTOM_FIELDS(settings.customFields || []);
+  set_ACTIVE_CUSTOM_FIELDS((settings.customFields || []).map((f) => (!f.id && f.key ? { id: f.key, label: f.label, type: f.type || "text", appliesTo: "service", categories: [], options: [] } : f)));
   set_ACTIVE_TEMPLATES([...BUILTIN_TEMPLATES, ...(settings.serviceTemplates || [])]);
   set_ACTIVE_CAN_EDIT(currentUser?.role !== "viewer");
   set_ACTIVE_USERS(users);
@@ -1910,7 +1963,6 @@ export function MainApp() {
   { const pc = {}; devices.forEach((d) => { if (!d.archived) (pc[d.locationId] = pc[d.locationId] || []).push({ id: d.id, name: d.name, parentId: d.parentId, checklist: d.checklist || [], isChild: !!d.parentId }); }); set_PARENT_CANDIDATES_CACHE(pc); }
   set_ACTIVE_SITE_INFO((settings.siteInfo || {})[selectedLocationId] || {});
   set_ACTIVE_BRAND(settings.branding || {});
-  set_CUSTOM_FIELDS(settings.customFields || []);
   set_ACTIVE_SLA({ ...SLA_DAYS, ...(settings.slaDays || {}), workingDays: !!settings.slaWorkingDays });
   set_AREA_SUGGESTIONS_CACHE({}); devices.forEach((d) => { if (d.area) (AREA_SUGGESTIONS_CACHE[d.locationId] = AREA_SUGGESTIONS_CACHE[d.locationId] || []).includes(d.area) || AREA_SUGGESTIONS_CACHE[d.locationId].push(d.area); });
 
@@ -2122,6 +2174,20 @@ export function MainApp() {
                 incidents={<IncidentsView onAddAction={(prefill) => setActionDraft({ prefill: true, ...prefill })} onShareLesson={(text) => noticeOps.save({ text, pinned: false })} onRaiseWork={locDevices.length ? (inc) => { setWorkPrefill({ incidentId: inc.id, description: `Following incident on ${fmtDate(inc.date)}${inc.area ? ` (${inc.area})` : ""}: ${inc.description}`, priority: inc.type === "injury" ? "high" : "medium" }); setAddWorkFor(locDevices[0].id); } : null} incidents={locIncidents} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })}
                   onSave={saveIncident} onDelete={deleteIncident} />}
                 openIncidents={locIncidents.filter((i) => i.status !== "closed").length}
+                badges={(() => { const t = new Date().toISOString().slice(0, 10); const n = (x) => x.length; const B = {};
+                  const ao = actions.filter((a) => a.locationId === selectedLocationId && a.status !== "done"); const aOver = ao.filter((a) => a.due && a.due < t);
+                  if (ao.length) B.actions = { text: aOver.length ? `${n(aOver)} overdue` : `${n(ao)} open`, tone: aOver.length ? "danger" : undefined };
+                  const eq = equipment.filter((q) => q.locationId === selectedLocationId && q.status !== "withdrawn" && (q.status === "failed" || (q.nextDue && q.nextDue < t))); if (eq.length) B.equipment = { text: `${n(eq)} due`, tone: "danger" };
+                  const ch = coshh.filter((c) => c.locationId === selectedLocationId && c.reviewDate && c.reviewDate < t); if (ch.length) B.coshh = { text: `${n(ch)} to review`, tone: "warn" };
+                  const asb = asbestos.filter((a) => a.locationId === selectedLocationId && a.nextInspection && a.nextInspection < t); if (asb.length) B.asbestos = { text: `${n(asb)} overdue`, tone: "warn" };
+                  const kd = keyDates.filter((k) => k.locationId === selectedLocationId && !k.done && k.date && daysUntil(k.date) <= 60); if (kd.length) B.keydates = { text: `${n(kd)} soon`, tone: "warn" };
+                  const iso = isolations.filter((i) => i.locationId === selectedLocationId); B.isolations = iso.length ? { text: `${n(iso)}` } : { text: "add", tone: "warn" };
+                  const cp = carPark.filter((c) => c.locationId === selectedLocationId); if (cp.length) B.carpark = { text: `${n(cp)}` };
+                  const fb = feedback.filter((f) => f.locationId === selectedLocationId && Date.now() - new Date(f.at).getTime() < 30 * 864e5); if (fb.length) B.feedback = { text: `${n(fb)} new` };
+                  const sp = spaces.filter((s) => s.locationId === selectedLocationId); if (sp.length) B.spaces = { text: `${n(sp)}` };
+                  const tr = locTraining.filter((x) => x.expiry && x.expiry < t); if (tr.length) B.training = { text: `${n(tr)} expired`, tone: "danger" };
+                  const lastDrill = [...locDrills].sort((a, b) => String(b.date).localeCompare(String(a.date)))[0]; if (!lastDrill || -daysUntil(lastDrill.date) > 365) B.drills = { text: lastDrill ? "overdue" : "none yet", tone: "warn" };
+                  return B; })()}
                 counts={{ lowStock: locSpares.filter((x) => x.minQty !== "" && x.minQty != null && Number(x.qty) <= Number(x.minQty)).length, keysOut: locKeys.filter((k) => k.holder).length }} />
             )}
             {tab === "home" && (
@@ -2224,7 +2290,11 @@ export function MainApp() {
                 onSavePO={poOps.save} onDeletePO={poOps.remove} onSaveInvoice={invOps.save} onDeleteInvoice={invOps.remove} />
             )}
             {tab === "budget" && budgetView === "budget" && (
-              <BudgetTab key={CATEGORY_KEYS.join("|")} budgets={locBudgets} services={locServices} works={locWorks} suppliers={locSuppliers}
+              <BudgetTab key={CATEGORY_KEYS.join("|")} costLines={costLines.filter((l) => l.locationId === selectedLocationId)} onSaveCostLines={saveCostLines} onDeleteCostLine={deleteCostLine} onRecordInvoice={recordCostInvoice} invoices={locInvoices} pos={locPOs} savings={savings.filter((x) => x.locationId === selectedLocationId)}
+                floorArea={spaces.filter((s) => s.locationId === selectedLocationId).reduce((t, s) => t + (Number(s.areaM2) || 0), 0) || Number(((settings.siteInfo || {})[selectedLocationId] || {}).floorArea) || 0}
+                budgetSettings={(settings.budgetSettings || {})[selectedLocationId] || {}} onSaveBs={saveBudgetSettings} onMoveBudget={moveBudget} onSetBudgetsBulk={setBudgetsBulk}
+                onBulkUpdateLines={bulkUpdateLines} onBulkDeleteLines={bulkDeleteLines} userNames={users.map((u) => u.name)} userName={currentUser?.name} locationName={locationLabel({ locationId: selectedLocationId })}
+                budgets={locBudgets} services={locServices} works={locWorks} suppliers={locSuppliers}
                 devices={locDevices} budgetLines={locBudgetLines} visitBudgets={locVisitBudgets} onSetBudget={setCategoryBudget}
                 subcategoriesByCategory={subcategoriesByCategory}
                 onAddLines={addBudgetLines} onUpdateLine={updateBudgetLine} onDeleteLine={deleteBudgetLine}
@@ -2329,7 +2399,7 @@ export function MainApp() {
           onOpenSupplier={(sup) => { setShowSearch(false); setTab("suppliers"); if (ACTIVE_CAN_EDIT) setSupplierModal({ record: sup }); }} />
       )}
       {showData && (
-        <DataModal customFields={settings.customFields || []} onSaveCustomFields={saveCustomFields} branding={settings.branding || {}} onSaveBranding={saveBranding} trash={trash.filter((t) => !t.locationId || t.locationId === selectedLocationId)} onRestoreDeleted={restoreFromTrash} users={users} alertCount={visibleAlerts.filter((a) => a.tone !== "info").length} pendingCount={pendingCount} remote={REMOTE} display={display} onDisplay={saveDisplay} activity={activity.filter((a) => !a.locationId || a.locationId === selectedLocationId)} storageInfo={storageInfo}
+        <DataModal branding={settings.branding || {}} onSaveBranding={saveBranding} trash={trash.filter((t) => !t.locationId || t.locationId === selectedLocationId)} onRestoreDeleted={restoreFromTrash} users={users} alertCount={visibleAlerts.filter((a) => a.tone !== "info").length} pendingCount={pendingCount} remote={REMOTE} display={display} onDisplay={saveDisplay} activity={activity.filter((a) => !a.locationId || a.locationId === selectedLocationId)} storageInfo={storageInfo}
           saveErrors={saveErrors} lastBackupAt={settings.lastBackupAt} canEdit={ACTIVE_CAN_EDIT}
           onBackup={downloadBackup} onRestore={restoreBackup} onClose={() => setShowData(false)} />
       )}

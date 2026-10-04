@@ -808,43 +808,23 @@ export function TvDashboard({ locationName, stats, onClose }) {
   );
 }
 
-/* ---------- Extra fields on services (organisation-wide) ---------- */
-export function CustomFieldsEditor({ fields, onSave }) {
-  const [label, setLabel] = useState(""); const [type, setType] = useState("text");
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><ListPlus size={14} /> Extra fields on services (everyone)</div>
-      {fields.map((f) => (
-        <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, background: "var(--card-hi)", borderRadius: 8, padding: "6px 9px" }}>
-          <span style={{ flex: 1 }}><b>{f.label}</b> <span style={{ color: "var(--faint)" }}>({f.type})</span></span>
-          <button onClick={() => window.confirm(`Remove "${f.label}"? Values already entered stay in backups.`) && onSave(fields.filter((x) => x.key !== f.key))} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={13} color="#A3ABB4" /></button>
-        </div>
-      ))}
-      <div style={{ display: "flex", gap: 6 }}>
-        <TextInput value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Refrigerant type, kW rating, Floor" style={{ flex: 1, minWidth: 0 }} />
-        <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...inputStyle, width: 96, fontSize: 12 }}><option value="text">Text</option><option value="number">Number</option><option value="date">Date</option></select>
-        <button onClick={() => { if (!label.trim()) return; onSave([...fields, { key: `cf_${uid().slice(-6)}`, label: label.trim(), type }]); setLabel(""); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Add</button>
-      </div>
-      <div style={{ fontSize: 11.5, color: "var(--faint)" }}>These appear on every service's form (under Asset details) and in its history.</div>
-    </div>
-  );
-}
 
 /* ---------- Isolation points (stopcocks, gas valves, isolators…) ---------- */
 export function IsolationsView({ items, onSave, onDelete, onPrintEmergency }) {
   const [editing, setEditing] = useState(null);
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Plus size={15} /> Add an isolation point</PrimaryButton>}
-        {onPrintEmergency && <button onClick={onPrintEmergency} style={{ background: "var(--danger-soft)", color: "var(--danger)", border: "none", borderRadius: 9, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}><Siren size={14} /> Emergency sheet</button>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: "1 1 200px" }}><Plus size={15} /> Add an isolation point</PrimaryButton>}
+        {onPrintEmergency && <button onClick={onPrintEmergency} style={{ flex: "1 1 160px", minHeight: 40, background: "var(--danger-soft)", color: "var(--danger)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><Siren size={14} /> Print emergency sheet</button>}
       </div>
+      {items.length > 0 && <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{items.length} point{items.length === 1 ? "" : "s"} recorded · {ISOLATION_KINDS.slice(0, 3).filter((k) => !items.some((i) => i.kind === k)).length ? `still to add: ${ISOLATION_KINDS.slice(0, 3).filter((k) => !items.some((i) => i.kind === k)).join(", ").toLowerCase()}` : "main water, gas and electricity points all recorded ✓"}</div>}
       {items.length === 0 ? <EmptyState icon={Power} title="No isolation points yet" body="Where are the water stopcock, gas emergency valve and main electrical isolator? Record them with a photo so anyone can find them fast in a leak, gas smell or power fault." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {[...items].sort((a, b) => ISOLATION_KINDS.indexOf(a.kind) - ISOLATION_KINDS.indexOf(b.kind)).map((i) => (
-            <button key={i.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(i)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
+            <button key={i.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(i)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)", width: "100%", minWidth: 0, boxSizing: "border-box" }}>
               {i.photo ? <img src={i.photo} alt="" style={{ width: 52, height: 52, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} /> : <span style={{ width: 52, height: 52, borderRadius: 8, background: "var(--danger-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Power size={20} color="var(--danger)" /></span>}
-              <span style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13.5 }}>{i.kind}</b><span style={{ display: "block", fontSize: 12.3 }}>{i.location}</span>{i.serves && <span style={{ display: "block", fontSize: 11.3, color: "var(--faint)" }}>Serves: {i.serves}</span>}</span>
+              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}><b style={{ fontSize: 13.5 }}>{i.kind}</b><span style={{ display: "block", fontSize: 12.3 }}>{i.location}</span>{i.serves && <span style={{ display: "block", fontSize: 11.3, color: "var(--faint)" }}>Serves: {i.serves}</span>}</span>
             </button>
           ))}
         </div>
@@ -879,17 +859,17 @@ export function CarParkView({ items, onSave, onDelete }) {
   const expiring = items.filter((i) => i.expiry && daysUntil(i.expiry) <= 30).length;
   return (
     <div>
-      <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a registration or name — whose car is this?" style={{ width: "100%", marginBottom: 10, fontSize: 15 }} />
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Plus size={15} /> Add a vehicle</PrimaryButton>}
+      <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a registration or name" style={{ width: "100%", boxSizing: "border-box", marginBottom: 10, fontSize: 15 }} />
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: "1 1 180px" }}><Plus size={15} /> Add a vehicle</PrimaryButton>}
         {items.length > 0 && <ExportButton label="CSV" filename="car-park.csv" rows={[["Name", "Registration", "Vehicle", "Space", "Permit", "Expires", "Phone"], ...items.map((i) => [i.name, i.reg, i.vehicle || "", i.space || "", i.permit || "", i.expiry || "", i.phone || ""])]} />}
       </div>
       {expiring > 0 && <div style={{ fontSize: 12, color: "var(--warn)", fontWeight: 650, marginBottom: 8 }}>{expiring} permit{expiring === 1 ? "" : "s"} expired or expiring within 30 days</div>}
       {items.length === 0 ? <EmptyState icon={Car} title="No vehicles yet" body="Staff and regular contractors' vehicles, parking spaces and permits — so you can find who to call when a car is blocking a delivery bay." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {list.map((i) => (
-            <div key={i.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ background: "#F2C94C", color: "#000", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 800, fontSize: 14, padding: "4px 8px", borderRadius: 5, border: "1.5px solid #000", minWidth: 90, textAlign: "center" }}>{String(i.reg).toUpperCase()}</span>
+            <div key={i.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <span style={{ background: "#F2C94C", color: "#000", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 800, fontSize: 13, padding: "4px 7px", borderRadius: 5, border: "1.5px solid #000", flexShrink: 0, whiteSpace: "nowrap", textAlign: "center" }}>{String(i.reg).toUpperCase()}</span>
               <button onClick={() => ACTIVE_CAN_EDIT && setEditing(i)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
                 <div style={{ fontSize: 13, fontWeight: 650 }}>{i.name}</div>
                 <div style={{ fontSize: 11.3, color: i.expiry && daysUntil(i.expiry) < 0 ? "var(--danger)" : "var(--faint)" }}>{[i.vehicle, i.space && `Space ${i.space}`, i.permit && `Permit ${i.permit}`, i.expiry && `${daysUntil(i.expiry) < 0 ? "expired" : "to"} ${fmtDate(i.expiry)}`].filter(Boolean).join(" · ")}</div>
@@ -917,7 +897,7 @@ function CarModal({ existing, onClose, onSave, onDelete }) {
           <Field label="Make / colour"><TextInput value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="e.g. Blue VW Golf" /></Field>
           <Field label="Mobile"><TextInput type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
           <Field label="Space"><TextInput value={space} onChange={(e) => setSpace(e.target.value)} /></Field>
           <Field label="Permit no."><TextInput value={permit} onChange={(e) => setPermit(e.target.value)} /></Field>
           <Field label="Permit expires"><TextInput type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>

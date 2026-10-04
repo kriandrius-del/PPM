@@ -418,6 +418,9 @@ export function WorkDetailModal({ spares = [], onUseSpare, onRepeat, locationNam
           <Field label="Trade">
             <Select value={work.category || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ category: e.target.value || null })}><option value="">—</option>{WORK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
           </Field>
+          <Field label="Capex?">
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.8, cursor: "pointer", paddingTop: 6 }}><input type="checkbox" checked={!!work.capex} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ capex: e.target.checked || undefined })} style={{ margin: 0 }} /> Capital</label>
+          </Field>
           <Field label="Budget type">
             <Select value={work.budgetType || "budgeted"} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ budgetType: e.target.value })}>
               {WORK_BUDGET_TYPES.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}

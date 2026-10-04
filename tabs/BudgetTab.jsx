@@ -7,17 +7,21 @@ import { MONTH_LABELS, WEEKDAY_LABELS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, CATEGORY_KEYS, CATEGORY_META, emptyCatMap } from "../lib/globals.js";
 import { buildAccountingCsv } from "../lib/reports.js";
 import { addDays, addMonths, collectActuals, compressImage, downloadBlob, fmtDate, gbp, getMonthGrid, isMirrored, suggestForDevice, toISODate } from "../lib/utils.js";
+import { BudgetChecks, BudgetOverview, BudgetTools, CostLinesView, PlanImportModal, budgetModel, exportBudgetPack, printBudgetSummary } from "./BudgetPlus.jsx";
 
 /* ---------------------------------------------------------
    Budget & Cost comparison Tab
 --------------------------------------------------------- */
 
-export function BudgetTab({ onRollForward, budgets, services, works, suppliers, devices, budgetLines, visitBudgets, subcategoriesByCategory, onSetBudget, onAddLines, onUpdateLine, onDeleteLine, onApplySuggestion, shiftDateFn = (d) => d }) {
+export function BudgetTab({ costLines = [], onSaveCostLines, onDeleteCostLine, onRecordInvoice, invoices = [], pos = [], savings = [], floorArea = 0, budgetSettings = {}, onSaveBs, onMoveBudget, onSetBudgetsBulk, onBulkUpdateLines, onBulkDeleteLines, userNames = [], userName = "", locationName = "", onRollForward, budgets, services, works, suppliers, devices, budgetLines, visitBudgets, subcategoriesByCategory, onSetBudget, onAddLines, onUpdateLine, onDeleteLine, onApplySuggestion, shiftDateFn = (d) => d }) {
   const [showSuggest, setShowSuggest] = useState(false);
   const [rollOpen, setRollOpen] = useState(false);
   const thisYear = new Date().getFullYear();
   const [year, setYear] = useState(thisYear);
-  const [view, setView] = useState("month"); // 'month' | 'year' | 'calendar' | 'plan'
+  const [view, setView] = useState("overview"); // 'overview' | 'month' | 'year' | 'calendar' | 'plan' | 'variance' | 'checks' | 'tools'
+  const [planQ, setPlanQ] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calSelectedDate, setCalSelectedDate] = useState(null);
@@ -28,6 +32,9 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
   const [addingLine, setAddingLine] = useState(false);
   const [editingLine, setEditingLine] = useState(null);
 
+  const bs = budgetSettings || {};
+  const model = useMemo(() => budgetModel({ year, budgets, services, works, suppliers, devices, budgetLines, costLines, bs }), [year, budgets, services, works, suppliers, devices, budgetLines, costLines, bs]);
+  const prevModel = useMemo(() => budgetModel({ year: year - 1, budgets, services, works, suppliers, devices, budgetLines, costLines, bs, asOf: `${year - 1}-12-31` }), [year, budgets, services, works, suppliers, devices, budgetLines, costLines, bs]);
   const deviceCat = useMemo(() => Object.fromEntries(devices.map((d) => [d.id, d.serviceCategory || "maintenance"])), [devices]);
   const supplierById = useMemo(() => Object.fromEntries(suppliers.map((s) => [s.id, s])), [suppliers]);
 
@@ -289,7 +296,8 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
   const sheetLines = useMemo(() => [...yearLines].sort((a, b) => (a.date || "").localeCompare(b.date || "")), [yearLines]);
   const todayISO = new Date().toISOString().slice(0, 10);
   const overdueUnspentLines = useMemo(() => yearLines.filter((l) => l.actualAmount == null && l.date < todayISO), [yearLines, todayISO]);
-  const displaySheetLines = showOnlyOverdue ? sheetLines.filter((l) => l.actualAmount == null && l.date < todayISO) : sheetLines;
+  const qMatch = (l) => !planQ.trim() || [l.description, CATEGORY_META[l.category]?.label, l.subCategory, supplierById[l.supplierId]?.name].filter(Boolean).some((v) => v.toLowerCase().includes(planQ.trim().toLowerCase()));
+  const displaySheetLines = (showOnlyOverdue ? sheetLines.filter((l) => l.actualAmount == null && l.date < todayISO) : sheetLines).filter(qMatch);
 
   // Variance rollup by category — only lines with a recorded actual spend.
   const varianceByCategory = useMemo(() => {
@@ -325,7 +333,7 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <Select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 100, fontSize: 13 }}>
+        <Select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 100, fontSize: 13, visibility: view === "costlines" ? "hidden" : "visible" }}>
           {Array.from({ length: 6 }, (_, i) => thisYear - 4 + i).map((y) => <option key={y} value={y}>{y}</option>)}
         </Select>
         <div style={{ display: "flex", gap: 10 }}>
@@ -334,6 +342,14 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
         </div>
       </div>
 
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        {[["overview", "Overview"], ["costlines", "Cost lines"], ["plan", "Plan"], ["month", "Month"], ["year", "Year"], ["calendar", "Calendar"], ["variance", "Variance"], ["checks", "Checks"], ["tools", "Tools"]].map(([k, l]) => <ToggleButton key={k} active={view === k} onClick={() => setView(k)}>{l}</ToggleButton>)}
+      </div>
+      {view === "overview" && <BudgetOverview model={model} prevModel={prevModel} year={year} services={services} works={works} suppliers={suppliers} devices={devices} invoices={invoices} pos={pos} savings={savings} floorArea={floorArea} bs={bs} onSaveBs={onSaveBs} />}
+      {view === "costlines" && <CostLinesView lines={costLines} suppliers={suppliers} fyStart={Number(bs.fyStart) || 1} bs={bs} onSaveBs={onSaveBs} onSaveMany={onSaveCostLines} onDelete={onDeleteCostLine} onRecordInvoice={onRecordInvoice} locationName={locationName} userName={userName} />}
+      {view === "checks" && <BudgetChecks costLines={costLines} fyStart={Number(bs.fyStart) || 1} model={model} year={year} services={services} works={works} suppliers={suppliers} devices={devices} budgetLines={budgetLines} invoices={invoices} />}
+      {view === "tools" && <BudgetTools userName={userName} year={year} model={model} budgets={budgets} devices={devices} bs={bs} onSaveBs={onSaveBs} onMoveBudget={onMoveBudget} onSetBudgetsBulk={onSetBudgetsBulk} users={userNames} locationName={locationName} exportData={{ excel: () => exportBudgetPack({ model, year, locationName, lines: budgetLines, suppliers, bs }), print: () => printBudgetSummary({ model, year, locationName, bs }) }} />}
+      {!["overview", "checks", "tools", "costlines"].includes(view) && <>
       {/* Per-category max & control */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
         {CATEGORY_KEYS.map((cat) => {
@@ -385,13 +401,7 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-        <ToggleButton active={view === "month"} onClick={() => setView("month")}>Month</ToggleButton>
-        <ToggleButton active={view === "year"} onClick={() => setView("year")}>Year</ToggleButton>
-        <ToggleButton active={view === "calendar"} onClick={() => setView("calendar")}>Calendar</ToggleButton>
-        <ToggleButton active={view === "plan"} onClick={() => setView("plan")}>Plan</ToggleButton>
-        <ToggleButton active={view === "variance"} onClick={() => setView("variance")}>Variance</ToggleButton>
-      </div>
+      </>}
 
       {(view === "month" || view === "year") && (
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
@@ -440,7 +450,7 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
       ) : view === "calendar" ? (
         <SpendCalendar year={year} month={calMonth} onMonthChange={setCalMonth} spendByDate={spendByDate}
           selectedDate={calSelectedDate} onSelectDate={setCalSelectedDate} />
-      ) : (
+      ) : view === "plan" ? (
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <MetricBlock label="Budgeted total" value={gbp(planTotal)} />
@@ -484,6 +494,14 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
             </button>
           )}
 
+          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <TextInput value={planQ} onChange={(e) => setPlanQ(e.target.value)} placeholder="Search plan lines (description, supplier, category)" style={{ flex: "1 1 200px", minWidth: 0 }} />
+            {ACTIVE_CAN_EDIT && onAddLines && <button onClick={() => setImportOpen(true)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Import lines</button>}
+            {ACTIVE_CAN_EDIT && onBulkUpdateLines && displaySheetLines.length > 0 && <button onClick={() => setBulkOpen((v) => !v)} style={{ background: bulkOpen ? "var(--accent)" : "var(--card-hi)", color: bulkOpen ? "var(--on-accent)" : "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Change {planQ.trim() ? "these" : "all"} {displaySheetLines.length}</button>}
+          </div>
+          {planQ.trim() && <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{displaySheetLines.length} line{displaySheetLines.length === 1 ? "" : "s"} match · budgeted <b>{gbp(displaySheetLines.reduce((t, l) => t + (Number(l.amount) || 0), 0))}</b> · actual <b>{gbp(displaySheetLines.reduce((t, l) => t + (Number(l.actualAmount) || 0), 0))}</b></div>}
+          {bulkOpen && <PlanBulkPanel lines={displaySheetLines} onApply={(map) => { onBulkUpdateLines(map); setBulkOpen(false); }} onDelete={(ids) => { onBulkDeleteLines(ids); setBulkOpen(false); }} />}
+          {importOpen && <PlanImportModal year={year} suppliers={suppliers} onClose={() => setImportOpen(false)} onImport={(ls) => { onAddLines(ls); setImportOpen(false); }} />}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "flex", gap: 6 }}>
               <ToggleButton active={planView === "sheet"} onClick={() => setPlanView("sheet")}>Sheet</ToggleButton>
@@ -576,9 +594,9 @@ export function BudgetTab({ onRollForward, budgets, services, works, suppliers, 
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
-      {perVisitRows.length > 0 && (
+      {perVisitRows.length > 0 && !["overview", "checks", "tools", "costlines"].includes(view) && (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Budget per visit vs actual</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -797,6 +815,7 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
   const [customCount, setCustomCount] = useState("7");
   const [manualDates, setManualDates] = useState(existing?.date ? [existing.date] : [`${defaultYear}-01-15`]);
   const [attachment, setAttachment] = useState(existing?.attachment || null);
+  const [capex, setCapex] = useState(!!existing?.capex);
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -828,7 +847,7 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
     if (!description.trim() || !amount) return;
     const amt = Number(amount);
     if (isEdit) {
-      const patch = { description: description.trim(), category, subCategory: subCategory.trim(), supplierId: supplierId || null, date: startDate, amount: amt, attachment };
+      const patch = { description: description.trim(), category, subCategory: subCategory.trim(), supplierId: supplierId || null, date: startDate, amount: amt, attachment, capex: capex || undefined };
       if (existing.amount !== amt) {
         const prevHistory = existing.amountHistory || [];
         patch.amountHistory = [...prevHistory, { amount: existing.amount, changedAt: new Date().toISOString().slice(0, 10) }];
@@ -838,7 +857,7 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
     }
     if (repeat === "manual") {
       const lines = manualDates.filter(Boolean).map((date) => ({
-        description: description.trim(), category, subCategory: subCategory.trim(), supplierId: supplierId || null, date, amount: amt, attachment,
+        description: description.trim(), category, subCategory: subCategory.trim(), supplierId: supplierId || null, date, amount: amt, attachment, capex: capex || undefined,
       }));
       onSave(lines);
       return;
@@ -854,7 +873,7 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
     }
     const lines = Array.from({ length: count }, (_, i) => ({
       description: description.trim(), category, subCategory: subCategory.trim(), supplierId: supplierId || null,
-      date: dateFor(i), amount: amt, attachment,
+      date: dateFor(i), amount: amt, attachment, capex: capex || undefined,
     }));
     onSave(lines);
   }
@@ -955,6 +974,7 @@ export function AddBudgetLineModal({ suppliers, defaultYear, existing, subcatego
             Creates {repeat === "monthly" ? 12 : repeat === "weekly" ? 52 : 4} lines, one per {repeat === "monthly" ? "month" : repeat === "weekly" ? "week" : "quarter"}, starting from the start date — this can roll into the following year automatically.
           </span>
         )}
+        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, fontWeight: 600, cursor: "pointer" }}><input type="checkbox" checked={capex} onChange={(e) => setCapex(e.target.checked)} style={{ margin: 0 }} /> Capital spend (capex) — a new or replacement asset rather than running cost</label>
         <PrimaryButton onClick={submit}>{isEdit ? <CheckCircle2 size={15} /> : <Plus size={15} />} {isEdit ? "Save changes" : "Add to plan"}</PrimaryButton>
         {isEdit && (
           confirmingDelete ? (
@@ -1241,5 +1261,25 @@ export function SuggestPlanModal({ devices, services, visitBudgets, shiftDateFn,
         )}
       </div>
     </Modal>
+  );
+}
+
+function PlanBulkPanel({ lines, onApply, onDelete }) {
+  const [pct, setPct] = useState(""); const [months, setMonths] = useState(""); const [onlyPlanned, setOnlyPlanned] = useState(true);
+  const target = lines.filter((l) => !onlyPlanned || l.actualAmount == null);
+  return (
+    <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, marginBottom: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700 }}>Change {target.length} line{target.length === 1 ? "" : "s"} at once</div>
+      <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, cursor: "pointer" }}><input type="checkbox" checked={onlyPlanned} onChange={(e) => setOnlyPlanned(e.target.checked)} style={{ margin: 0 }} /> Only lines with no actual spend recorded</label>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5 }}>Change amounts by</span><TextInput type="number" step="0.5" value={pct} onChange={(e) => setPct(e.target.value)} placeholder="e.g. 5 or -10" style={{ width: 100 }} /><span style={{ fontSize: 12.5 }}>%</span>
+        <button onClick={() => { const p = Number(pct); if (!p) return; onApply(Object.fromEntries(target.map((l) => [l.id, { amount: Math.round((Number(l.amount) || 0) * (1 + p / 100) * 100) / 100 }]))); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5 }}>Move dates by</span><TextInput type="number" value={months} onChange={(e) => setMonths(e.target.value)} placeholder="e.g. 1 or -2" style={{ width: 100 }} /><span style={{ fontSize: 12.5 }}>months</span>
+        <button onClick={() => { const m = Number(months); if (!m) return; onApply(Object.fromEntries(target.map((l) => [l.id, { date: addMonths(l.date, m) }]))); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
+      </div>
+      <button onClick={() => { if (window.confirm(`Delete ${target.length} plan line${target.length === 1 ? "" : "s"}? This can't be undone.`)) onDelete(target.map((l) => l.id)); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--danger)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Delete these {target.length} lines</button>
+    </div>
   );
 }

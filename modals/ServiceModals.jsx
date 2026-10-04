@@ -3,9 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, Ban, BookOpen, Camera, CheckCircle2, CheckSquare, ChevronDown, ClipboardList, Copy, Download, FileSpreadsheet, HardHat, ImagePlus, KeyRound, Link2, Loader2, Mail, MapPin, PauseCircle, Pencil, Plus, Printer, RefreshCw, ShieldCheck, SkipForward, Square, Star, StickyNote, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, SignOffSection, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, IMPORT_FIELDS, JOB_TEMPLATES, LATE_REASONS, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
-import { ACTIVE_BRAND, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, CUSTOM_FIELDS, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
+import { ACTIVE_BRAND, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
 import { buildAssetRecord, buildBlankChecklist, openPrintReport, tableHtml } from "../lib/reports.js";
-import { addDays, addMonths, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
+import { addDays, addMonths, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, formatCustomValues, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
 import { TEMPLATE_EXAMPLE_PREFIX, buildServicesTemplate, readSpreadsheetRows } from "../lib/excelTemplate.js";
 
 export function DeviceHistoryModal({ changeLog = [], spares = [], onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
@@ -79,7 +79,7 @@ export function DeviceHistoryModal({ changeLog = [], spares = [], onMerge, onRec
             );
           })()}
           {(device.gallery || []).length > 0 && <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>{device.gallery.map((g, i) => <a key={i} href={g} target="_blank" rel="noopener noreferrer"><img src={g} alt="" style={{ width: 72, height: 72, borderRadius: 8, objectFit: "cover" }} /></a>)}</div>}
-          {CUSTOM_FIELDS.some((f) => device.custom?.[f.key]) && <div style={{ fontSize: 12.3, background: "var(--card-hi)", borderRadius: 9, padding: "7px 10px", display: "flex", flexWrap: "wrap", gap: "2px 14px" }}>{CUSTOM_FIELDS.filter((f) => device.custom?.[f.key]).map((f) => <span key={f.key}><span style={{ color: "var(--faint)" }}>{f.label}:</span> <b>{f.type === "date" ? fmtDate(device.custom[f.key]) : device.custom[f.key]}</b></span>)}</div>}
+          {formatCustomValues("service", device.custom || {}) && <div style={{ fontSize: 12.3, background: "var(--card-hi)", borderRadius: 9, padding: "7px 10px" }}>{formatCustomValues("service", device.custom || {})}</div>}
           {changeLog.length > 0 && <details style={{ fontSize: 12 }}><summary style={{ cursor: "pointer", color: "var(--accent)", fontWeight: 650 }}>Change history ({changeLog.length})</summary><div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>{changeLog.map((a) => <div key={a.id}><span style={{ color: "var(--faint)" }}>{new Date(a.at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" })} · {a.by}:</span> {a.text}</div>)}</div></details>}
           {spares.length > 0 && <div style={{ fontSize: 12, background: "var(--card-hi)", borderRadius: 9, padding: "7px 10px" }}><b>Spares for this service:</b> {spares.map((sp) => `${sp.name} (${sp.qty} in stock${Number(sp.qty) <= Number(sp.minQty) ? " — reorder" : ""})`).join(" · ")}</div>}
           {Number(device.usageInterval) > 0 && <UsageCard device={device} onRecord={onRecordUsage} />}
@@ -287,7 +287,6 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
   const [locationId, setLocationId] = useState(src?.locationId || defaultLocationId || locations[0]?.id || "");
   const [supplierId, setSupplierId] = useState(src?.supplierId || "");
   const [checklist, setChecklist] = useState(src?.checklist || []);
-  const [customVals, setCustomVals] = useState(src?.custom || {});
   const [templateId, setTemplateId] = useState("");
   const [fieldErr, setFieldErr] = useState("");
   function applyTemplate(id) {
@@ -361,7 +360,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
       lastServiceDate: existing?.lastServiceDate ?? null,
       budgetPerVisit: budgetPerVisit ? Number(budgetPerVisit) : 0,
       manufacturer: manufacturer.trim(), model: model.trim(), serialNumber: serialNumber.trim(),
-      installDate: installDate || null, warrantyEnd: warrantyEnd || null, usageInterval: usageInterval === "" ? null : Number(usageInterval), custom: customVals, gallery,
+      installDate: installDate || null, warrantyEnd: warrantyEnd || null, usageInterval: usageInterval === "" ? null : Number(usageInterval), gallery,
       expectedLifeYears: expectedLifeYears ? Number(expectedLifeYears) : null, replacementCost: replacementCost ? Number(replacementCost) : null,
       condition: condition || null, conditionNotes: conditionNotes.trim(), conditionDate: condition && condition !== (existing?.condition || "") ? new Date().toISOString().slice(0, 10) : (existing?.conditionDate || null),
       parentId: parentId || null, criticality, tags: [...new Set(tags.split(",").map((t) => t.trim()).filter(Boolean))],
@@ -471,7 +470,6 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
               <div style={{ display: "flex", gap: 8 }}>
                 <Field label="Installed"><TextInput type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} /></Field>
                 <Field label="Warranty ends"><TextInput type="date" value={warrantyEnd} onChange={(e) => setWarrantyEnd(e.target.value)} /></Field>
-                {CUSTOM_FIELDS.map((f) => <Field key={f.key} label={f.label}><TextInput type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"} value={customVals[f.key] ?? ""} onChange={(e) => setCustomVals((p) => ({ ...p, [f.key]: e.target.value }))} /></Field>)}
                 <Field label="Also service every … run hours (optional)"><TextInput type="number" min="0" value={usageInterval} onChange={(e) => setUsageInterval(e.target.value)} placeholder="e.g. 250 for a generator" /></Field>
               </div>
               <PhotoStrip photos={gallery} onChange={setGallery} max={6} label="More photos (rating plate, wiring, location…)" />

@@ -184,6 +184,7 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
   const [trades, setTrades] = useState(existing?.trades || []);
   const [contacts, setContacts] = useState(existing?.contacts || []);
   const [targetOnTime, setTargetOnTime] = useState(existing?.targetOnTime != null ? String(existing.targetOnTime) : "");
+  const [upliftPct, setUpliftPct] = useState(existing?.upliftPct != null ? String(existing.upliftPct) : "");
   const [paymentDays, setPaymentDays] = useState(existing?.paymentDays != null ? String(existing.paymentDays) : "30");
   const [wasteLicence, setWasteLicence] = useState(existing?.wasteLicence || "");
   const [wasteLicenceExpiry, setWasteLicenceExpiry] = useState(existing?.wasteLicenceExpiry || "");
@@ -197,7 +198,7 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
 
   function submit() {
     if (!name.trim()) return;
-    onSave({ status, statusReason: status === "approved" ? "" : statusReason.trim(), contacts, trades, paymentDays: Number(paymentDays) || 30, targetOnTime: targetOnTime === "" ? null : Number(targetOnTime), rates: { hourly: hourlyRate === "" ? null : Number(hourlyRate), callout: calloutFee === "" ? null : Number(calloutFee), outOfHours: outOfHours === "" ? null : Number(outOfHours), materialsMarkup: markup === "" ? null : Number(markup) }, id: existing?.id, category, subCategory: subCategory.trim(), name: name.trim(), contact: contact.trim(),
+    onSave({ status, statusReason: status === "approved" ? "" : statusReason.trim(), contacts, trades, paymentDays: Number(paymentDays) || 30, upliftPct: upliftPct === "" ? null : Number(upliftPct), targetOnTime: targetOnTime === "" ? null : Number(targetOnTime), rates: { hourly: hourlyRate === "" ? null : Number(hourlyRate), callout: calloutFee === "" ? null : Number(calloutFee), outOfHours: outOfHours === "" ? null : Number(outOfHours), materialsMarkup: markup === "" ? null : Number(markup) }, id: existing?.id, category, subCategory: subCategory.trim(), name: name.trim(), contact: contact.trim(),
       managerName: managerName.trim(), managerEmail: managerEmail.trim(), managerPhone: managerPhone.trim(), oohPhone: oohPhone.trim(),
       contractStart: contractStart || null, contractEnd: contractEnd || null, noticeDays: noticeDays ? Number(noticeDays) : 60, contractRef: contractRef.trim(),
       priceHistory: existing && Number(existing.costAmount) !== (costAmount ? Number(costAmount) : 0)
@@ -292,6 +293,7 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{WORK_CATEGORIES.map((c) => <ToggleButton key={c} active={trades.includes(c)} onClick={() => setTrades((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c])}>{c}</ToggleButton>)}</div>
         </Field>
         <Field label="Target: visits on time (%) — shown red/amber/green on the card"><TextInput type="number" min="0" max="100" value={targetOnTime} onChange={(e) => setTargetOnTime(e.target.value)} placeholder="e.g. 95" /></Field>
+        <Field label="Expected price increase at renewal (%)"><TextInput type="number" step="0.5" value={upliftPct} onChange={(e) => setUpliftPct(e.target.value)} placeholder="e.g. 5 — shows next year's impact in Budget → Checks" /></Field>
         <Field label="Payment terms (days) — sets invoice due dates"><TextInput type="number" min="0" value={paymentDays} onChange={(e) => setPaymentDays(e.target.value)} /></Field>
         <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Rate card (optional) — to check quotes and invoices against</div>
