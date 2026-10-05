@@ -1,7 +1,7 @@
 // Home dashboard: KPIs, reminders, contractor sign-in, emergency contacts, statutory register.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, CloudSun, Contact, Flame, HardHat, History, ListTodo, LogIn, LogOut, Mail, Megaphone, Monitor, Pencil, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, Sun, UserCheck, Wrench, X } from "lucide-react";
-import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
+import { AlertTriangle, ArrowUpRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, CloudSun, Contact, Flame, HardHat, History, ListTodo, LogIn, LogOut, Mail, Megaphone, Monitor, Pencil, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, StickyNote, Sun, UserCheck, UserPlus, Wrench, X } from "lucide-react";
+import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { DEFAULT_EMERGENCY, REPEAT_OPTIONS, STATUTORY_ITEMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
 import { openPrintReport, tableHtml } from "../lib/reports.js";
@@ -12,7 +12,7 @@ import { OnCallCard, printBadge } from "./MoreViews.jsx";
 /* ---------------------------------------------------------
    Home dashboard
 --------------------------------------------------------- */
-export function HomeTab({ onEmergencySheet, upcomingKeyDates = [], onTvMode, submissionsCount = 0, onReviewSubmissions, onRollCall, onPeopleDirectory, myActions = [], myReminders = [], weatherSource = null, site = null, onEditSite, complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
+export function HomeTab({ recentServices = [], onOpenService, expected = [], onAddExpected, onRemoveExpected, onArriveExpected, notesKey = "", onEmergencySheet, upcomingKeyDates = [], onTvMode, submissionsCount = 0, onReviewSubmissions, onRollCall, onPeopleDirectory, myActions = [], myReminders = [], weatherSource = null, site = null, onEditSite, complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
   const today = new Date().toISOString().slice(0, 10);
   const hour = new Date().getHours();
   const comp = useMemo(() => computeCompliance(devices, visitBudgets, services), [devices, visitBudgets, services]);
@@ -263,6 +263,20 @@ export function HomeTab({ onEmergencySheet, upcomingKeyDates = [], onTvMode, sub
         {show("oncall") && (onCall.length > 0 || ACTIVE_CAN_EDIT) && <div className="wrap c2"><OnCallCard rota={onCall} onSave={onSaveOnCall} /></div>}
         {show("emergency") && <div className="wrap c2"><EmergencyContacts suppliers={suppliers} contacts={emergency} onSave={onSaveEmergency} /></div>}
         {show("statutory") && <div className="wrap c2"><StatutoryRegister custom={customStatutory} onSaveCustom={onSaveCustomStatutory} devices={devices} na={statutoryNA} onNA={onStatutoryNA} onAdd={onAddStatutory} onOpenDevice={onOpenDevice} locationName={locationName} /></div>}
+        {(() => { const h = new Date().getHours(); const on = (signins || []).filter((x) => !x.outAt && x.locationId === (site?.id || x.locationId)); return h >= 18 && on.length > 0 ? (
+          <section className="bcard c4" style={{ background: "var(--warn-soft)", flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Clock size={18} color="var(--warn)" />
+            <span style={{ flex: 1, fontSize: 13 }}><b>{on.length} still signed in after 6pm:</b> {on.slice(0, 6).map((x) => x.name).join(", ")}{on.length > 6 ? "…" : ""} — check they've left, or sign them out in the register below.</span>
+          </section>
+        ) : null; })()}
+        {(expected.length > 0 || onAddExpected) && ACTIVE_CAN_EDIT && <div className="wrap c2"><ExpectedVisitors list={expected} onAdd={onAddExpected} onRemove={onRemoveExpected} onArrive={onArriveExpected} /></div>}
+        {recentServices.length > 0 && (
+          <section className="bcard c2" aria-label="Recently opened">
+            <div className="blabel"><History size={14} /><span>Recently opened</span></div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{recentServices.map((d) => <button key={d.id} onClick={() => onOpenService(d.id)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 14, padding: "6px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>{d.name}</button>)}</div>
+          </section>
+        )}
+        {notesKey && <div className="wrap c2"><MyNotes storageKey={notesKey} /></div>}
         {show("siteprofile") && site && <div className="wrap c2"><SiteProfileCard site={site} onEdit={onEditSite} onDirectory={onPeopleDirectory} /></div>}
         {show("siteinfo") && <div className="wrap c2"><SiteInfoCard info={siteInfo} onSave={onSaveSiteInfo} /></div>}
 
@@ -882,6 +896,46 @@ export function SiteProfileCard({ site, onEdit, onDirectory }) {
         {onDirectory && <button onClick={onDirectory} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>People at all sites →</button>}
         {staff.length > 4 && <button onClick={() => setAll((v) => !v)} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{all ? "Show fewer" : `Show all ${staff.length}`}</button>}
       </div>
+    </div>
+  );
+}
+
+function ExpectedVisitors({ list, onAdd, onRemove, onArrive }) {
+  const [adding, setAdding] = useState(false); const [d, setD] = useState({ name: "", company: "", host: "", date: new Date().toISOString().slice(0, 10), kind: "visitor" });
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span className="blabel" style={{ margin: 0 }}><UserPlus size={14} /><span>Expected visitors</span></span><button onClick={() => setAdding((v) => !v)} style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{adding ? "Close" : "+ Expect someone"}</button></div>
+      {adding && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+          <TextInput value={d.name} onChange={(e) => setD((p) => ({ ...p, name: e.target.value }))} placeholder="Name" />
+          <TextInput value={d.company} onChange={(e) => setD((p) => ({ ...p, company: e.target.value }))} placeholder="Company" />
+          <TextInput value={d.host} onChange={(e) => setD((p) => ({ ...p, host: e.target.value }))} placeholder="Visiting (host)" />
+          <TextInput type="date" value={d.date} onChange={(e) => setD((p) => ({ ...p, date: e.target.value }))} />
+          <select value={d.kind} onChange={(e) => setD((p) => ({ ...p, kind: e.target.value }))} style={{ ...inputStyle, fontSize: 12.5 }}><option value="visitor">Visitor</option><option value="contractor">Contractor</option></select>
+          <button onClick={() => { if (!d.name.trim()) return; onAdd({ ...d, name: d.name.trim(), company: d.company.trim(), host: d.host.trim() }); setD((p) => ({ ...p, name: "", company: "" })); setAdding(false); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Add</button>
+        </div>
+      )}
+      {list.length === 0 && !adding && <div className="bsub">Pre-register visitors and contractors — on the day, sign them in with one tap.</div>}
+      {list.slice(0, 8).map((v) => (
+        <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.8, borderTop: "1px solid var(--border)", paddingTop: 6 }}>
+          <span style={{ flex: 1, minWidth: 0 }}><b>{v.name}</b>{v.company ? ` · ${v.company}` : ""}<span style={{ display: "block", fontSize: 11, color: "var(--faint)" }}>{v.date === today ? "Today" : fmtDate(v.date)}{v.host ? ` · visiting ${v.host}` : ""} · {v.kind}</span></span>
+          {v.date === today && onArrive && <button onClick={() => onArrive(v)} style={{ background: "var(--ok)", color: "#fff", border: "none", borderRadius: 7, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Arrived</button>}
+          <button onClick={() => onRemove(v.id)} title="Remove" style={{ background: "none", border: "none", cursor: "pointer" }}><X size={13} color="#A3ABB4" /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
+function MyNotes({ storageKey }) {
+  const [t, setT] = useState(() => { try { return localStorage.getItem(storageKey) || ""; } catch (e) { return ""; } });
+  const [saved, setSaved] = useState(true);
+  useEffect(() => { try { setT(localStorage.getItem(storageKey) || ""); } catch (e) { /* ignore */ } }, [storageKey]);
+  useEffect(() => { if (saved) return; const h = setTimeout(() => { try { localStorage.setItem(storageKey, t); } catch (e) { /* ignore */ } setSaved(true); }, 600); return () => clearTimeout(h); }, [t, saved, storageKey]);
+  return (
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between" }}><span className="blabel" style={{ margin: 0 }}><StickyNote size={14} /><span>My notes</span></span><span style={{ fontSize: 10.5, color: "var(--faint)" }}>{saved ? "Saved on this device · private" : "Saving…"}</span></div>
+      <textarea value={t} onChange={(e) => { setT(e.target.value); setSaved(false); }} placeholder="Jot things down — only you see these, on this device." style={{ ...inputStyle, minHeight: 80, resize: "vertical", fontSize: 13 }} />
     </div>
   );
 }

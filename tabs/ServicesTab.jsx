@@ -11,6 +11,7 @@ import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js
 /* ---------------------------------------------------------
    Devices Tab
 --------------------------------------------------------- */
+const annualCost = (d) => (Number(d.budgetPerVisit) || 0) * (Number(d.serviceIntervalMonths) > 0 ? 12 / Number(d.serviceIntervalMonths) : 1);
 export function DevicesTab({ onCopySite, spares = [], onBookTogether, history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
   const [chaseFocus, setChaseFocus] = useState(null); // null = closed, "all" or a deviceId
   const overdueList = chaseDevices.filter((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n < 0; });
@@ -45,6 +46,7 @@ export function DevicesTab({ onCopySite, spares = [], onBookTogether, history = 
     category: (a, b) => (CATEGORY_META[a.serviceCategory]?.label || "").localeCompare(CATEGORY_META[b.serviceCategory]?.label || "") || a.name.localeCompare(b.name),
     supplier: (a, b) => (supplierById[a.supplierId]?.name || "~").localeCompare(supplierById[b.supplierId]?.name || "~") || byDue(a, b),
     area: (a, b) => (a.area || "~").localeCompare(b.area || "~") || a.name.localeCompare(b.name),
+    cost: (a, b) => annualCost(b) - annualCost(a) || byDue(a, b),
     criticality: (a, b) => ((CRITICALITY[a.criticality || "normal"]?.rank ?? 2) - (CRITICALITY[b.criticality || "normal"]?.rank ?? 2)) || byDue(a, b),
     condition: (a, b) => (b.condition || "").localeCompare(a.condition || "") || byDue(a, b),
   };
@@ -143,6 +145,7 @@ export function DevicesTab({ onCopySite, spares = [], onBookTogether, history = 
             <option value="supplier">Sort: supplier</option>
             <option value="area">Sort: area / room</option>
             <option value="criticality">Sort: most critical first</option>
+            <option value="cost">Sort: highest yearly budget first</option>
             <option value="condition">Sort: worst condition first</option>
           </select>
         </label>
@@ -207,6 +210,7 @@ export function DevicesTab({ onCopySite, spares = [], onBookTogether, history = 
                     )}
                     <div style={{ fontSize: 12.5, color: "var(--faint)", display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
                       {d.assetTag && <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>#{d.assetTag}</span>}
+                      {annualCost(d) > 0 && <span title="Budget per year (budget per visit × visits a year)" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(annualCost(d)).replace(/\.00$/, "")}/yr</span>}
                       {d.category && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Tag size={11} />{d.category}</span>}
                       {d.budgetPerVisit ? <span>{gbp(d.budgetPerVisit)}/visit budget</span> : null}
                     </div>
@@ -467,7 +471,7 @@ export function BulkActionsModal({ locations = [], count, suppliers, areas, onCl
     <Modal title={`Change ${count} service${count === 1 ? "" : "s"}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[["reschedule", "Move due date"], ["supplier", "Set supplier"], ...(ACTIVE_USERS.length ? [["assign", "Assign to"]] : []), ["area", "Set area"], ["pause", "Pause"], ["qr", "Print QR stickers"], ...(locations.length ? [["copy", "Copy to site"]] : []), ["archive", "Archive"]].map(([k, l]) => <ToggleButton key={k} active={action === k} onClick={() => { setAction(k); setConfirmArchive(false); }}>{l}</ToggleButton>)}
+          {[["reschedule", "Move due date"], ["supplier", "Set supplier"], ["budget", "Set budget per visit"], ["checklist", "Add checklist items"], ...(ACTIVE_USERS.length ? [["assign", "Assign to"]] : []), ["area", "Set area"], ["pause", "Pause"], ["qr", "Print QR stickers"], ...(locations.length ? [["copy", "Copy to site"]] : []), ["archive", "Archive"]].map(([k, l]) => <ToggleButton key={k} active={action === k} onClick={() => { setAction(k); setConfirmArchive(false); }}>{l}</ToggleButton>)}
         </div>
         {action === "reschedule" && (
           <>
@@ -485,6 +489,20 @@ export function BulkActionsModal({ locations = [], count, suppliers, areas, onCl
               </Select>
             </Field>
             <PrimaryButton onClick={() => onApply("supplier", supplierId)}><UsersIcon size={15} /> Apply to {count}</PrimaryButton>
+          </>
+        )}
+        {action === "budget" && (
+          <>
+            <Field label="Budget per visit (£)"><TextInput type="number" min="0" step="0.01" value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. 250" /></Field>
+            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Their planned visits in the budget are rebuilt for the next 12 months at the new amount. Visits already logged aren't changed. Enter 0 to take them out of the budget.</div>
+            <PrimaryButton onClick={() => area !== "" && onApply("budget", Number(area) || 0)}><CheckCircle2 size={15} /> Apply to {count}</PrimaryButton>
+          </>
+        )}
+        {action === "checklist" && (
+          <>
+            <Field label="Checklist items to add (one per line)"><TextArea value={area} onChange={(e) => setArea(e.target.value)} placeholder={"Check isolation labels\nPhoto of rating plate"} style={{ minHeight: 80 }} /></Field>
+            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Added to the end of each service's checklist; items already there aren't duplicated.</div>
+            <PrimaryButton onClick={() => area.trim() && onApply("checklist", area.split("\n").map((x) => x.trim()).filter(Boolean))}><CheckCircle2 size={15} /> Add to {count}</PrimaryButton>
           </>
         )}
         {action === "area" && (

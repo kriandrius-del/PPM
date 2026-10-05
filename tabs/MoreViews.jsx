@@ -9,7 +9,7 @@ import { ACTION_SOURCES, CLEANING_FREQ, COSHH_HAZARDS, EQUIPMENT_TYPES, ISOLATIO
 import { FEEDBACK_TOPICS } from "../components/PublicPages.jsx";
 
 /* ---------- Action tracker (risk assessment / audit / incident findings) ---------- */
-export function ActionsView({ actions, people = [], onSave, onDelete, locationName }) {
+export function ActionsView({ onReassign, actions, people = [], onSave, onDelete, locationName }) {
   const [editing, setEditing] = useState(null);
   const [filter, setFilter] = useState("open");
   const rank = { high: 0, medium: 1, low: 2 };
@@ -24,6 +24,7 @@ export function ActionsView({ actions, people = [], onSave, onDelete, locationNa
   }
   return (
     <div>
+      {ACTIVE_CAN_EDIT && onReassign && [...new Set(actions.filter((a) => a.status !== "done" && a.owner).map((a) => a.owner))].length > 0 && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}><button onClick={() => { const owners = [...new Set(actions.filter((a) => a.status !== "done" && a.owner).map((a) => a.owner))]; const from = window.prompt(`Reassign the open actions of which person?\n${owners.join(", ")}`, owners[0]); if (!from) return; const to = window.prompt(`Give ${from}'s ${actions.filter((a) => a.status !== "done" && a.owner === from).length} open action(s) to:`, ""); if (to && to.trim()) onReassign(from.trim(), to.trim()); }} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Reassign someone's actions</button></div>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
         <MetricBlock label="Open actions" value={openN} />
         <MetricBlock label="Overdue" value={overdue} tone={overdue ? "danger" : "ok"} />
@@ -396,6 +397,7 @@ function CoshhModal({ existing, areas, onClose, onSave, onDelete }) {
           <Field label="Review by"><TextInput type="date" value={reviewDate} onChange={(e) => setReviewDate(e.target.value)} /></Field>
         </div>
         <PrimaryButton onClick={() => product.trim() && onSave({ id: existing?.id, product: product.trim(), maker: maker.trim(), use: use.trim(), location: location.trim(), hazards, controls: controls.trim(), firstAid: firstAid.trim(), sdsUrl: sdsUrl.trim() ? (/^https?:\/\//i.test(sdsUrl.trim()) ? sdsUrl.trim() : `https://${sdsUrl.trim()}`) : "", assessed: assessed || null, reviewDate: reviewDate || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        {existing && <button type="button" onClick={() => { const e = escapeHtml; openPrintReport(`COSHH — ${existing.product}`, "", `<div style="border:3px solid #D97706;border-radius:12px;padding:16px;max-width:520px"><div style="font-size:22px;font-weight:800">${e(existing.product)}</div><div style="font-size:12px;color:#56616D">${e(existing.maker || "")}${existing.use ? ` · ${e(existing.use)}` : ""}</div><div style="margin:10px 0;font-weight:800;color:#C53030">${e((existing.hazards || []).join(" · ") || "No hazards recorded")}</div><div><b>Controls & PPE:</b> ${e(existing.controls || "—")}</div><div style="margin-top:6px"><b>First aid:</b> ${e(existing.firstAid || "—")}</div><div style="margin-top:6px"><b>Stored:</b> ${e(existing.location || "—")}</div><div style="margin-top:10px;font-size:11px;color:#56616D">Safety data sheet: ${existing.sdsUrl ? e(existing.sdsUrl) : "ask the facilities team"} · Review by ${existing.reviewDate ? fmtDate(existing.reviewDate) : "—"}</div></div>`); }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Print data card (to display where it's stored)</button>}
         {existing && <ConfirmTextDelete label="Delete" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -416,6 +418,7 @@ export function EquipmentView({ items, onSave, onDelete, locationName }) {
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Plus size={15} /> Add equipment</PrimaryButton>}
+        {items.length > 0 && <button title="Print inspection labels" onClick={() => { const e = escapeHtml; openPrintReport("Equipment inspection labels", locationName, `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">${items.filter((i) => i.status !== "withdrawn").map((i) => `<div style="border:1.5px solid #1B2430;border-radius:8px;padding:8px;page-break-inside:avoid"><div style="font-weight:800;font-size:13px">${e(i.name)}</div><div style="font-family:monospace;font-size:12px">${e(i.ref || "")}</div><div style="font-size:11px;margin-top:4px">Inspected: <b>${i.lastInspected ? fmtDate(i.lastInspected) : "—"}</b></div><div style="font-size:11px">Next due: <b>${i.nextDue ? fmtDate(i.nextDue) : "—"}</b></div><div style="font-size:9.5px;color:#56616D;margin-top:4px">Do not use after the due date</div></div>`).join("")}</div>`); }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center", fontSize: 12, fontWeight: 650, color: "var(--accent)", fontFamily: "inherit" }}>Labels</button>}
         {items.length > 0 && <button title="Print" onClick={() => { const e = escapeHtml; openPrintReport("Equipment inspection register", locationName, tableHtml(["Item", "Type", "ID / serial", "Location", "Last inspected", "Result", "Next due"], [...items].sort((a, b) => String(a.type).localeCompare(String(b.type))).map((i) => [`<b>${e(i.name)}</b>`, e(EQUIPMENT_TYPES[i.type]?.label || ""), e(i.ref || ""), e(i.location || ""), i.lastInspected ? fmtDate(i.lastInspected) : "", i.status === "failed" ? '<span class="bad">Failed</span>' : i.status === "withdrawn" ? "Withdrawn" : '<span class="ok">Pass</span>', i.nextDue ? `<span class="${daysUntil(i.nextDue) < 0 ? "bad" : ""}">${fmtDate(i.nextDue)}</span>` : ""]))); }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center" }}><Printer size={14} color="#2B4562" /></button>}
       </div>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
@@ -705,6 +708,7 @@ export function KeyDatesView({ items, onSave, onDelete }) {
                 <div style={{ fontSize: 13, fontWeight: 650 }}>{i.title}</div>
                 <div style={{ fontSize: 11.5, color: n < 0 ? "var(--danger)" : warn ? "var(--warn)" : "var(--faint)", fontWeight: warn ? 700 : 500 }}>{i.type} · {fmtDate(i.date)} · {n < 0 ? `${-n} days ago` : n === 0 ? "today" : `in ${n} days`}</div>
               </button>
+              {ACTIVE_CAN_EDIT && <button onClick={() => { const m = window.prompt("Postpone by how many months?", "1"); if (m && Number(m)) onSave({ ...i, date: addMonths(i.date, Number(m)), notes: `${i.notes ? `${i.notes}\n` : ""}Postponed from ${fmtDate(i.date)}` }); }} title="Postpone" style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 9px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Postpone</button>}
               {ACTIVE_CAN_EDIT && <button onClick={() => onSave({ ...i, done: true, doneAt: new Date().toISOString() })} style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Done</button>}
             </div>
           ); })}
@@ -736,7 +740,7 @@ function KeyDateModal({ existing, onClose, onSave, onDelete }) {
 }
 
 /* ---------- Occupant feedback results ---------- */
-export function FeedbackView({ items, locationId, locationName, areas = [] }) {
+export function FeedbackView({ onRaiseJob, items, locationId, locationName, areas = [] }) {
   const [days, setDays] = useState(90); const [area, setArea] = useState("");
   const since = Date.now() - days * 86400000;
   const list = items.filter((f) => new Date(f.at).getTime() >= since && (!area || f.area === area));
@@ -760,7 +764,7 @@ export function FeedbackView({ items, locationId, locationName, areas = [] }) {
             {list.filter((f) => f.comment).slice(0, 40).map((f) => (
               <div key={f.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px" }}>
                 <div style={{ fontSize: 13 }}>"{f.comment}"</div>
-                <div style={{ fontSize: 11, color: "var(--faint)" }}>{new Date(f.at).toLocaleDateString("en-GB")}{f.area ? ` · ${f.area}` : ""}{f.ratings?.Overall ? ` · overall ${f.ratings.Overall}★` : ""}</div>
+                <div style={{ fontSize: 11, color: "var(--faint)", display: "flex", gap: 8, alignItems: "center" }}><span style={{ flex: 1 }}>{new Date(f.at).toLocaleDateString("en-GB")}{f.area ? ` · ${f.area}` : ""}{f.ratings?.Overall ? ` · overall ${f.ratings.Overall}★` : ""}</span>{ACTIVE_CAN_EDIT && onRaiseJob && <button onClick={() => onRaiseJob(`${f.area ? `${f.area}: ` : ""}${f.comment} (from occupant feedback)`)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Raise a job</button>}</div>
               </div>
             ))}
           </div>
@@ -874,6 +878,7 @@ export function CarParkView({ items, onSave, onDelete }) {
                 <div style={{ fontSize: 13, fontWeight: 650 }}>{i.name}</div>
                 <div style={{ fontSize: 11.3, color: i.expiry && daysUntil(i.expiry) < 0 ? "var(--danger)" : "var(--faint)" }}>{[i.vehicle, i.space && `Space ${i.space}`, i.permit && `Permit ${i.permit}`, i.expiry && `${daysUntil(i.expiry) < 0 ? "expired" : "to"} ${fmtDate(i.expiry)}`].filter(Boolean).join(" · ")}</div>
               </button>
+              <button onClick={() => { const e = escapeHtml; openPrintReport("Parking permit", "", `<div style="border:4px solid #2B5D8A;border-radius:14px;padding:18px;max-width:420px;text-align:center"><div style="font-size:14px;font-weight:800;letter-spacing:.12em;color:#2B5D8A">PARKING PERMIT</div><div style="font-size:34px;font-weight:800;font-family:monospace;background:#F2C94C;border:2px solid #000;border-radius:6px;margin:12px auto;padding:4px 10px;display:inline-block">${e(String(i.reg).toUpperCase())}</div><div style="font-size:16px;font-weight:700">${e(i.name)}</div>${i.space ? `<div style="font-size:14px">Space ${e(i.space)}</div>` : ""}${i.permit ? `<div style="font-size:12px">Permit ${e(i.permit)}</div>` : ""}<div style="font-size:13px;margin-top:8px">Valid until <b>${i.expiry ? fmtDate(i.expiry) : "further notice"}</b></div>${i.phone ? `<div style="font-size:11px;color:#56616D;margin-top:6px">If this car needs moving: ${e(i.phone)}</div>` : ""}</div>`); }} title="Print permit" style={{ background: "none", border: "none", cursor: "pointer", padding: 3, display: "flex" }}><Printer size={15} color="#5B6672" /></button>
               {i.phone && <a href={`tel:${i.phone.replace(/[^+0-9]/g, "")}`} title={`Call ${i.name}`}><Phone size={16} color="var(--ok)" /></a>}
             </div>
           ))}

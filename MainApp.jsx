@@ -81,6 +81,8 @@ export function MainApp() {
   const [floorplans, setFloorplans] = useState([]);
   const [keyDates, setKeyDates] = useState([]);
   const [showTv, setShowTv] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
+  const [recentIds, setRecentIds] = useState(() => { try { return JSON.parse(localStorage.getItem("ppm:recentServices") || "[]"); } catch (e) { return []; } });
   const [equipment, setEquipment] = useState([]);
   const [visitSubmissions, setVisitSubmissions] = useState([]);
   const [showSubmissions, setShowSubmissions] = useState(false);
@@ -746,6 +748,26 @@ export function MainApp() {
   const hiddenGroups = display.hiddenAlertGroups || [];
   const visibleAlerts = useMemo(() => allAlerts.filter((a) => !(snoozed[a.key] && snoozed[a.key] >= todayISO)).filter((a) => a.tone === "danger" || !hiddenGroups.includes(alertGroup(a.key))), [allAlerts, snoozed, todayISO, hiddenGroups.join(",")]);
   const snoozedCount = allAlerts.length - visibleAlerts.length;
+  // Remember the last services opened on this device (for "Recently opened" on Home).
+  useEffect(() => {
+    const base = "PPM Service Book"; const n = (visibleAlerts || []).filter((a) => a.tone === "danger").length;
+    try { document.title = n ? `(${n}) ${base}` : base; } catch (e) { /* ignore */ }
+  }, [visibleAlerts]);
+  useEffect(() => { if (!historyFor) return; setRecentIds((prev) => { const next = [historyFor, ...prev.filter((x) => x !== historyFor)].slice(0, 8); try { localStorage.setItem("ppm:recentServices", JSON.stringify(next)); } catch (e) { /* ignore */ } return next; }); }, [historyFor]);
+  function snoozeMany(keys, days) {
+    const next = { ...Object.fromEntries(Object.entries(snoozed).filter(([, until]) => until >= todayISO)) };
+    keys.forEach((k) => { next[k] = addDays(todayISO, days); });
+    setSnoozed(next); savePersonal(PKEYS.snooze, next);
+    showToast(`${keys.length} alert${keys.length === 1 ? "" : "s"} snoozed until ${days === 1 ? "tomorrow" : fmtDate(addDays(todayISO, days))}`, "Urgent (red) alerts still show");
+  }
+  function reassignActions(from, to) {
+    const n = actions.filter((a) => a.locationId === selectedLocationId && a.status !== "done" && a.owner === from).length;
+    persist.actions(actions.map((a) => a.locationId === selectedLocationId && a.status !== "done" && a.owner === from ? { ...a, owner: to } : a));
+    logActivity(`Reassigned ${n} actions from ${from} to ${to}`); showToast(`${n} action${n === 1 ? "" : "s"} moved to ${to}`);
+  }
+  function addExpected(v) { const all = settings.expectedVisitors || []; persist.settings({ ...settings, expectedVisitors: [...all.filter((x) => x.date >= addDays(todayISO, -1)), { ...v, id: uid(), locationId: selectedLocationId, addedBy: currentUser?.name }] }); showToast("Visitor expected", `${v.name} · ${fmtDate(v.date)}`); }
+  function removeExpected(id) { persist.settings({ ...settings, expectedVisitors: (settings.expectedVisitors || []).filter((x) => x.id !== id) }); }
+  function arriveExpected(v) { signIn({ name: v.name, company: v.company || "", kind: v.kind || "visitor", host: v.host || undefined, purpose: v.purpose || "", inductionGiven: v.kind === "contractor" ? false : undefined }); removeExpected(v.id); }
   function snoozeAlert(key, days) {
     const next = { ...Object.fromEntries(Object.entries(snoozed).filter(([, until]) => until >= todayISO)) };
     if (days) next[key] = addDays(todayISO, days); else delete next[key];
@@ -932,6 +954,24 @@ export function MainApp() {
   function saveCostCodes(list) { persist.settings({ ...settings, costCodes: list }); }
   function saveRecyclingTarget(v) { persist.settings({ ...settings, recyclingTarget: { ...(settings.recyclingTarget || {}), [selectedLocationId]: v === "" ? null : Number(v) } }); }
   function savePoLimit(v) { persist.settings({ ...settings, poApprovalLimit: v === "" ? null : Number(v) }); }
+  function duplicateWork(w) { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }
+  function invoiceFromWork(w) {
+    const number = window.prompt(`Invoice number for "${String(w.description).slice(0, 40)}" (${gbp(w.finalCost ?? w.quoteAmount)}):`, ""); if (number === null) return;
+    invOps.save({ number: number.trim() || `Job ${w.id.slice(-6).toUpperCase()}`, supplierId: w.supplierId || null, amount: Number(w.finalCost ?? w.quoteAmount) || 0, vatRate: 20, workId: w.id, date: new Date().toISOString().slice(0, 10), status: "received", poNumber: w.poNumber || undefined });
+    showToast("Invoice recorded", "See Budget → POs & invoices to approve it");
+  }
+  function poFromWork(w) {
+    const nums = purchaseOrders.map((p) => Number(String(p.number).match(/(\d+)\s*$/)?.[1])).filter((n) => !isNaN(n));
+    const number = `PO-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, "0")}`;
+    poOps.save({ number, supplierId: w.supplierId || null, description: `${deviceById[w.deviceId]?.name || ""}: ${w.description}`, value: Number(w.quoteAmount) || 0, date: new Date().toISOString().slice(0, 10), status: settings.poApprovalLimit != null && Number(w.quoteAmount) > settings.poApprovalLimit ? "awaiting" : "open" });
+    updateWork(w.id, { poNumber: number });
+    showToast(`${number} raised`, settings.poApprovalLimit != null && Number(w.quoteAmount) > settings.poApprovalLimit ? "Over the approval limit — waiting for approval" : "Linked to the job");
+  }
+  function importWorks(rows) {
+    const at = new Date().toISOString();
+    persist.works([...rows.map((r) => ({ ...r, id: uid(), photos: [], comments: [], budgetType: "budgeted", loggedBy: currentUser?.name, loggedAt: at, source: "import" })), ...works]);
+    logActivity(`Imported ${rows.length} jobs`); showToast(`${rows.length} jobs imported`);
+  }
   function bulkInvoices(ids, status) {
     const set = new Set(ids); const at = new Date().toISOString();
     persist.invoices(invoices.map((i) => set.has(i.id) ? { ...i, status, ...(status === "approved" ? { approvedBy: currentUser?.name, approvedAt: at } : { paidAt: at }) } : i));
@@ -1200,8 +1240,19 @@ export function MainApp() {
       persist.visitBudgets(visitBudgets.map((v) => v.deviceId in moves && v.date === moves[v.deviceId] ? { ...v, date: value } : v));
       persist.budgetLines(budgetLines.map((l) => l.deviceId in moves && l.date === moves[l.deviceId] && l.actualAmount == null ? { ...l, date: value } : l));
       showToast(`${Object.keys(moves).length} services moved to ${fmtDate(value)}`, names.join(", ").slice(0, 200));
+    } else if (action === "budget") {
+      let lines = budgetLines, vbs = visitBudgets, added = 0;
+      const nextDevices = devices.map((d) => set.has(d.id) ? { ...d, budgetPerVisit: value } : d);
+      nextDevices.filter((d) => set.has(d.id)).forEach((d) => { const r = rebuildPlan(d, lines, vbs); lines = r.lines; vbs = r.vbs; added += r.added; });
+      persist.devices(nextDevices); persist.budgetLines(lines); persist.visitBudgets(vbs);
+      logActivity(`Budget per visit set to ${gbp(value)} on ${ids.length} services`);
+      showToast(`Budget set on ${ids.length} services`, value ? `${added} planned visits in the budget` : "Taken out of the budget");
+    } else if (action === "checklist") {
+      persist.devices(devices.map((d) => set.has(d.id) ? { ...d, checklist: [...(d.checklist || []), ...value.filter((x) => !(d.checklist || []).includes(x))] } : d));
+      showToast(`Checklist updated on ${ids.length} services`, value.join(", ").slice(0, 120));
     } else if (action === "supplier") {
       persist.devices(devices.map((d) => set.has(d.id) ? { ...d, supplierId: value || null } : d));
+      { const today = new Date().toISOString().slice(0, 10); persist.budgetLines(budgetLines.map((l) => set.has(l.deviceId) && l.date >= today && l.actualAmount == null ? { ...l, supplierId: value || null } : l)); }
       showToast(`Supplier set on ${ids.length} services`, `${supplierById[value]?.name || "None"} — ${names.join(", ")}`.slice(0, 200));
     } else if (action === "assign") {
       persist.devices(devices.map((d) => set.has(d.id) ? { ...d, assignee: value || null } : d));
@@ -1413,9 +1464,23 @@ export function MainApp() {
     const scheduleDates = rawDates ? [...new Set(rawDates.map((d) => shiftFor(deviceFields.locationId, d)))].sort() : rawDates;
     if (!isEdit && deviceFields.nextServiceDate) deviceFields.nextServiceDate = scheduleDates?.[0] || shiftFor(deviceFields.locationId, deviceFields.nextServiceDate);
     if (isEdit) {
+      const before = devices.find((d) => d.id === device.id) || {};
       persist.devices(devices.map((d) => d.id === device.id ? { ...d, ...deviceFields } : d));
       setDeviceModal(null);
-      showToast("Service updated", device.name);
+      // Keep the Budget in step with the service: budget, schedule, name, category and supplier.
+      const after = { ...before, ...deviceFields, id: device.id };
+      const newAmt = Number(after.budgetPerVisit) || 0; const oldAmt = Number(before.budgetPerVisit) || 0;
+      const scheduleChanged = (Number(after.serviceIntervalMonths) || 0) !== (Number(before.serviceIntervalMonths) || 0) || (after.nextServiceDate || "") !== (before.nextServiceDate || "");
+      let note = "";
+      if (newAmt !== oldAmt || (scheduleChanged && newAmt > 0)) {
+        const r = rebuildPlan(after, budgetLines, visitBudgets);
+        persist.budgetLines(r.lines); persist.visitBudgets(r.vbs);
+        note = newAmt === 0 ? `Budget removed — ${r.removed} planned visit${r.removed === 1 ? "" : "s"} taken out of the budget` : `${r.added} planned visit${r.added === 1 ? "" : "s"} at ${gbp(newAmt)} in the budget (next 12 months)`;
+      } else if (["name", "serviceCategory", "subCategory", "supplierId"].some((k) => (after[k] || "") !== (before[k] || ""))) {
+        const today = new Date().toISOString().slice(0, 10);
+        persist.budgetLines(budgetLines.map((l) => (l.deviceId === device.id && l.date >= today && l.actualAmount == null ? { ...l, description: after.name, category: after.serviceCategory || l.category, subCategory: after.subCategory || "", supplierId: after.supplierId || null } : l)));
+      }
+      showToast("Service updated", note || device.name);
       return;
     }
     const newId = uid();
@@ -1444,6 +1509,7 @@ export function MainApp() {
       if (p.works?.length) persist.works([...p.works, ...works]);
       if (p.tasks?.length) persist.deviceTasks([...deviceTasks, ...p.tasks]);
       if (p.visitBudgets?.length) persist.visitBudgets([...visitBudgets, ...p.visitBudgets]);
+      if (p.budgetLines?.length) persist.budgetLines([...budgetLines.filter((l) => !p.budgetLines.some((x) => x.id === l.id)), ...p.budgetLines]);
     } else if (t.type === "work") persist.works([p.work, ...works.filter((w) => w.id !== p.work.id)]);
     else if (t.type === "supplier") persist.suppliers([...suppliers.filter((s) => s.id !== p.supplier.id), p.supplier]);
     persist.trash(trash.filter((x) => x.trashId !== t.trashId));
@@ -1451,13 +1517,14 @@ export function MainApp() {
   }
   function deleteDevice(id) {
     const dev = deviceById[id];
-    if (dev) toTrash({ type: "service", name: dev.name, payload: { device: dev, services: services.filter((s) => s.deviceId === id), works: works.filter((w) => w.deviceId === id), tasks: deviceTasks.filter((t) => t.deviceId === id), visitBudgets: visitBudgets.filter((v) => v.deviceId === id) } });
+    if (dev) toTrash({ type: "service", name: dev.name, payload: { budgetLines: budgetLines.filter((l) => l.deviceId === id), device: dev, services: services.filter((s) => s.deviceId === id), works: works.filter((w) => w.deviceId === id), tasks: deviceTasks.filter((t) => t.deviceId === id), visitBudgets: visitBudgets.filter((v) => v.deviceId === id) } });
     withUndo(() => {
       persist.devices(devices.filter((d) => d.id !== id));
       persist.services(services.filter((s) => s.deviceId !== id));
       persist.works(works.filter((w) => w.deviceId !== id));
       persist.deviceTasks(deviceTasks.filter((t) => t.deviceId !== id));
       persist.visitBudgets(visitBudgets.filter((v) => v.deviceId !== id));
+      persist.budgetLines(budgetLines.filter((l) => l.deviceId !== id));
       showToast("Service deleted", deviceById[id]?.name);
     });
   }
@@ -1512,6 +1579,50 @@ export function MainApp() {
   // A logged visit's cost should also mark the matching auto-generated Budget Plan
   // line as recorded, so the Plan doesn't sit forever showing "not yet spent" for
   // work that's actually been done and paid for.
+  // ---------- Service ↔ budget helpers ----------
+  // Planned visit dates for a service between two dates: from its interval, or from its own schedule if it has no interval.
+  function scheduleDatesFor(dev, from, to) {
+    const step = Number(dev.serviceIntervalMonths) || 0;
+    if (!step) return [...new Set(visitBudgets.filter((v) => v.deviceId === dev.id && v.date >= from && v.date <= to).map((v) => v.date).concat(dev.nextServiceDate && dev.nextServiceDate >= from && dev.nextServiceDate <= to ? [dev.nextServiceDate] : []))].sort();
+    let dt = dev.nextServiceDate; if (!dt) return [];
+    let guard = 0; while (dt < from && guard++ < 400) dt = addMonths(dt, step);
+    const out = []; while (dt <= to && out.length < 60) { out.push(shiftFor(dev.locationId, dt)); dt = addMonths(dt, step); }
+    return [...new Set(out)];
+  }
+  const planLineFor = (dev, date, amount) => ({ id: uid(), locationId: dev.locationId, deviceId: dev.id, category: dev.serviceCategory || "maintenance", subCategory: dev.subCategory || "", supplierId: dev.supplierId || null, description: dev.name, date, amount, status: "planned", addedBy: currentUser?.name, auto: true });
+  // Replace a service's future, not-yet-spent planned visits with ones that match its current schedule and budget.
+  function rebuildPlan(dev, lines, vbs, horizonMonths = 12) {
+    const today = new Date().toISOString().slice(0, 10); const amount = Number(dev.budgetPerVisit) || 0;
+    const keep = lines.filter((l) => !(l.deviceId === dev.id && l.date >= today && l.actualAmount == null && l.status !== "skipped"));
+    const removed = lines.length - keep.length;
+    const dates = amount > 0 && !dev.archived ? scheduleDatesFor(dev, today, addMonths(today, horizonMonths)) : [];
+    const manual = !(Number(dev.serviceIntervalMonths) || 0);
+    const nextVbs = manual ? vbs.map((v) => (v.deviceId === dev.id && v.date >= today ? { ...v, amount } : v)) : [...vbs.filter((v) => !(v.deviceId === dev.id && v.date >= today)), ...dates.map((date) => ({ id: uid(), deviceId: dev.id, date, amount }))];
+    return { lines: [...keep, ...dates.map((d) => planLineFor(dev, d, amount))], vbs: nextVbs, added: dates.length, removed };
+  }
+  // Add planned visits only where none exist (within 2 weeks) — never removes anything.
+  function topUpPlan(dev, lines, horizonMonths = 12) {
+    const today = new Date().toISOString().slice(0, 10); const amount = Number(dev.budgetPerVisit) || 0;
+    if (!(amount > 0) || dev.archived) return { lines, added: 0 };
+    const t = (x) => new Date(x + "T00:00:00").getTime();
+    const mine = lines.filter((l) => l.deviceId === dev.id);
+    const fresh = scheduleDatesFor(dev, today, addMonths(today, horizonMonths)).filter((d) => !mine.some((l) => Math.abs(t(l.date) - t(d)) <= 14 * 86400000)).map((d) => planLineFor(dev, d, amount));
+    return { lines: [...lines, ...fresh], added: fresh.length };
+  }
+  function planVisitsForServices(ids, horizonMonths = 12) {
+    let lines = budgetLines; let added = 0;
+    ids.forEach((id) => { const dev = devices.find((d) => d.id === id); if (!dev) return; const r = topUpPlan(dev, lines, horizonMonths); lines = r.lines; added += r.added; });
+    if (added) persist.budgetLines(lines);
+    showToast(added ? `${added} planned visit${added === 1 ? "" : "s"} added to the budget` : "Every budgeted service is already planned", added ? `Next ${horizonMonths} months` : "");
+  }
+  function rebuildServicePlan(id) {
+    const dev = devices.find((d) => d.id === id); if (!dev) return;
+    const r = rebuildPlan(dev, budgetLines, visitBudgets);
+    persist.budgetLines(r.lines); persist.visitBudgets(r.vbs);
+    logActivity(`Rebuilt planned visits in the budget: ${dev.name}`);
+    showToast("Planned visits rebuilt", `${r.added} visit${r.added === 1 ? "" : "s"} at ${gbp(dev.budgetPerVisit || 0)} over the next 12 months`);
+  }
+  function removeOrphanLines(ids) { const set = new Set(ids); persist.budgetLines(budgetLines.filter((l) => !set.has(l.id))); showToast(`${ids.length} planned visit${ids.length === 1 ? "" : "s"} removed from the budget`); }
   function syncBudgetLineForVisit(deviceId, visitDate, visitCost, visitId, dueDate) {
     if (visitCost == null || visitCost === "") return;
     const deviceLines = budgetLines.filter((l) => l.deviceId === deviceId);
@@ -1520,11 +1631,11 @@ export function MainApp() {
     // 1) the line this visit already filled (editing), 2) the line for the occurrence it completed,
     // 3) the earliest line with nothing recorded yet up to 2 weeks after the visit, 4) nearest by date.
     let target = deviceLines.find((l) => visitId && l.actualServiceId === visitId)
-      || (dueDate && deviceLines.find((l) => l.date === dueDate && (l.actualAmount == null || isMirrored(l) && l.actualServiceId === visitId)))
-      || deviceLines.filter((l) => l.actualAmount == null && t(l.date) <= t(visitDate) + 14 * 86400000).sort((a, b) => a.date.localeCompare(b.date))[0];
+      || (dueDate && Math.abs(t(dueDate) - t(visitDate)) <= 120 * 86400000 && deviceLines.find((l) => l.date === dueDate && (l.actualAmount == null || isMirrored(l) && l.actualServiceId === visitId)))
+      || deviceLines.filter((l) => l.actualAmount == null && l.status !== "skipped" && t(l.date) <= t(visitDate) + 14 * 86400000 && t(l.date) >= t(visitDate) - 120 * 86400000).sort((a, b) => a.date.localeCompare(b.date))[0];
     if (!target) {
-      let best = Infinity;
-      deviceLines.filter((l) => l.actualAmount == null).forEach((l) => { const diff = Math.abs(t(l.date) - t(visitDate)); if (diff < best) { best = diff; target = l; } });
+      let best = 45 * 86400000; // an extra visit far from any planned one is "unplanned" — its cost still counts, but it doesn't use up another month's budget
+      deviceLines.filter((l) => l.actualAmount == null && l.status !== "skipped").forEach((l) => { const diff = Math.abs(t(l.date) - t(visitDate)); if (diff <= best) { best = diff; target = l; } });
     }
     if (!target) return;
     persist.budgetLines(budgetLines.map((l) => l.id === target.id ? { ...l, actualAmount: Number(visitCost), actualDate: visitDate, status: "completed", actualSource: "visit", actualServiceId: visitId || null } : l));
@@ -1557,6 +1668,11 @@ export function MainApp() {
     }
     if (record.skipped && !isEdit) {
       // Deliberately skipped: record it and move on to the next planned date, no spend.
+      const skipDue = deviceById[record.deviceId]?.nextServiceDate || record.date;
+      const tt = (x) => new Date(x + "T00:00:00").getTime();
+      const cand = budgetLines.filter((l) => l.deviceId === record.deviceId && l.actualAmount == null && l.status !== "skipped");
+      const skipLine = cand.find((l) => l.date === skipDue) || cand.filter((l) => Math.abs(tt(l.date) - tt(skipDue)) <= 45 * 86400000).sort((a, b) => Math.abs(tt(a.date) - tt(skipDue)) - Math.abs(tt(b.date) - tt(skipDue)))[0];
+      if (skipLine) persist.budgetLines(budgetLines.map((l) => l.id === skipLine.id ? { ...l, status: "skipped", actualAmount: 0, actualDate: record.date, actualSource: "skipped", skipReason: record.skipReason || "" } : l));
       advanceSchedule(record.deviceId, record.date || new Date().toISOString().slice(0, 10), next);
       setServiceModal(null);
       showToast("Visit skipped — next one scheduled", `${deviceById[record.deviceId]?.name || ""} — ${record.skipReason || ""}`);
@@ -2158,10 +2274,10 @@ export function MainApp() {
                 carpark={<CarParkView items={carPark.filter((x) => x.locationId === selectedLocationId)} onSave={carOps.save} onDelete={carOps.remove} />}
                 floorplans={<FloorPlansView plans={floorplans.filter((p) => p.locationId === selectedLocationId)} devices={locDevices} onSave={planOps.save} onDelete={planOps.remove} onOpenDevice={(id) => setHistoryFor(id)} />}
                 keydates={<KeyDatesView items={keyDates.filter((k) => k.locationId === selectedLocationId)} onSave={keyDateOps.save} onDelete={keyDateOps.remove} />}
-                feedback={<FeedbackView items={feedback.filter((f) => f.locationId === selectedLocationId)} locationId={selectedLocationId} locationName={locationLabel({ locationId: selectedLocationId })} />}
+                feedback={<FeedbackView onRaiseJob={(text) => { setWorkPrefill({ description: text }); startJob(); }} items={feedback.filter((f) => f.locationId === selectedLocationId)} locationId={selectedLocationId} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 coshh={<CoshhView items={coshh.filter((c) => c.locationId === selectedLocationId)} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} onSave={coshhOps.save} onDelete={coshhOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 equipment={<EquipmentView items={equipment.filter((c) => c.locationId === selectedLocationId)} onSave={equipOps.save} onDelete={equipOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
-                actions={<ActionsView actions={actions.filter((a) => a.locationId === selectedLocationId)} people={[...new Set([...users.map((u) => u.name), ...((locations.find((l) => l.id === selectedLocationId) || {}).staff || []).map((p) => p.name)])]} onSave={actionOps.save} onDelete={actionOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
+                actions={<ActionsView onReassign={reassignActions} actions={actions.filter((a) => a.locationId === selectedLocationId)} people={[...new Set([...users.map((u) => u.name), ...((locations.find((l) => l.id === selectedLocationId) || {}).staff || []).map((p) => p.name)])]} onSave={actionOps.save} onDelete={actionOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 spaces={<SpacesView spaces={spaces.filter((s) => s.locationId === selectedLocationId)} devices={locDevices} onSave={spaceOps.save} onDelete={spaceOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} onOpenArea={(a) => { setTab("devices"); setSearch(a); }} />}
                 walkrounds={<WalkroundsView walkrounds={walkrounds.filter((w) => w.locationId === selectedLocationId)} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} onSave={walkOps.save} onDelete={walkOps.remove} onRaiseAction={(prefill) => setActionDraft({ prefill: true, ...prefill })} onRaiseJob={(text) => { setWorkPrefill({ description: text }); startJob(); }} locationName={locationLabel({ locationId: selectedLocationId })} />}
                 asbestos={<AsbestosView items={asbestos.filter((a) => a.locationId === selectedLocationId)} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })} onSave={asbestosOps.save} onDelete={asbestosOps.remove} />}
@@ -2201,6 +2317,9 @@ export function MainApp() {
                 expectedToday={todayItems.bookings} onSignOutAll={signOutAll} locationId={selectedLocationId}
                 complianceMonthAgo={complianceMonthAgo}
                 onTvMode={() => setShowTv(true)} onEmergencySheet={printEmergencySheet}
+                recentServices={recentIds.map((id) => deviceById[id]).filter((d) => d && d.locationId === selectedLocationId && !d.archived).slice(0, 5)} onOpenService={(id) => setHistoryFor(id)}
+                expected={(settings.expectedVisitors || []).filter((x) => x.locationId === selectedLocationId && x.date >= todayISO).sort((a, b) => a.date.localeCompare(b.date))} onAddExpected={addExpected} onRemoveExpected={removeExpected} onArriveExpected={arriveExpected}
+                notesKey={`ppm:notes:${currentUser?.id || "me"}:${selectedLocationId}`}
                 upcomingKeyDates={keyDates.filter((k) => k.locationId === selectedLocationId && !k.done && k.date && daysUntil(k.date) <= 120).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4)}
                 submissionsCount={visitSubmissions.filter((x) => x.locationId === selectedLocationId).length} onReviewSubmissions={() => setShowSubmissions(true)}
                 onRollCall={() => setShowRollCall(true)} onPeopleDirectory={() => setShowPeopleDir(true)}
@@ -2269,7 +2388,7 @@ export function MainApp() {
               <ProjectsView projects={locProjects} devices={locDevices} suppliers={locSuppliers} onSave={saveProject} onDelete={deleteProject} />
             )}
             {tab === "works" && worksView === "reactive" && (
-              <WorksTab spares={locSpares} onUseSpare={useSpareOnWork} onLogChase={logWorkChase} onRepeat={(w) => { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }} invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={convertWorkToProject} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
+              <WorksTab onDuplicateWork={duplicateWork} onInvoiceFromWork={invoiceFromWork} onPoFromWork={poFromWork} onImportWorks={importWorks} spares={locSpares} onUseSpare={useSpareOnWork} onLogChase={logWorkChase} onRepeat={(w) => { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }} invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={convertWorkToProject} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
                 onUpdate={updateWork} onDelete={deleteWork} currentUserName={currentUser?.name}
                 approvalThreshold={Number(settings.approvalThreshold) || 0} onSetThreshold={(v) => { persist.settings({ ...settings, approvalThreshold: v }); showToast("Approval rule saved"); }}
                 onConvertToPlan={convertWorkToPlanLine} onConvertToService={convertWorkToService}
@@ -2290,7 +2409,13 @@ export function MainApp() {
                 onSavePO={poOps.save} onDeletePO={poOps.remove} onSaveInvoice={invOps.save} onDeleteInvoice={invOps.remove} />
             )}
             {tab === "budget" && budgetView === "budget" && (
-              <BudgetTab key={CATEGORY_KEYS.join("|")} costLines={costLines.filter((l) => l.locationId === selectedLocationId)} onSaveCostLines={saveCostLines} onDeleteCostLine={deleteCostLine} onRecordInvoice={recordCostInvoice} invoices={locInvoices} pos={locPOs} savings={savings.filter((x) => x.locationId === selectedLocationId)}
+              <BudgetTab serviceSync={(() => { const today = new Date().toISOString().slice(0, 10); const active = new Set(locDevices.filter((d) => !d.archived).map((d) => d.id)); return {
+                  orphans: locBudgetLines.filter((l) => l.deviceId && !active.has(l.deviceId) && l.date >= today && l.actualAmount == null),
+                  unplanned: locDevices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0 && d.nextServiceDate && !locBudgetLines.some((l) => l.deviceId === d.id && l.date >= today && l.status !== "skipped")),
+                  thin: locDevices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0 && Number(d.serviceIntervalMonths) > 0 && d.nextServiceDate && locBudgetLines.some((l) => l.deviceId === d.id && l.date >= today) && !locBudgetLines.some((l) => l.deviceId === d.id && l.date >= addMonths(today, 9))),
+                  noBudget: locDevices.filter((d) => !d.archived && !Number(d.budgetPerVisit) && services.some((v) => v.deviceId === d.id && Number(v.cost) > 0)),
+                  onPlan: (ids, months) => planVisitsForServices(ids, months), onRemoveOrphans: removeOrphanLines, onOpen: (id) => setHistoryFor(id) }; })()}
+                key={CATEGORY_KEYS.join("|")} onOpenService={(id) => setHistoryFor(id)} costLines={costLines.filter((l) => l.locationId === selectedLocationId)} onSaveCostLines={saveCostLines} onDeleteCostLine={deleteCostLine} onRecordInvoice={recordCostInvoice} invoices={locInvoices} pos={locPOs} savings={savings.filter((x) => x.locationId === selectedLocationId)}
                 floorArea={spaces.filter((s) => s.locationId === selectedLocationId).reduce((t, s) => t + (Number(s.areaM2) || 0), 0) || Number(((settings.siteInfo || {})[selectedLocationId] || {}).floorArea) || 0}
                 budgetSettings={(settings.budgetSettings || {})[selectedLocationId] || {}} onSaveBs={saveBudgetSettings} onMoveBudget={moveBudget} onSetBudgetsBulk={setBudgetsBulk}
                 onBulkUpdateLines={bulkUpdateLines} onBulkDeleteLines={bulkDeleteLines} userNames={users.map((u) => u.name)} userName={currentUser?.name} locationName={locationLabel({ locationId: selectedLocationId })}
@@ -2336,7 +2461,7 @@ export function MainApp() {
       {editLocation && <AddLocationModal existing={editLocation} countryId={editLocation.countryId} countries={countries} onClose={() => setEditLocation(null)} onSave={addLocation} onDelete={deleteLocation}
         canDelete={!devices.some((d) => d.locationId === editLocation.id) && !suppliers.some((s) => s.locationId === editLocation.id)} />}
       {deviceModal && (
-        <AddDeviceModal key={deviceModal.record?.id || (deviceModal.prefill ? `copy-${deviceModal.prefill.name}` : "new-device")}
+        <AddDeviceModal allTags={devices.map((d) => d.assetTag).filter(Boolean)} budgetHeadByCat={Object.fromEntries(budgetModel({ year: new Date().getFullYear(), budgets: locBudgets, services: locServices, works: locWorks, suppliers: locSuppliers, devices: locDevices, budgetLines: locBudgetLines, costLines: costLines.filter((l) => l.locationId === selectedLocationId), bs: (settings.budgetSettings || {})[selectedLocationId] || {} }).rows.map((r) => [r.cat, r]))} key={deviceModal.record?.id || (deviceModal.prefill ? `copy-${deviceModal.prefill.name}` : "new-device")}
           onPause={(id, until, drop) => { bulkUpdateDevices([id], "pause", { until, drop }); setDeviceModal(null); }}
           onResume={(id) => { bulkUpdateDevices([id], "resume"); setDeviceModal(null); }}
           onArchive={archiveDevice} prefill={deviceModal.prefill} onDuplicate={(dev) => { setDeviceModal(null); setTimeout(() => duplicateDevice(dev), 0); }} countries={countries} locations={locations} defaultLocationId={selectedLocationId}
@@ -2354,7 +2479,7 @@ export function MainApp() {
           onClose={() => setServiceModal(null)} onSave={saveService} onDelete={deleteService} />
       )}
       {historyFor && (
-        <DeviceHistoryModal changeLog={activity.filter((a) => deviceById[historyFor] && String(a.text).includes(deviceById[historyFor].name)).slice(0, 30)} spares={locSpares.filter((sp) => (sp.deviceIds || []).includes(historyFor))} onMerge={ACTIVE_CAN_EDIT ? () => setMergeFor(historyFor) : null} onRecordUsage={(h) => recordUsage(historyFor, h)} allDevices={locAllDevices} onOutOfService={(down, reason) => setOutOfService(historyFor, down, reason)} works={locWorks.filter((w) => w.deviceId === historyFor)} onAddNote={(text) => addDeviceNote(historyFor, text)} onDeleteNote={(nid) => deleteDeviceNote(historyFor, nid)} supplierById={supplierById} locationName={locationLabel({ locationId: deviceById[historyFor]?.locationId })} device={deviceById[historyFor]} services={services.filter((s) => s.deviceId === historyFor)}
+        <DeviceHistoryModal budgetInfo={(() => { const d = deviceById[historyFor]; if (!d) return null; const yr = String(new Date().getFullYear()); const today = new Date().toISOString().slice(0, 10); const ls = budgetLines.filter((l) => l.deviceId === d.id && String(l.date).startsWith(yr)); const spent = services.filter((v) => v.deviceId === d.id && String(v.date).startsWith(yr) && Number(v.cost)).reduce((t, v) => t + Number(v.cost), 0); const next = budgetLines.filter((l) => l.deviceId === d.id && l.date >= today && l.actualAmount == null && l.status !== "skipped").sort((a, b) => a.date.localeCompare(b.date)); return { planned: ls.filter((l) => l.status !== "skipped").reduce((t, l) => t + (Number(l.amount) || 0), 0), spent, skipped: ls.filter((l) => l.status === "skipped").length, future: next.length, next: next[0], perVisit: Number(d.budgetPerVisit) || 0 }; })()} onRebuildPlan={ACTIVE_CAN_EDIT ? () => rebuildServicePlan(historyFor) : null} changeLog={activity.filter((a) => deviceById[historyFor] && String(a.text).includes(deviceById[historyFor].name)).slice(0, 30)} spares={locSpares.filter((sp) => (sp.deviceIds || []).includes(historyFor))} onMerge={ACTIVE_CAN_EDIT ? () => setMergeFor(historyFor) : null} onRecordUsage={(h) => recordUsage(historyFor, h)} allDevices={locAllDevices} onOutOfService={(down, reason) => setOutOfService(historyFor, down, reason)} works={locWorks.filter((w) => w.deviceId === historyFor)} onAddNote={(text) => addDeviceNote(historyFor, text)} onDeleteNote={(nid) => deleteDeviceNote(historyFor, nid)} supplierById={supplierById} locationName={locationLabel({ locationId: deviceById[historyFor]?.locationId })} device={deviceById[historyFor]} services={services.filter((s) => s.deviceId === historyFor)}
           tasks={deviceTasks.filter((t) => t.deviceId === historyFor)}
           visitBudgets={visitBudgets.filter((v) => v.deviceId === historyFor)}
           onClose={() => setHistoryFor(null)}
@@ -2382,6 +2507,14 @@ export function MainApp() {
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {showTv && <TvDashboard locationName={locationLabel({ locationId: selectedLocationId })} onClose={() => setShowTv(false)} stats={{ pct: computeCompliance(locDevices, locVisitBudgets, locServices).pct, overdue: locDevices.filter((d) => d.nextServiceDate && daysUntil(d.nextServiceDate) < 0).length, openWorks: locWorks.filter((w) => !["completed", "rejected"].includes(w.status)).length, late: locWorks.filter((w) => !["completed", "rejected", "on_hold"].includes(w.status) && workSla(w)?.breached).length, onSite: locSignins.filter((x) => !x.outAt).length, today: [...todayItems.bookings.map((d) => ({ time: d.booking?.time, text: `${d.name}${d.supplierName ? ` — ${d.supplierName}` : ""}` })), ...todayItems.dueToday.map((d) => ({ time: "", text: `${d.name} (due)` }))].slice(0, 8), notices: notices.filter((n) => n.locationId === selectedLocationId && (!n.until || n.until >= new Date().toISOString().slice(0, 10))).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 5).map((n) => n.text) }} />}
+      {tab !== "home" && ACTIVE_CAN_EDIT && (
+        <div style={{ position: "fixed", right: 16, bottom: "calc(16px + env(safe-area-inset-bottom, 0px))", zIndex: 900, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+          {fabOpen && [["Raise a job", () => startJob()], ["Add a service", () => setDeviceModal({})], ["Search", () => setShowSearch(true)], ["Go to Home", () => setTab("home")]].map(([l, fn]) => (
+            <button key={l} onClick={() => { setFabOpen(false); fn(); }} style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 20, padding: "9px 14px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", boxShadow: "var(--shadow)" }}>{l}</button>
+          ))}
+          <button aria-label="Quick add" onClick={() => setFabOpen((v) => !v)} style={{ width: 52, height: 52, borderRadius: 26, background: "var(--accent)", color: "var(--on-accent)", border: "none", boxShadow: "0 4px 14px rgba(0,0,0,0.25)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transform: fabOpen ? "rotate(45deg)" : "none", transition: "transform .15s" }}><Plus size={24} /></button>
+        </div>
+      )}
       {showSubmissions && <SubmissionsModal submissions={visitSubmissions.filter((x) => x.locationId === selectedLocationId)} deviceById={deviceById} onClose={() => setShowSubmissions(false)} onAccept={acceptSubmission} onReject={rejectSubmission} />}
       {showRollCall && <RollCallModal onSite={locSignins.filter((x) => !x.outAt)} staff={(locations.find((l) => l.id === selectedLocationId) || {}).staff || []} onClose={() => setShowRollCall(false)} />}
       {showBulkEmail && <BulkEmailModal suppliers={locSuppliers} locationName={locationLabel({ locationId: selectedLocationId })} onClose={() => setShowBulkEmail(false)} />}
@@ -2392,7 +2525,7 @@ export function MainApp() {
       {actionDraft && <ActionModal existing={actionDraft} people={[...new Set([...users.map((u) => u.name), ...((locations.find((l) => l.id === selectedLocationId) || {}).staff || []).map((p) => p.name)])]} onClose={() => setActionDraft(null)} onSave={(a) => { actionOps.save(a); setActionDraft(null); showToast("Added to the action tracker", "Site → Actions"); }} onDelete={() => setActionDraft(null)} />}
       {showImport && <ImportModal areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })} suppliers={locSuppliers} existing={locAllDevices} onClose={() => setShowImport(false)} onImport={(rows) => { importDevices(rows); setShowImport(false); }} />}
       {showSearch && (
-        <GlobalSearchModal extra={{ people: ((locations.find((l) => l.id === selectedLocationId) || {}).staff || []), spaces: spaces.filter((x) => x.locationId === selectedLocationId), actions: actions.filter((x) => x.locationId === selectedLocationId), coshh: coshh.filter((x) => x.locationId === selectedLocationId), equipment: equipment.filter((x) => x.locationId === selectedLocationId), asbestos: asbestos.filter((x) => x.locationId === selectedLocationId), incidents: locIncidents, permits: locPermits, pos: locPOs, invoices: locInvoices, spares: locSpares, keys: locKeys, projects: locProjects }} onGoTab={(t) => { setShowSearch(false); setTab(t); }} devices={locDevices} services={locServices} works={locWorks} suppliers={locSuppliers} deviceById={deviceById} onClose={() => setShowSearch(false)}
+        <GlobalSearchModal extra={{ keyDates: keyDates.filter((k) => k.locationId === selectedLocationId), cars: carPark.filter((c) => c.locationId === selectedLocationId), supContacts: locSuppliers.flatMap((s) => (s.contacts || []).map((c) => ({ ...c, supplier: s.name }))), people: ((locations.find((l) => l.id === selectedLocationId) || {}).staff || []), spaces: spaces.filter((x) => x.locationId === selectedLocationId), actions: actions.filter((x) => x.locationId === selectedLocationId), coshh: coshh.filter((x) => x.locationId === selectedLocationId), equipment: equipment.filter((x) => x.locationId === selectedLocationId), asbestos: asbestos.filter((x) => x.locationId === selectedLocationId), incidents: locIncidents, permits: locPermits, pos: locPOs, invoices: locInvoices, spares: locSpares, keys: locKeys, projects: locProjects }} onGoTab={(t) => { setShowSearch(false); setTab(t); }} devices={locDevices} services={locServices} works={locWorks} suppliers={locSuppliers} deviceById={deviceById} onClose={() => setShowSearch(false)}
           onOpenDevice={(id) => { setShowSearch(false); setHistoryFor(id); }}
           onOpenVisit={(v) => { setShowSearch(false); setServiceModal({ deviceId: v.deviceId, record: v }); }}
           onOpenWork={() => { setShowSearch(false); setTab("works"); }}
@@ -2403,7 +2536,7 @@ export function MainApp() {
           saveErrors={saveErrors} lastBackupAt={settings.lastBackupAt} canEdit={ACTIVE_CAN_EDIT}
           onBackup={downloadBackup} onRestore={restoreBackup} onClose={() => setShowData(false)} />
       )}
-      {showAlerts && <AlertsModal snoozedCount={snoozedCount} onSnooze={snoozeAlert} onClearSnoozes={clearSnoozes} locationName={locationLabel({ locationId: selectedLocationId })} senderName={currentUser?.name} alerts={visibleAlerts} onClose={() => setShowAlerts(false)} onGo={(t) => { setTab(t); setShowAlerts(false); }} />}
+      {showAlerts && <AlertsModal onSnoozeAll={(keys) => snoozeMany(keys, 1)} snoozedCount={snoozedCount} onSnooze={snoozeAlert} onClearSnoozes={clearSnoozes} locationName={locationLabel({ locationId: selectedLocationId })} senderName={currentUser?.name} alerts={visibleAlerts} onClose={() => setShowAlerts(false)} onGo={(t) => { setTab(t); setShowAlerts(false); }} />}
       {showReports && <ReportsModal onClose={() => setShowReports(false)} locationName={locationLabel({ locationId: selectedLocationId })}
         data={{ tenants: (locations.find((l) => l.id === selectedLocationId) || {}).tenants || [], feedback: feedback.filter((f) => f.locationId === selectedLocationId), meters: locMeters, readings: locReadings, invoices: locInvoices, savings: savings.filter((x) => x.locationId === selectedLocationId), waste: locWaste, portfolio: { locations, countries, devices, services, works, budgets, visitBudgets }, settingsFields: settings, incidents: locIncidents, audits: locAudits, signins: locSignins, faultsByDevice, deviceTasks: locDeviceTasks, devices: locDevices, services: locServices, works: locWorks, suppliers: locSuppliers, budgets: locBudgets, budgetLines: locBudgetLines, visitBudgets: locVisitBudgets, deviceById, supplierById }} />}
       {supplierModal && (

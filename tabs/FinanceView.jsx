@@ -1,11 +1,11 @@
 // Budget → POs & invoices: purchase orders with remaining balance, and supplier invoices matched to them.
 import { useState } from "react";
-import { addDays, daysUntil, fmtDate, gbp } from "../lib/utils.js";
+import { addDays, daysUntil, escapeHtml, fmtDate, gbp } from "../lib/utils.js";
 import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextInput, ToggleButton } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE } from "../lib/globals.js";
 import { CheckCircle2, FileText, PiggyBank, Printer, Receipt, X } from "lucide-react";
 import { SAVING_TYPES, VAT_RATES } from "../lib/constants.js";
-import { buildPurchaseOrder, openPrintReport } from "../lib/reports.js";
+import { buildPurchaseOrder, openPrintReport, tableHtml } from "../lib/reports.js";
 
 export function FinanceView({ costCodes = [], onSaveCostCodes, poLimit = null, onSavePoLimit, onBulkInvoices, locationName = "", savings = [], onSaveSaving, onDeleteSaving, userName = "", pos, invoices, suppliers, works, deviceById, onSavePO, onDeletePO, onSaveInvoice, onDeleteInvoice }) {
   const [view, setView] = useState("invoices");
@@ -44,6 +44,13 @@ export function FinanceView({ costCodes = [], onSaveCostCodes, poLimit = null, o
             {invoices.length > 0 && <ExportButton label="CSV" filename="invoices.csv" rows={[["Invoice no.", "Supplier", "PO", "Cost code", "Date", "Due", "Net", "VAT %", "VAT", "Gross", "Status", "Paid on", "Notes"], ...invoices.map((i) => [i.number, supName(i.supplierId), pos.find((p) => p.id === i.poId)?.number || "", i.costCode || pos.find((p) => p.id === i.poId)?.costCode || "", i.date || "", i.dueDate || "", i.amount, i.vatRate ?? "", i.vat ?? "", i.gross ?? i.amount, i.status, i.paidDate || "", i.notes || ""])]} />}
           </div>
           {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditInv({})} style={{ width: "100%", marginBottom: 10 }}><Receipt size={15} /> Record an invoice</PrimaryButton>}
+          {(() => { const t7 = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10); const run = invoices.filter((i) => i.status === "approved" && i.dueDate && i.dueDate <= t7).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate))); if (!run.length) return null; const tot = run.reduce((t, i) => t + (Number(i.amount) || 0) * (1 + Number(i.vatRate ?? 20) / 100), 0); return (
+            <div style={{ background: "var(--accent-soft)", borderRadius: 12, padding: "10px 12px", marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><b style={{ fontSize: 13 }}>Payment run — due within 7 days ({run.length})</b><span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{gbp(tot)} inc VAT</span></div>
+              {run.slice(0, 6).map((i) => <div key={i.id} style={{ fontSize: 12, display: "flex", justifyContent: "space-between", color: i.dueDate < new Date().toISOString().slice(0, 10) ? "var(--danger)" : "inherit" }}><span>{i.number} · {suppliers.find((s2) => s2.id === i.supplierId)?.name || ""}</span><span>{fmtDate(i.dueDate)} · {gbp(i.amount)}</span></div>)}
+              <button onClick={() => { const e = escapeHtml; openPrintReport("Payment run", locationName, tableHtml(["Due", "Invoice", "Supplier", "Net", "VAT", "Gross", "Approved by"], run.map((i) => { const net = Number(i.amount) || 0, vat = net * Number(i.vatRate ?? 20) / 100; return [fmtDate(i.dueDate), e(i.number), e(suppliers.find((s2) => s2.id === i.supplierId)?.name || ""), gbp(net), gbp(vat), `<b>${gbp(net + vat)}</b>`, e(i.approvedBy || "")]; }), [3, 4, 5]) + `<div class="kpis"><div class="kpi">Total to pay<b>${gbp(tot)}</b></div></div><div style="margin-top:20px">Authorised ____________________ Date ________</div>`); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Print payment run for finance</button>
+            </div>
+          ); })()}
           {ACTIVE_CAN_EDIT && onBulkInvoices && (invoices.some((i) => i.status === "received") || invoices.some((i) => i.status === "approved")) && (
             <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
               {invoices.some((i) => i.status === "received") && <button onClick={() => { const ids = invoices.filter((i) => i.status === "received").map((i) => i.id); if (window.confirm(`Approve all ${ids.length} received invoice${ids.length === 1 ? "" : "s"}?`)) onBulkInvoices(ids, "approved"); }} style={{ flex: 1, background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 9, padding: "8px 10px", fontSize: 12.3, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Approve all received ({invoices.filter((i) => i.status === "received").length})</button>}

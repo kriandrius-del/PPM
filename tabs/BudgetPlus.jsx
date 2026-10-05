@@ -53,7 +53,7 @@ export function budgetModel({ year, budgets, services, works, suppliers, devices
       else if (monthStart.slice(0, 7) >= today.slice(0, 7)) { plannedLeft[l.category] += b; mFuture[l.category][cm] += b; } // this month or later, not invoiced yet
     }
   });
-  services.forEach((v) => { if (!inYear(v.date) || v.aborted) return; const c = catOf[v.deviceId] || "maintenance"; if (spent[c] === undefined) return; const x = Number(v.cost) || 0; spent[c] += x; mSpent[c][mon(v.date)] += x; split.opex += x; split.planned += x; });
+  services.forEach((v) => { if (!inYear(v.date) || (v.aborted && !Number(v.cost))) return; const c = catOf[v.deviceId] || "maintenance"; if (spent[c] === undefined) return; const x = Number(v.cost) || 0; spent[c] += x; mSpent[c][mon(v.date)] += x; split.opex += x; split.planned += x; });
   works.forEach((w) => {
     if (!inYear(w.dateRaised) || w.budgetType === "non_controllable" || w.warranty) return;
     const c = catOf[w.deviceId] || "maintenance"; if (spent[c] === undefined) return; const x = Number(w.finalCost ?? w.quoteAmount) || 0;
@@ -91,7 +91,7 @@ export function BudgetOverview({ model, year, prevModel, services, works, suppli
   const [noteFor, setNoteFor] = useState(null);
   // breakdowns
   const bySup = {}; const byTrade = {}; const byArea = {};
-  services.forEach((v) => { if (!inYear(v.date) || v.aborted) return; const s = v.supplierId || devById[v.deviceId]?.supplierId; const x = Number(v.cost) || 0; if (s) bySup[s] = (bySup[s] || 0) + x; const a = devById[v.deviceId]?.area || "No area"; byArea[a] = (byArea[a] || 0) + x; });
+  services.forEach((v) => { if (!inYear(v.date) || (v.aborted && !Number(v.cost))) return; const s = v.supplierId || devById[v.deviceId]?.supplierId; const x = Number(v.cost) || 0; if (s) bySup[s] = (bySup[s] || 0) + x; const a = devById[v.deviceId]?.area || "No area"; byArea[a] = (byArea[a] || 0) + x; });
   works.forEach((w) => { if (!inYear(w.dateRaised) || w.status !== "completed" || w.budgetType === "non_controllable" || w.warranty) return; const x = Number(w.finalCost ?? w.quoteAmount) || 0; if (w.supplierId) bySup[w.supplierId] = (bySup[w.supplierId] || 0) + x; byTrade[w.category || "Not set"] = (byTrade[w.category || "Not set"] || 0) + x; const a = devById[w.deviceId]?.area || "No area"; byArea[a] = (byArea[a] || 0) + x; });
   suppliers.forEach((s) => { const mo = s.costFrequency === "annual" ? (Number(s.costAmount) || 0) / 12 : Number(s.costAmount) || 0; if (mo) bySup[s.id] = (bySup[s.id] || 0) + mo * m.elapsedMonths; });
   const byCode = {}; invoices.filter((i) => inYear(i.date) && i.costCode).forEach((i) => { byCode[i.costCode] = (byCode[i.costCode] || 0) + (Number(i.amount) || 0); });
@@ -141,7 +141,7 @@ export function BudgetOverview({ model, year, prevModel, services, works, suppli
                   {ACTIVE_CAN_EDIT && onSaveBs && <button onClick={() => setNoteFor(r.cat)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 10.5, cursor: "pointer", fontFamily: "inherit" }}>{bs.varianceNotes?.[year]?.[r.cat] ? "edit note" : "explain variance"}</button>}
                 </td>
                 <td>{gbp(r.budget)}</td><td>{gbp(r.spent)}</td><td>{r.committed ? gbp(r.committed) : "—"}</td><td>{gbp(r.plannedLeft + r.contractLeft)}</td><td style={{ fontWeight: 700 }}>{gbp(r.forecast)}</td>
-                <td style={{ fontFamily: "inherit" }}><span style={{ fontSize: 11, fontWeight: 750, color: col }}>{lab}</span></td>
+                <td style={{ fontFamily: "inherit" }}><span style={{ fontSize: 11, fontWeight: 750, color: col }}>{lab}</span>{(lab === "Over" || lab === "Tight") && <a href={`mailto:?subject=${encodeURIComponent(`${CATEGORY_META[r.cat]?.label} budget ${year} — ${lab.toLowerCase()}`)}&body=${encodeURIComponent(`${bs.owners?.[r.cat] ? `Hi ${bs.owners[r.cat].split(" ")[0]},\n\n` : ""}${CATEGORY_META[r.cat]?.label} ${year}:\nBudget ${gbp(r.budget)}\nSpent so far ${gbp(r.spent)}\nCommitted ${gbp(r.committed)}\nForecast ${gbp(r.forecast)} (${r.forecast > r.budget ? gbp(r.forecast - r.budget) + " over" : gbp(r.budget - r.forecast) + " left"})\n${bs.varianceNotes?.[year]?.[r.cat] ? `\nNote: ${bs.varianceNotes[year][r.cat]}\n` : ""}\nCan we discuss?`)}`} style={{ display: "block", fontSize: 10.5, color: "var(--accent)" }}>email</a>}</td>
               </tr>
             ); })}</tbody>
           </table>
@@ -232,6 +232,7 @@ export function BudgetChecks({ costLines = [], fyStart = 1, year, services, work
   const missedLines = budgetLines.filter((l) => inYear(l.date) && l.actualAmount == null && !isMirrored(l) && l.date < model.today);
   const missedCost = []; costLines.forEach((l) => { for (let i = 0; i < 12; i++) { const idx = fyStart - 1 + i; const cy = l.year + Math.floor(idx / 12); const cm = idx % 12; const ym = `${cy}-${String(cm + 1).padStart(2, "0")}`; if (cy === year && ym < model.today.slice(0, 7) && l.actual?.[i] == null && Number(l.budget?.[i]) > 0) missedCost.push({ id: `${l.id}-${i}`, name: l.name, cat: l.category, ym, amount: Number(l.budget[i]) }); } });
   const contracts = suppliers.filter((s) => Number(s.costAmount) > 0).map((s) => { const annual = s.costFrequency === "annual" ? Number(s.costAmount) : Number(s.costAmount) * 12; const inv = invoices.filter((i) => i.supplierId === s.id && inYear(i.date)).reduce((t, i) => t + (Number(i.amount) || 0), 0); return { s, annual, inv, pct: annual ? Math.round((inv / annual) * 100) : 0 }; });
+  const missingContractInv = suppliers.filter((s) => s.costFrequency !== "annual" && Number(s.costAmount) > 0).map((s) => { const months = []; for (let i = 0; i < Math.max(0, model.elapsedMonths - 1); i++) { const ym = `${year}-${String(i + 1).padStart(2, "0")}`; if (!invoices.some((iv) => iv.supplierId === s.id && String(iv.date).startsWith(ym))) months.push(MONTH_LABELS[i]); } return { s, months }; }).filter((x) => x.months.length);
   const uplift = suppliers.filter((s) => Number(s.upliftPct) > 0 && Number(s.costAmount) > 0).map((s) => { const annual = s.costFrequency === "annual" ? Number(s.costAmount) : Number(s.costAmount) * 12; return { s, annual, extra: annual * Number(s.upliftPct) / 100 }; });
   const Section = ({ icon, title, count, children, empty }) => (
     <div style={card}>
@@ -258,6 +259,10 @@ export function BudgetChecks({ costLines = [], fyStart = 1, year, services, work
       <Section icon={Scale} title="Contracts: invoiced vs contract value" count={contracts.filter((c) => c.inv > 0).length} empty="No invoices recorded against contract suppliers yet.">
         {contracts.filter((c) => c.inv > 0).sort((a, b) => b.pct - a.pct).slice(0, 10).map((c) => row(c.s.id, c.s.name, `${c.pct}% of ${gbp(c.annual)}`, <span style={{ color: c.pct > Math.round(model.yearFrac * 100) + 10 ? "var(--danger)" : "inherit" }}>{gbp(c.inv)}</span>))}
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Red = invoiced ahead of the year so far ({Math.round(model.yearFrac * 100)}% gone).</div>
+      </Section>
+      <Section icon={Wallet} title="Monthly contract invoices not recorded" count={missingContractInv.length} empty="Every monthly contract has an invoice recorded for each finished month.">
+        {missingContractInv.slice(0, 10).map((x) => row(x.s.id, x.s.name, `${x.months.length} month${x.months.length === 1 ? "" : "s"}`, x.months.join(", ")))}
+        <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Chase the supplier, or record the invoices in POs & invoices, so contract spend isn't missed.</div>
       </Section>
       <Section icon={TrendingUp} title="Price increases expected at renewal" count={uplift.length} empty="Set an expected % increase on supplier contracts to see next year's impact.">
         {uplift.map((u) => row(u.s.id, `${u.s.name} +${u.s.upliftPct}%`, u.s.contractEnd ? `renews ${fmtDate(u.s.contractEnd)}` : "", `+${gbp(u.extra)}/yr`))}
@@ -451,7 +456,7 @@ export function fyMonth(fyYear, fyStart, i) { const idx = (fyStart - 1) + i; ret
 export function fyLabel(fyYear, fyStart) { return fyStart === 1 ? String(fyYear) : `${fyYear}/${String((fyYear + 1) % 100).padStart(2, "0")}`; }
 export function currentFy(fyStart, today = new Date()) { const y = today.getFullYear(), m = today.getMonth() + 1; return m >= fyStart ? y : y - 1; }
 
-export function CostLinesView({ lines, suppliers = [], fyStart = 1, bs = {}, onSaveBs, onSaveMany, onDelete, onRecordInvoice, locationName = "", userName = "" }) {
+export function CostLinesView({ serviceRowsFor, onOpenService, lines, suppliers = [], fyStart = 1, bs = {}, onSaveBs, onSaveMany, onDelete, onRecordInvoice, locationName = "", userName = "" }) {
   const [fy, setFy] = useState(currentFy(fyStart));
   const [cat, setCat] = useState(() => (lines.find((l) => l.year === currentFy(fyStart))?.category) || "catering");
   const [adding, setAdding] = useState(false); const [cell, setCell] = useState(null); const [invoiceOpen, setInvoiceOpen] = useState(false); const [editLine, setEditLine] = useState(null);
@@ -462,22 +467,25 @@ export function CostLinesView({ lines, suppliers = [], fyStart = 1, bs = {}, onS
   const isCurrent = (i) => today.startsWith(`${months[i].y}-${String(months[i].m).padStart(2, "0")}`);
   const elapsed = months.filter((_, i) => isPast(i) || isCurrent(i)).length;
   const rows = lines.filter((l) => l.year === fy && l.category === cat).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.name).localeCompare(String(b.name)));
+  // Services with a budget show automatically: budget from planned visits, actual from logged visit costs.
+  const svcRows = serviceRowsFor ? serviceRowsFor(cat, fy, fyStart) : [];
+  const allRows = [...rows, ...svcRows];
   const catsUsed = [...new Set(lines.filter((l) => l.year === fy).map((l) => l.category))];
   const sum = (arr, to = 12) => (arr || []).slice(0, to).reduce((t, x) => t + (Number(x) || 0), 0);
-  const tB = rows.reduce((t, l) => t + sum(l.budget), 0), tA = rows.reduce((t, l) => t + sum(l.actual), 0);
-  const ytdB = rows.reduce((t, l) => t + sum(l.budget, elapsed), 0), ytdA = rows.reduce((t, l) => t + sum(l.actual, elapsed), 0);
+  const tB = allRows.reduce((t, l) => t + sum(l.budget), 0), tA = allRows.reduce((t, l) => t + sum(l.actual), 0);
+  const ytdB = allRows.reduce((t, l) => t + sum(l.budget, elapsed), 0), ytdA = allRows.reduce((t, l) => t + sum(l.actual, elapsed), 0);
   const missing = rows.reduce((t, l) => t + months.filter((_, i) => isPast(i) && l.actual?.[i] == null && Number(l.budget?.[i]) > 0).length, 0);
-  const colB = (i) => rows.reduce((t, l) => t + (Number(l.budget?.[i]) || 0), 0); const colA = (i) => rows.reduce((t, l) => t + (Number(l.actual?.[i]) || 0), 0);
-  const hasA = (i) => rows.some((l) => l.actual?.[i] != null);
+  const colB = (i) => allRows.reduce((t, l) => t + (Number(l.budget?.[i]) || 0), 0); const colA = (i) => allRows.reduce((t, l) => t + (Number(l.actual?.[i]) || 0), 0);
+  const hasA = (i) => allRows.some((l) => l.actual?.[i] != null);
   const cellColour = (b, a) => a == null ? "var(--faint)" : !b ? "var(--warn)" : a > b * 1.05 ? "var(--danger)" : a < b * 0.95 ? "var(--ok)" : "var(--text)";
   const th = { padding: "6px 6px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textAlign: "right", whiteSpace: "nowrap", background: "var(--card-hi)" };
   const td = { padding: "5px 6px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, whiteSpace: "nowrap", borderTop: "1px solid var(--border)" };
   const sticky = { position: "sticky", left: 0, background: "var(--card)", zIndex: 1, textAlign: "left", minWidth: 130, maxWidth: 170 };
   function exportXlsx() {
     const head = ["Cost line", ...months.map((_, i) => mLabel(i)), "Total"];
-    const mk = (k) => rows.map((l) => [l.name, ...months.map((_, i) => (l[k]?.[i] == null ? null : Number(l[k][i]))), sum(l[k])]);
-    const tot = (k) => ["Total", ...months.map((_, i) => rows.reduce((t, l) => t + (Number(l[k]?.[i]) || 0), 0)), rows.reduce((t, l) => t + sum(l[k]), 0)];
-    const varRows = rows.map((l) => [l.name, ...months.map((_, i) => (l.actual?.[i] == null ? null : (Number(l.budget?.[i]) || 0) - Number(l.actual[i]))), sum(l.budget, elapsed) - sum(l.actual, elapsed)]);
+    const mk = (k) => allRows.map((l) => [l.name, ...months.map((_, i) => (l[k]?.[i] == null ? null : Number(l[k][i]))), sum(l[k])]);
+    const tot = (k) => ["Total", ...months.map((_, i) => allRows.reduce((t, l) => t + (Number(l[k]?.[i]) || 0), 0)), allRows.reduce((t, l) => t + sum(l[k]), 0)];
+    const varRows = allRows.map((l) => [l.name, ...months.map((_, i) => (l.actual?.[i] == null ? null : (Number(l.budget?.[i]) || 0) - Number(l.actual[i]))), sum(l.budget, elapsed) - sum(l.actual, elapsed)]);
     const money = head.map((_, i) => i).slice(1);
     buildWorkbook([
       { name: "Budget", title: `${CATEGORY_META[cat]?.label || cat} budget ${fyLabel(fy, fyStart)}`, subtitle: locationName, headers: head, rows: [...mk("budget"), tot("budget")], widths: [26, ...months.map(() => 11), 13], money },
@@ -488,7 +496,7 @@ export function CostLinesView({ lines, suppliers = [], fyStart = 1, bs = {}, onS
   function printGrid() {
     const e = escapeHtml;
     openPrintReport(`${CATEGORY_META[cat]?.label || cat} — budget vs actual ${fyLabel(fy, fyStart)}`, locationName, `<div class="kpis"><div class="kpi">Year budget<b>${gbp(tB)}</b></div><div class="kpi">Budget to date<b>${gbp(ytdB)}</b></div><div class="kpi">Actual to date<b class="${ytdA > ytdB ? "bad" : "ok"}">${gbp(ytdA)}</b></div><div class="kpi">Variance to date<b class="${ytdA > ytdB ? "bad" : "ok"}">${gbp(ytdB - ytdA)}</b></div></div>
-    ${tableHtml(["Cost line", ...months.slice(0, Math.max(elapsed, 1)).map((_, i) => mLabel(i)), "Budget YTD", "Actual YTD", "Variance"], [...rows.map((l) => [`<b>${e(l.name)}</b>`, ...months.slice(0, Math.max(elapsed, 1)).map((_, i) => l.actual?.[i] == null ? `<span class="muted">${gbp(l.budget?.[i] || 0)}</span>` : `<span class="${Number(l.actual[i]) > Number(l.budget?.[i] || 0) * 1.05 ? "bad" : ""}">${gbp(l.actual[i])}</span>`), gbp(sum(l.budget, elapsed)), gbp(sum(l.actual, elapsed)), `<b class="${sum(l.actual, elapsed) > sum(l.budget, elapsed) ? "bad" : "ok"}">${gbp(sum(l.budget, elapsed) - sum(l.actual, elapsed))}</b>`]), ["<b>Total</b>", ...months.slice(0, Math.max(elapsed, 1)).map((_, i) => `<b>${gbp(colA(i))}</b>`), `<b>${gbp(ytdB)}</b>`, `<b>${gbp(ytdA)}</b>`, `<b>${gbp(ytdB - ytdA)}</b>`]])}
+    ${tableHtml(["Cost line", ...months.slice(0, Math.max(elapsed, 1)).map((_, i) => mLabel(i)), "Budget YTD", "Actual YTD", "Variance"], [...allRows.map((l) => [`<b>${e(l.name)}</b>`, ...months.slice(0, Math.max(elapsed, 1)).map((_, i) => l.actual?.[i] == null ? `<span class="muted">${gbp(l.budget?.[i] || 0)}</span>` : `<span class="${Number(l.actual[i]) > Number(l.budget?.[i] || 0) * 1.05 ? "bad" : ""}">${gbp(l.actual[i])}</span>`), gbp(sum(l.budget, elapsed)), gbp(sum(l.actual, elapsed)), `<b class="${sum(l.actual, elapsed) > sum(l.budget, elapsed) ? "bad" : "ok"}">${gbp(sum(l.budget, elapsed) - sum(l.actual, elapsed))}</b>`]), ["<b>Total</b>", ...months.slice(0, Math.max(elapsed, 1)).map((_, i) => `<b>${gbp(colA(i))}</b>`), `<b>${gbp(ytdB)}</b>`, `<b>${gbp(ytdA)}</b>`, `<b>${gbp(ytdB - ytdA)}</b>`]])}
     <div class="muted">Month cells show the invoiced amount; grey = budget only, no invoice entered yet. Red = more than 5% over budget.</div>`);
   }
   function copyToNextYear() {
@@ -506,7 +514,7 @@ export function CostLinesView({ lines, suppliers = [], fyStart = 1, bs = {}, onS
         <Select value={fy} onChange={(e) => setFy(Number(e.target.value))} style={{ width: 110, fontSize: 13 }}>{Array.from({ length: 6 }, (_, i) => currentFy(fyStart) - 3 + i).map((y) => <option key={y} value={y}>{fyLabel(y, fyStart)}</option>)}</Select>
         {CATEGORY_KEYS.map((c) => <ToggleButton key={c} active={cat === c} onClick={() => setCat(c)}>{CATEGORY_META[c]?.label}{catsUsed.includes(c) ? ` (${lines.filter((l) => l.year === fy && l.category === c).length})` : ""}</ToggleButton>)}
       </div>
-      {rows.length > 0 && (
+      {allRows.length > 0 && (
         <div className="bento kpis">
           {[["Year budget", gbp(tB), "var(--text)"], ["Budget to date", gbp(ytdB), "var(--text)"], ["Invoiced to date", gbp(ytdA), ytdA > ytdB ? "var(--danger)" : "var(--ok)"], [ytdA > ytdB ? "Over to date" : "Under to date", gbp(Math.abs(ytdB - ytdA)), ytdA > ytdB ? "var(--danger)" : "var(--ok)"]].map(([l, v, c]) => (
             <div key={l} className="bcard c1" style={{ padding: "11px 13px", gap: 3 }}><div className="blabel">{l}</div><div className="bbig" style={{ fontSize: 22, color: c }}>{v}</div></div>
@@ -518,7 +526,7 @@ export function CostLinesView({ lines, suppliers = [], fyStart = 1, bs = {}, onS
         {ACTIVE_CAN_EDIT && rows.length > 0 && <PrimaryButton onClick={() => setInvoiceOpen(true)} style={{ flex: "1 1 200px" }}><FileSpreadsheet size={15} /> Enter an invoice</PrimaryButton>}
         {ACTIVE_CAN_EDIT && <button onClick={() => setAdding(true)} style={{ ...btnS, flex: rows.length ? "0 0 auto" : "1 1 200px", justifyContent: "center", background: rows.length ? "var(--card-hi)" : "var(--accent)", color: rows.length ? "var(--accent)" : "var(--on-accent)", padding: "10px 12px" }}>+ Add cost line{rows.length ? "" : "s"}</button>}
       </div>
-      {rows.length === 0 ? (
+      {allRows.length === 0 ? (
         <div style={{ ...card, alignItems: "center", textAlign: "center", padding: 22 }}>
           <div style={{ fontSize: 15, fontWeight: 750 }}>No {CATEGORY_META[cat]?.label?.toLowerCase()} cost lines for {fyLabel(fy, fyStart)}</div>
           <div className="bsub" style={{ maxWidth: 440 }}>Add each cost you budget for — salaries, extra labour, travel, utilities… — with its monthly budget. Then each month enter what the invoice says, and you'll see budget vs actual for every line.</div>
@@ -544,6 +552,20 @@ export function CostLinesView({ lines, suppliers = [], fyStart = 1, bs = {}, onS
                     <td style={{ ...td, fontWeight: 700, color: va > vb ? "var(--danger)" : "var(--ok)" }}>{va || vb ? `${va > vb ? "+" : "−"}${gbp(Math.abs(va - vb)).replace(/\.00$/, "")}` : ""}</td>
                   </tr>
                 ); })}
+                {svcRows.length > 0 && <tr><td colSpan={15} style={{ ...td, textAlign: "left", fontFamily: "inherit", fontSize: 11, fontWeight: 750, color: "var(--muted)", background: "var(--card-hi)", position: "sticky", left: 0 }}>FROM SERVICES — automatic: budget from planned visits, actual from logged visit costs</td></tr>}
+                {svcRows.map((l) => { const vb = sum(l.budget, elapsed), va = sum(l.actual, elapsed); return (
+                  <tr key={l.id}>
+                    <td style={{ ...td, ...sticky, fontFamily: "inherit", fontSize: 12.3, fontWeight: 600, whiteSpace: "normal" }}><button onClick={() => onOpenService && onOpenService(l.deviceId)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, color: "var(--accent)" }}>{l.name}</button><div style={{ fontSize: 10, color: "var(--faint)", fontWeight: 500 }}>service{l.visits ? ` · ${l.visits} visit${l.visits === 1 ? "" : "s"} planned` : ""}</div></td>
+                    {months.map((_, i) => { const b = Number(l.budget?.[i]) || 0; const a = l.actual?.[i] == null ? null : Number(l.actual[i]); return (
+                      <td key={i} title={`Planned ${gbp(b)}${a != null ? ` · logged ${gbp(a)}` : ""}`} style={{ ...td, background: isCurrent(i) ? "var(--accent-soft)" : undefined }}>
+                        <div style={{ fontWeight: a != null ? 700 : 400, color: cellColour(b, a) }}>{a != null ? gbp(a).replace(/\.00$/, "") : isPast(i) && b ? "—" : ""}</div>
+                        <div style={{ fontSize: 9.5, color: "var(--faint)" }}>{b ? gbp(b).replace(/\.00$/, "") : ""}</div>
+                      </td>
+                    ); })}
+                    <td style={{ ...td, fontWeight: 700 }}>{gbp(sum(l.budget)).replace(/\.00$/, "")}</td>
+                    <td style={{ ...td, fontWeight: 700, color: va > vb ? "var(--danger)" : "var(--ok)" }}>{va || vb ? `${va > vb ? "+" : "−"}${gbp(Math.abs(va - vb)).replace(/\.00$/, "")}` : ""}</td>
+                  </tr>
+                ); })}
                 <tr style={{ background: "var(--card-hi)" }}>
                   <td style={{ ...td, ...sticky, background: "var(--card-hi)", fontFamily: "inherit", fontWeight: 800, fontSize: 12.3 }}>Total</td>
                   {months.map((_, i) => <td key={i} style={{ ...td, fontWeight: 800 }}><div style={{ color: hasA(i) ? cellColour(colB(i), colA(i)) : "var(--faint)" }}>{hasA(i) ? gbp(colA(i)).replace(/\.00$/, "") : ""}</div><div style={{ fontSize: 9.5, color: "var(--faint)", fontWeight: 500 }}>{gbp(colB(i)).replace(/\.00$/, "")}</div></td>)}
@@ -553,10 +575,10 @@ export function CostLinesView({ lines, suppliers = [], fyStart = 1, bs = {}, onS
               </tbody>
             </table>
           </div>
-          <div style={{ fontSize: 11, color: "var(--faint)", padding: "7px 10px", borderTop: "1px solid var(--border)" }}>Each cell: <b>invoiced</b> (top) · budget (small). <span style={{ color: "var(--danger)" }}>Red</span> = over budget by 5%+, <span style={{ color: "var(--ok)" }}>green</span> = under. "To date" = invoiced minus budget so far. Tap a cell to change it, or a line name to edit the line.</div>
+          <div style={{ fontSize: 11, color: "var(--faint)", padding: "7px 10px", borderTop: "1px solid var(--border)" }}>Each cell: <b>invoiced</b> (top) · budget (small). <span style={{ color: "var(--danger)" }}>Red</span> = over budget by 5%+, <span style={{ color: "var(--ok)" }}>green</span> = under. "To date" = invoiced minus budget so far. Tap a cell to change it, or a line name to edit the line.{svcRows.length ? " Service rows update themselves when you log visits — tap a service name to open it." : ""}</div>
         </div>
       )}
-      {rows.length > 0 && (
+      {allRows.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button onClick={exportXlsx} style={btnS}><FileSpreadsheet size={13} /> Excel</button>
           <button onClick={printGrid} style={btnS}><Printer size={13} /> Print</button>

@@ -8,7 +8,7 @@ import { buildAssetRecord, buildBlankChecklist, openPrintReport, tableHtml } fro
 import { addDays, addMonths, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, formatCustomValues, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
 import { TEMPLATE_EXAMPLE_PREFIX, buildServicesTemplate, readSpreadsheetRows } from "../lib/excelTemplate.js";
 
-export function DeviceHistoryModal({ changeLog = [], spares = [], onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
+export function DeviceHistoryModal({ budgetInfo = null, onRebuildPlan, changeLog = [], spares = [], onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
   const sorted = [...services].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const sortedVisitBudgets = [...visitBudgets].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const [addingTask, setAddingTask] = useState(false);
@@ -78,6 +78,21 @@ export function DeviceHistoryModal({ changeLog = [], spares = [], onMerge, onRec
               </>
             );
           })()}
+          {budgetInfo && (budgetInfo.perVisit > 0 || budgetInfo.spent > 0) && (
+            <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>Budget this year</span>
+                {onRebuildPlan && budgetInfo.perVisit > 0 && <button onClick={() => { if (window.confirm("Rebuild this service's planned visits for the next 12 months from its current schedule and budget? Visits already logged are kept.")) onRebuildPlan(); }} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Rebuild planned visits</button>}
+              </div>
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.3 }}>
+                <span>Planned <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(budgetInfo.planned)}</b></span>
+                <span>Spent <b style={{ fontFamily: "'IBM Plex Mono', monospace", color: budgetInfo.planned && budgetInfo.spent > budgetInfo.planned ? "var(--danger)" : "inherit" }}>{gbp(budgetInfo.spent)}</b></span>
+                {budgetInfo.perVisit > 0 && <span>{gbp(budgetInfo.perVisit)} per visit</span>}
+                {budgetInfo.skipped > 0 && <span style={{ color: "var(--ok)" }}>{budgetInfo.skipped} skipped (budget released)</span>}
+              </div>
+              <div style={{ fontSize: 11.5, color: budgetInfo.perVisit > 0 && !budgetInfo.future ? "var(--warn)" : "var(--faint)" }}>{budgetInfo.next ? `Next planned visit in the budget: ${fmtDate(budgetInfo.next.date)} (${gbp(budgetInfo.next.amount)}) · ${budgetInfo.future} planned ahead` : budgetInfo.perVisit > 0 ? "No future visits planned in the budget — tap Rebuild planned visits." : "No budget per visit set — edit the service to add one."}</div>
+            </div>
+          )}
           {(device.gallery || []).length > 0 && <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>{device.gallery.map((g, i) => <a key={i} href={g} target="_blank" rel="noopener noreferrer"><img src={g} alt="" style={{ width: 72, height: 72, borderRadius: 8, objectFit: "cover" }} /></a>)}</div>}
           {formatCustomValues("service", device.custom || {}) && <div style={{ fontSize: 12.3, background: "var(--card-hi)", borderRadius: 9, padding: "7px 10px" }}>{formatCustomValues("service", device.custom || {})}</div>}
           {changeLog.length > 0 && <details style={{ fontSize: 12 }}><summary style={{ cursor: "pointer", color: "var(--accent)", fontWeight: 650 }}>Change history ({changeLog.length})</summary><div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>{changeLog.map((a) => <div key={a.id}><span style={{ color: "var(--faint)" }}>{new Date(a.at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" })} · {a.by}:</span> {a.text}</div>)}</div></details>}
@@ -276,7 +291,7 @@ export function AddDeviceTaskModal({ existing, onClose, onSave, onDelete }) {
 /* ---------------------------------------------------------
    Add Device Modal
 --------------------------------------------------------- */
-export function AddDeviceModal({ onPause, onResume, onArchive, countries, locations, defaultLocationId, existing, prefill, subcategoriesByCategory, suppliers, onClose, onSave, onDelete, onDuplicate }) {
+export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, onResume, onArchive, countries, locations, defaultLocationId, existing, prefill, subcategoriesByCategory, suppliers, onClose, onSave, onDelete, onDuplicate }) {
   const isEdit = !!existing;
   const src = existing || prefill || null; // prefill = duplicating another service
   const [name, setName] = useState(src?.name || "");
@@ -452,7 +467,12 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
           <datalist id={areaListId}>{(AREA_SUGGESTIONS_CACHE[locationId] || []).map((a) => <option key={a} value={a} />)}</datalist>
         </Field>
         <div style={{ display: "flex", gap: 10 }}>
-          <Field label="Asset tag"><TextInput value={assetTag} onChange={(e) => setAssetTag(e.target.value)} placeholder="AHU-003" /></Field>
+          <Field label="Asset tag"><div style={{ display: "flex", gap: 5 }}><TextInput value={assetTag} onChange={(e) => setAssetTag(e.target.value)} placeholder="AHU-003" style={{ flex: 1, minWidth: 0 }} />{!existing?.assetTag && <button type="button" title="Suggest the next free tag" onClick={() => {
+            const base = (assetTag.match(/^[A-Za-z]+/)?.[0] || name.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 3) || "AST").toUpperCase();
+            const nums = allTags.map((t) => String(t).toUpperCase().match(new RegExp(`^${base}[-\\s]?(\\d+)$`))).filter(Boolean).map((m) => Number(m[1]));
+            const width = Math.max(3, ...allTags.map((t) => String(t).match(new RegExp(`^${base}[-\\s]?(\\d+)$`, "i"))?.[1]?.length || 0));
+            setAssetTag(`${base}-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(width, "0")}`);
+          }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "0 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Next free</button>}</div></Field>
           <Field label="Equipment type"><TextInput value={category} onChange={(e) => setCategory(e.target.value)} placeholder="HVAC" /></Field>
         </div>
         <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -554,6 +574,12 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
           )}
         </Field>
         <Field label={`Budget per visit (${ACTIVE_CURRENCY_CODE}, optional)`}><TextInput type="number" min="0" step="0.01" value={budgetPerVisit} onChange={(e) => setBudgetPerVisit(e.target.value)} placeholder="0.00" /></Field>
+        {Number(budgetPerVisit) > 0 && (() => {
+          const perYear = Number(interval) > 0 ? Math.round(12 / Number(interval) * 10) / 10 : 1; const annual = Number(budgetPerVisit) * perYear;
+          const row = budgetHeadByCat[serviceCategory]; const before = existing ? (Number(existing.budgetPerVisit) || 0) * (Number(existing.serviceIntervalMonths) > 0 ? 12 / Number(existing.serviceIntervalMonths) : 1) : 0;
+          const extra = annual - (existing && existing.serviceCategory === serviceCategory ? before : 0);
+          return <div style={{ fontSize: 11.8, color: "var(--muted)", marginTop: -4, lineHeight: 1.45 }}>≈ <b>{gbp(annual)}</b> a year ({perYear} visit{perYear === 1 ? "" : "s"}){row && row.budget > 0 ? <> · {CATEGORY_META[serviceCategory]?.label} forecast <b style={{ color: row.forecast + Math.max(0, extra * (12 - new Date().getMonth()) / 12) > row.budget ? "var(--danger)" : "var(--ok)" }}>{gbp(row.forecast + Math.max(0, extra * (12 - new Date().getMonth()) / 12))}</b> of {gbp(row.budget)} budget{extra > 0 && row.forecast + extra * (12 - new Date().getMonth()) / 12 > row.budget ? " — this would take it over" : ""}</> : null}. Planned visits are added to the budget automatically.</div>;
+        })()}
         <Field label={`Visit checklist (${checklist.length} item${checklist.length === 1 ? "" : "s"}, optional)`}>
           {checklist.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
@@ -589,7 +615,7 @@ export function AddDeviceModal({ onPause, onResume, onArchive, countries, locati
         {isEdit ? (
           <div style={{ display: "flex", gap: 10 }}>
             <Field label="Service interval (months)"><TextInput type="number" min="0" value={interval} onChange={(e) => setInterval(e.target.value)} /></Field>
-            <Field label="Next visit due"><TextInput type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} /></Field>
+            <Field label="Next visit due"><TextInput type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />{nextDate && Number(interval) > 0 && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 3 }}>Then {[1, 2, 3].map((i) => fmtDate(addMonths(nextDate, i * Number(interval)))).join(", ")}…</div>}</Field>
           </div>
         ) : (
           <>
@@ -1121,7 +1147,7 @@ export function AddWorkModal({ jobTemplates = null, onSaveJobTemplates, openWork
           </div>
         )}
         <Field label="Trade (optional)">
-          <Select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">—</option>{WORK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
+          <Select value={category} onChange={(e) => { const c = e.target.value; setCategory(c); if (c && !supplierId) { const m = suppliers.filter((s2) => (s2.trades || []).includes(c) && s2.status !== "blocked"); if (m.length === 1) setSupplierId(m[0].id); } }}><option value="">—</option>{WORK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
         </Field>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Priority">
@@ -1134,6 +1160,7 @@ export function AddWorkModal({ jobTemplates = null, onSaveJobTemplates, openWork
               <option value="">— Unassigned —</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
+            {(() => { const s2 = suppliers.find((x) => x.id === supplierId); if (!s2) return null; const exp = s2.insuranceExpiry && s2.insuranceExpiry < new Date().toISOString().slice(0, 10); return s2.status === "blocked" || exp ? <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--danger)", marginTop: 4 }}>{s2.status === "blocked" ? "This supplier is blocked." : `Insurance expired ${fmtDate(s2.insuranceExpiry)} — check before they start work.`}</div> : null; })()}
             {category && suppliers.some((s2) => (s2.trades || []).includes(category) && s2.id !== supplierId && s2.status !== "blocked") && (
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5, alignItems: "center" }}>
                 <span style={{ fontSize: 11, color: "var(--faint)" }}>{category} suppliers:</span>

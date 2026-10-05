@@ -13,7 +13,7 @@ import { BudgetChecks, BudgetOverview, BudgetTools, CostLinesView, PlanImportMod
    Budget & Cost comparison Tab
 --------------------------------------------------------- */
 
-export function BudgetTab({ costLines = [], onSaveCostLines, onDeleteCostLine, onRecordInvoice, invoices = [], pos = [], savings = [], floorArea = 0, budgetSettings = {}, onSaveBs, onMoveBudget, onSetBudgetsBulk, onBulkUpdateLines, onBulkDeleteLines, userNames = [], userName = "", locationName = "", onRollForward, budgets, services, works, suppliers, devices, budgetLines, visitBudgets, subcategoriesByCategory, onSetBudget, onAddLines, onUpdateLine, onDeleteLine, onApplySuggestion, shiftDateFn = (d) => d }) {
+export function BudgetTab({ serviceSync = null, onOpenService, costLines = [], onSaveCostLines, onDeleteCostLine, onRecordInvoice, invoices = [], pos = [], savings = [], floorArea = 0, budgetSettings = {}, onSaveBs, onMoveBudget, onSetBudgetsBulk, onBulkUpdateLines, onBulkDeleteLines, userNames = [], userName = "", locationName = "", onRollForward, budgets, services, works, suppliers, devices, budgetLines, visitBudgets, subcategoriesByCategory, onSetBudget, onAddLines, onUpdateLine, onDeleteLine, onApplySuggestion, shiftDateFn = (d) => d }) {
   const [showSuggest, setShowSuggest] = useState(false);
   const [rollOpen, setRollOpen] = useState(false);
   const thisYear = new Date().getFullYear();
@@ -346,7 +346,17 @@ export function BudgetTab({ costLines = [], onSaveCostLines, onDeleteCostLine, o
         {[["overview", "Overview"], ["costlines", "Cost lines"], ["plan", "Plan"], ["month", "Month"], ["year", "Year"], ["calendar", "Calendar"], ["variance", "Variance"], ["checks", "Checks"], ["tools", "Tools"]].map(([k, l]) => <ToggleButton key={k} active={view === k} onClick={() => setView(k)}>{l}</ToggleButton>)}
       </div>
       {view === "overview" && <BudgetOverview model={model} prevModel={prevModel} year={year} services={services} works={works} suppliers={suppliers} devices={devices} invoices={invoices} pos={pos} savings={savings} floorArea={floorArea} bs={bs} onSaveBs={onSaveBs} />}
-      {view === "costlines" && <CostLinesView lines={costLines} suppliers={suppliers} fyStart={Number(bs.fyStart) || 1} bs={bs} onSaveBs={onSaveBs} onSaveMany={onSaveCostLines} onDelete={onDeleteCostLine} onRecordInvoice={onRecordInvoice} locationName={locationName} userName={userName} />}
+      {view === "costlines" && <CostLinesView onOpenService={onOpenService} serviceRowsFor={(cat, fy, fyS) => {
+        const key = (y, m) => { const idx = (y - fy) * 12 + (m - fyS); return idx >= 0 && idx < 12 ? idx : -1; };
+        return devices.filter((d) => !d.archived && (d.serviceCategory || "maintenance") === cat).map((d) => {
+          const budget = Array(12).fill(0); const actual = Array(12).fill(null); let visits = 0;
+          budgetLines.forEach((l) => { if (l.deviceId !== d.id || l.status === "skipped") return; const [y, m] = String(l.date).split("-").map(Number); const k = key(y, m); if (k < 0) return; budget[k] += Number(l.amount) || 0; visits++; });
+          services.forEach((v) => { if (v.deviceId !== d.id || !Number(v.cost)) return; const [y, m] = String(v.date).split("-").map(Number); const k = key(y, m); if (k < 0) return; actual[k] = (actual[k] || 0) + Number(v.cost); });
+          return { id: `svc-${d.id}`, deviceId: d.id, name: d.name, budget, actual, visits, auto: true };
+        }).filter((r) => r.budget.some(Boolean) || r.actual.some((x) => x != null));
+      }} lines={costLines} suppliers={suppliers} fyStart={Number(bs.fyStart) || 1} bs={bs} onSaveBs={onSaveBs} onSaveMany={onSaveCostLines} onDelete={onDeleteCostLine} onRecordInvoice={onRecordInvoice} locationName={locationName} userName={userName} />}
+      {view === "checks" && serviceSync && <ServiceSyncPanel sync={serviceSync} />}
+      {view === "tools" && serviceSync && ACTIVE_CAN_EDIT && <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 14, marginBottom: 12, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}><div style={{ flex: "1 1 240px", fontSize: 13 }}><b>Plan service visits ahead</b><div style={{ fontSize: 12, color: "var(--muted)" }}>Adds any missing planned visits for every service with a budget per visit — nothing existing is changed.</div></div><button onClick={() => serviceSync.onPlan(devices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0).map((d) => d.id), 12)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Next 12 months</button><button onClick={() => serviceSync.onPlan(devices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0).map((d) => d.id), 24)} style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Next 24 months</button></div>}
       {view === "checks" && <BudgetChecks costLines={costLines} fyStart={Number(bs.fyStart) || 1} model={model} year={year} services={services} works={works} suppliers={suppliers} devices={devices} budgetLines={budgetLines} invoices={invoices} />}
       {view === "tools" && <BudgetTools userName={userName} year={year} model={model} budgets={budgets} devices={devices} bs={bs} onSaveBs={onSaveBs} onMoveBudget={onMoveBudget} onSetBudgetsBulk={onSetBudgetsBulk} users={userNames} locationName={locationName} exportData={{ excel: () => exportBudgetPack({ model, year, locationName, lines: budgetLines, suppliers, bs }), print: () => printBudgetSummary({ model, year, locationName, bs }) }} />}
       {!["overview", "checks", "tools", "costlines"].includes(view) && <>
@@ -1280,6 +1290,40 @@ function PlanBulkPanel({ lines, onApply, onDelete }) {
         <button onClick={() => { const m = Number(months); if (!m) return; onApply(Object.fromEntries(target.map((l) => [l.id, { date: addMonths(l.date, m) }]))); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
       </div>
       <button onClick={() => { if (window.confirm(`Delete ${target.length} plan line${target.length === 1 ? "" : "s"}? This can't be undone.`)) onDelete(target.map((l) => l.id)); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--danger)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Delete these {target.length} lines</button>
+    </div>
+  );
+}
+
+// Services and the budget out of step — with one-tap fixes.
+function ServiceSyncPanel({ sync }) {
+  const { orphans = [], unplanned = [], thin = [], noBudget = [], onPlan, onRemoveOrphans, onOpen } = sync;
+  const total = orphans.length + unplanned.length + thin.length + noBudget.length;
+  const box = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 7, marginBottom: 12 };
+  const act = { background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", alignSelf: "flex-start" };
+  const link = (d) => <button key={d.id} onClick={() => onOpen(d.id)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 12, padding: "3px 9px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>{d.name}{Number(d.budgetPerVisit) ? ` · ${gbp(d.budgetPerVisit)}` : ""}</button>;
+  return (
+    <div style={box}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><b style={{ fontSize: 14 }}>Services ↔ budget</b><span style={{ fontSize: 12, fontWeight: 750, color: total ? "var(--warn)" : "var(--ok)" }}>{total ? `${total} to sort` : "✓ all in step"}</span></div>
+      {!total && <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Every service with a budget has its visits planned, and there are no leftover lines from removed services.</div>}
+      {unplanned.length > 0 && <>
+        <div style={{ fontSize: 12.5 }}><b>{unplanned.length} service{unplanned.length === 1 ? " has" : "s have"} a budget per visit but no visits planned in the budget</b> — so their cost isn't in your forecast.</div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{unplanned.slice(0, 12).map(link)}</div>
+        {ACTIVE_CAN_EDIT && <button onClick={() => onPlan(unplanned.map((d) => d.id), 12)} style={act}>Plan their visits (next 12 months)</button>}
+      </>}
+      {thin.length > 0 && <>
+        <div style={{ fontSize: 12.5, marginTop: 4 }}><b>{thin.length} service{thin.length === 1 ? " is" : "s are"} planned for less than 9 months ahead</b> — top them up so next year's budget isn't short.</div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{thin.slice(0, 12).map(link)}</div>
+        {ACTIVE_CAN_EDIT && <button onClick={() => onPlan(thin.map((d) => d.id), 12)} style={act}>Top up to 12 months</button>}
+      </>}
+      {orphans.length > 0 && <>
+        <div style={{ fontSize: 12.5, marginTop: 4 }}><b>{orphans.length} planned visit{orphans.length === 1 ? "" : "s"} for services that were deleted or archived</b> — still counted in your forecast ({gbp(orphans.reduce((t, l) => t + (Number(l.amount) || 0), 0))}).</div>
+        <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{[...new Set(orphans.map((l) => l.description))].slice(0, 8).join(" · ")}</div>
+        {ACTIVE_CAN_EDIT && <button onClick={() => onRemoveOrphans(orphans.map((l) => l.id))} style={{ ...act, background: "var(--danger)" }}>Remove them from the budget</button>}
+      </>}
+      {noBudget.length > 0 && <>
+        <div style={{ fontSize: 12.5, marginTop: 4 }}><b>{noBudget.length} service{noBudget.length === 1 ? " has" : "s have"} visit costs but no budget per visit</b> — set one so the spend has a budget behind it.</div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{noBudget.slice(0, 12).map(link)}</div>
+      </>}
     </div>
   );
 }

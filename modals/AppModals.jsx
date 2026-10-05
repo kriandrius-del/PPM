@@ -4,7 +4,7 @@ import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, Che
 import { Badge, ConfirmTextDelete, EmptyState, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { ACCENTS, ALERT_GROUPS, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, SITE_TYPES, STAFF_ROLES, START_TABS, STATUTORY_ITEMS, WHATS_NEW, authSql } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, BUILTIN_CATEGORY_META, CATEGORY_ICONS, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
-import { buildAssetRegister, buildCarbonReport, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractCalendar, buildContractorHours, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMonthCalendar, buildPortfolioReport, buildReactiveVsPlanned, buildRecharges, buildRepeatFaults, buildResponseTimes, buildSlaReport, buildSpendReport, buildStatutoryCalendar, buildSupplierCompliance, buildSupplierLeague, buildSupplierReport, buildSupplierSpend, buildVatSummary, buildWallPlanner, buildWorksAgeing, buildWorstAssets, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
+import { buildAssetRegister, buildCarbonReport, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractCalendar, buildContractorHours, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMonthCalendar, buildPortfolioReport, buildReactiveVsPlanned, buildRecharges, buildRepeatFaults, buildRequestsByPerson, buildResponseTimes, buildSlaReport, buildSpendReport, buildStatutoryCalendar, buildSupplierCompliance, buildSupplierLeague, buildSupplierReport, buildSupplierSpend, buildTco, buildVatSummary, buildWallPlanner, buildWorksAgeing, buildWorstAssets, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
 import { addDays, compressImage, countryCodeFor, daysUntil, downloadBlob, findPostcode, fmtDate, gbp, placeFromCoords, placeFromPostcode, relativeDays, replacementYear, searchPlaces, uid } from "../lib/utils.js";
 import { AccountingExport } from "../tabs/BudgetTab.jsx";
 import { THEMES } from "../lib/theme.js";
@@ -277,6 +277,9 @@ export function GlobalSearchModal({ extra = {}, onGoTab, devices, services, work
         ...(extra.spares || []).filter((s) => hit(s.name, s.partNo, s.store)).map((s) => ({ k: `sp-${s.id}`, title: `Spare — ${s.name}`, sub: `${s.qty} in stock${s.store ? ` · ${s.store}` : ""}`, tab: "meters" })),
         ...(extra.keys || []).filter((k) => hit(k.label, k.number, k.opens, k.holder)).map((k) => ({ k: `k-${k.id}`, title: `Key — ${k.label}`, sub: k.holder ? `with ${k.holder}` : "in", tab: "meters" })),
         ...(extra.projects || []).filter((p) => hit(p.name, p.notes)).map((p) => ({ k: `pr-${p.id}`, title: `Project — ${p.name}`, sub: p.status, tab: "works" })),
+        ...(extra.keyDates || []).filter((x) => hit(x.title, x.type, x.notes)).map((x) => ({ k: `kd-${x.id}`, title: `${x.type} — ${x.title}`, sub: fmtDate(x.date), tab: "meters" })),
+        ...(extra.cars || []).filter((x) => hit(String(x.reg).replace(/\s+/g, ""), x.reg, x.name, x.space)).map((x) => ({ k: `car-${x.id}`, title: `Vehicle ${String(x.reg).toUpperCase()}`, sub: [x.name, x.phone, x.space && `space ${x.space}`].filter(Boolean).join(" · "), tab: "meters" })),
+        ...(extra.supContacts || []).filter((c) => hit(c.name, c.role, c.phone, c.email)).map((c, i) => ({ k: `sc-${i}-${c.name}`, title: `Contact — ${c.name}`, sub: [c.supplier, c.role, c.phone].filter(Boolean).join(" · "), tab: "suppliers" })),
         ...(extra.people || []).filter((p) => hit(p.name, p.role, p.company, p.skills, p.phone)).map((p) => ({ k: `pp-${p.id}`, title: `Person — ${p.name}`, sub: [p.role, p.company, p.phone].filter(Boolean).join(" · "), tab: "home" })),
         ...(extra.spaces || []).filter((x) => hit(x.name, x.floor, x.use)).map((x) => ({ k: `sp-${x.id}`, title: `Space — ${x.name}`, sub: [x.floor, x.use, x.areaM2 && `${x.areaM2} m²`].filter(Boolean).join(" · "), tab: "meters" })),
         ...(extra.actions || []).filter((x) => hit(x.action, x.finding, x.owner, x.source, x.sourceRef)).map((x) => ({ k: `ac-${x.id}`, title: `Action — ${String(x.action || x.finding).slice(0, 60)}`, sub: `${x.source}${x.due ? ` · due ${fmtDate(x.due)}` : ""}${x.status === "done" ? " · done" : ""}`, tab: "meters" })),
@@ -641,7 +644,7 @@ export function SharingPanel({ remote }) {
 /* ---------------------------------------------------------
    Notification centre
 --------------------------------------------------------- */
-export function AlertsModal({ alerts, onClose, onGo, locationName = "", senderName = "", onSnooze, snoozedCount = 0, onClearSnoozes }) {
+export function AlertsModal({ onSnoozeAll, alerts, onClose, onGo, locationName = "", senderName = "", onSnooze, snoozedCount = 0, onClearSnoozes }) {
   function emailSummary() {
     const lines = alerts.map((a) => `- ${a.tone === "danger" ? "[URGENT] " : ""}${a.title}${a.detail ? ` (${a.detail})` : ""}`);
     const subject = `PPM status — ${locationName} — ${fmtDate(new Date().toISOString().slice(0, 10))}`;
@@ -652,6 +655,7 @@ export function AlertsModal({ alerts, onClose, onGo, locationName = "", senderNa
   return (
     <Modal title={`Notifications (${alerts.length})`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {onSnoozeAll && alerts.filter((a) => a.tone !== "danger").length > 2 && <button onClick={() => { onSnoozeAll(alerts.filter((a) => a.tone !== "danger").map((a) => a.key)); onClose(); }} style={{ alignSelf: "flex-end", background: "none", border: "none", padding: "0 0 6px", color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Snooze the {alerts.filter((a) => a.tone !== "danger").length} non-urgent alerts until tomorrow</button>}
         {alerts.length === 0 && <div style={{ textAlign: "center", padding: "24px 0", color: "var(--faint)", fontSize: 13 }}><CheckCircle2 size={22} color="#2F855A" /><div style={{ marginTop: 6 }}>All clear — nothing needs attention.</div></div>}
         {alerts.map((a) => {
           const [fg, bg, edge] = colors[a.tone];
@@ -699,6 +703,8 @@ export function ReportsModal({ data, locationName, onClose }) {
     { title: "Works on-time (SLA) performance", desc: "Reactive works completed within target, by priority, supplier and trade, for the selected year.", go: () => run("Works on-time performance", `${locationName} · ${year}`, buildSlaReport(data, year)) },
     { title: "Incident trends", desc: "Incidents by type and month, root causes and hot-spot areas for the selected year.", go: () => run("Incident trends", `${locationName} · ${year}`, buildIncidentTrend(data, year)) },
     { title: "Wall planner", desc: "Year-at-a-glance grid of every service by month — planned and done — to print A4 landscape.", go: () => run(`PPM wall planner ${year}`, locationName, buildWallPlanner(data, year)) },
+    { title: "Requests by person", desc: "Who raises the most requests and problems, what about, and how quickly they were completed.", go: () => run(`Requests by person ${year}`, locationName, buildRequestsByPerson(data, year)) },
+    { title: "Total cost of ownership", desc: "Every asset's lifetime cost so far — visits and jobs since it was installed — against its replacement cost.", go: () => run("Total cost of ownership", locationName, buildTco(data)) },
     { title: "Statutory compliance calendar", desc: "When each statutory requirement falls due across the year, month by month.", go: () => run(`Statutory calendar ${year}`, locationName, buildStatutoryCalendar(data.devices, [...STATUTORY_ITEMS, ...((data.settingsFields || {}).customStatutory || [])], year)) },
     { title: "VAT summary", desc: "Net, VAT and gross on recorded invoices by quarter and by VAT rate.", go: () => run(`VAT summary ${year}`, locationName, buildVatSummary(data.invoices || [], year)) },
     { title: "Most expensive assets", desc: "The 15 services that cost the most over the last 12 months — candidates for replacement.", go: () => run("Most expensive assets", locationName, buildWorstAssets(data)) },
