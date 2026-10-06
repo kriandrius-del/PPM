@@ -5,7 +5,7 @@ import { EmptyState, StatChip, ToggleButton } from "./components/ui.jsx";
 import { ACCENTS, BUILTIN_TEMPLATES, DEFAULT_AUDIT_TEMPLATES, EQUIPMENT_TYPES, INCIDENT_TYPES, LOG_TEMPLATES, MONTH_LABELS, ONBOARDING_ITEMS, PKEYS, SKEYS, SLA_DAYS, WASTE_STREAMS, WATER_LIMITS, alertGroup } from "./lib/constants.js";
 import { ACTIVE_CAN_EDIT, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_BRAND, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
 import { LAST_LOCAL_WRITE, loadPersonal, loadShared, savePersonal, saveShared, set_SAVE_STATUS_LISTENER } from "./lib/storage.js";
-import { addDays, addMonths, appBaseUrl, cachedWeather, computeCompliance, currentBooking, currentDowntime, daysUntil, downloadBlob, fmtDate, gbp, inBlackout, isMirrored, meterStats, replacementYear, shiftDate, siteWeatherSource, uid, workSla } from "./lib/utils.js";
+import { addDays, addMonths, appBaseUrl, cachedWeather, computeCompliance, currentBooking, currentDowntime, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, inBlackout, isMirrored, meterStats, replacementYear, shiftDate, siteWeatherSource, uid, workSla } from "./lib/utils.js";
 import { AddCountryModal, AddLocationModal, AlertsModal, DataHealthModal, DataModal, GlobalSearchModal, HelpModal, LocationPickerModal, ReportsModal, SettingsModal, ShortcutsModal, UserSwitchModal } from "./modals/AppModals.jsx";
 import { AddDeviceModal, AddWorkModal, DeviceHistoryModal, ImportModal, LibraryModal, LogServiceModal } from "./modals/ServiceModals.jsx";
 import { BudgetTab } from "./tabs/BudgetTab.jsx";
@@ -20,8 +20,8 @@ import { AsbestosView, DocumentsView, DrillsView, LogsView, TrainingView, WaterT
 import { FinanceView } from "./tabs/FinanceView.jsx";
 import { THEME_CSS } from "./lib/theme.js";
 import { PageHeader } from "./components/PageHeader.jsx";
-import { ActionModal, ActionsView, BookTogetherModal, BulkEmailModal, CarParkView, CopySiteModal, CoshhView, EquipmentView, FeedbackView, FloorPlansView, IsolationsView, KeyDatesView, MergeServiceModal, PeopleDirectoryModal, RollCallModal, SpacesView, SubmissionsModal, TvDashboard, WalkroundsView } from "./tabs/MoreViews.jsx";
-import { buildDailyBriefing, buildEmergencySheet, buildLookahead, openPrintReport } from "./lib/reports.js";
+import { ActionModal, ActionsView, BookTogetherModal, BulkEmailModal, CarParkView, CopySiteModal, CoshhView, EquipmentView, FeedbackView, FloorPlansView, IsolationsView, KeyDatesView, MergeServiceModal, PeopleDirectoryModal, RollCallModal, ShutdownsView, SpacesView, SubmissionsModal, TvDashboard, WalkroundsView } from "./tabs/MoreViews.jsx";
+import { buildDailyBriefing, buildEmergencySheet, buildLookahead, openPrintReport, tableHtml } from "./lib/reports.js";
 import { budgetModel } from "./tabs/BudgetPlus.jsx";
 
 /* ---------------------------------------------------------
@@ -77,11 +77,13 @@ export function MainApp() {
   const [feedback, setFeedback] = useState([]);
   const [carPark, setCarPark] = useState([]);
   const [costLines, setCostLines] = useState([]);
+  const [shutdowns, setShutdowns] = useState([]);
   const [isolations, setIsolations] = useState([]);
   const [floorplans, setFloorplans] = useState([]);
   const [keyDates, setKeyDates] = useState([]);
   const [showTv, setShowTv] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
+  const [openJobOnLoad, setOpenJobOnLoad] = useState(null);
   const [recentIds, setRecentIds] = useState(() => { try { return JSON.parse(localStorage.getItem("ppm:recentServices") || "[]"); } catch (e) { return []; } });
   const [equipment, setEquipment] = useState([]);
   const [visitSubmissions, setVisitSubmissions] = useState([]);
@@ -211,7 +213,7 @@ export function MainApp() {
 
   useEffect(() => {
     (async () => {
-      const [u, c, l, d, s, w, sup, b, bl, dt, vb, nav, st, act, mt, mr, si, sn, sp, ky, rm, disp, au, inc, pr, pm, ws, po, inv, wo, wr, tr, dr, trs, nts, lge, svs, asb, acts, spc, wlk, csh, eqp, vsub, fbk, fpl, kdt, cpk, iso, cln] = await Promise.all([
+      const [u, c, l, d, s, w, sup, b, bl, dt, vb, nav, st, act, mt, mr, si, sn, sp, ky, rm, disp, au, inc, pr, pm, ws, po, inv, wo, wr, tr, dr, trs, nts, lge, svs, asb, acts, spc, wlk, csh, eqp, vsub, fbk, fpl, kdt, cpk, iso, cln, sdn] = await Promise.all([
         loadShared(SKEYS.users), loadShared(SKEYS.countries), loadShared(SKEYS.locations),
         loadShared(SKEYS.devices), loadShared(SKEYS.services), loadShared(SKEYS.works),
         loadShared(SKEYS.suppliers), loadShared(SKEYS.budgets), loadShared(SKEYS.budgetLines),
@@ -226,7 +228,7 @@ export function MainApp() {
         loadShared(SKEYS.actions), loadShared(SKEYS.spaces), loadShared(SKEYS.walkrounds),
         loadShared(SKEYS.coshh), loadShared(SKEYS.equipment), loadShared(SKEYS.visitSubmissions),
         loadShared(SKEYS.feedback), loadShared(SKEYS.floorplans), loadShared(SKEYS.keyDates),
-        loadShared(SKEYS.carPark), loadShared(SKEYS.isolations), loadShared(SKEYS.costLines),
+        loadShared(SKEYS.carPark), loadShared(SKEYS.isolations), loadShared(SKEYS.costLines), loadShared(SKEYS.shutdowns),
       ]);
       setUsers(u); setCountries(c); setLocations(l); setDevices(d);
       setServices(s); setWorks(w); setSuppliers(sup); setBudgets(b); setBudgetLines(bl); setDeviceTasks(dt); setVisitBudgets(vb);
@@ -236,14 +238,14 @@ export function MainApp() {
       setSnoozed(sn && !Array.isArray(sn) ? sn : {});
       setSpares(Array.isArray(sp) ? sp : []); setKeysList(Array.isArray(ky) ? ky : []); setReminders(Array.isArray(rm) ? rm : []);
       if (disp && !Array.isArray(disp)) setDisplay({ scale: 1, ...disp });
-      if (disp?.startTab && disp.startTab !== "last" && !new URLSearchParams(window.location.search).get("service")) setTab(disp.startTab);
+      if (disp?.startTab && disp.startTab !== "last" && !new URLSearchParams(window.location.search).get("service") && !new URLSearchParams(window.location.search).get("job")) setTab(disp.startTab);
       setAudits(Array.isArray(au) ? au : []); setIncidents(Array.isArray(inc) ? inc : []); setProjects(Array.isArray(pr) ? pr : []);
       setPermits(Array.isArray(pm) ? pm : []); setWaste(Array.isArray(ws) ? ws : []);
       setPurchaseOrders(Array.isArray(po) ? po : []); setInvoices(Array.isArray(inv) ? inv : []);
       setWaterOutlets(Array.isArray(wo) ? wo : []); setWaterReadings(Array.isArray(wr) ? wr : []);
       setTraining(Array.isArray(tr) ? tr : []); setDrills(Array.isArray(dr) ? dr : []);
       setAsbestos(Array.isArray(asb) ? asb : []);
-      setCostLines(Array.isArray(cln) ? cln : []);
+      setCostLines(Array.isArray(cln) ? cln : []); setShutdowns(Array.isArray(sdn) ? sdn : []);
       setCarPark(Array.isArray(cpk) ? cpk : []); setIsolations(Array.isArray(iso) ? iso : []);
       setFeedback(Array.isArray(fbk) ? fbk : []); setFloorplans(Array.isArray(fpl) ? fpl : []); setKeyDates(Array.isArray(kdt) ? kdt : []);
       setCoshh(Array.isArray(csh) ? csh : []); setEquipment(Array.isArray(eqp) ? eqp : []); setVisitSubmissions(Array.isArray(vsub) ? vsub : []);
@@ -274,6 +276,10 @@ export function MainApp() {
         setTab("devices");
         setHistoryFor(deepDev.id);
       }
+      const deepJob = new URLSearchParams(window.location.search).get("job");
+      const dj = deepJob ? (w || []).find((x) => x.id === deepJob) : null;
+      const djDev = dj ? d.find((x) => x.id === dj.deviceId) : null;
+      if (dj && djDev) { const lc = l.find((x) => x.id === djDev.locationId); setSelectedLocationId(djDev.locationId); if (lc) setSelectedCountryId(lc.countryId); setTab("works"); setOpenJobOnLoad(dj.id); }
       setLoading(false);
     })();
   }, []);
@@ -281,7 +287,7 @@ export function MainApp() {
   // Live refresh when a shared database is connected: pull the latest data when the app
   // comes back into view and every minute, so everyone sees each other's changes.
   const REMOTE = typeof window !== "undefined" && !!window.storage?.__remote;
-  const SHARED_SETTERS = { users: setUsers, countries: setCountries, locations: setLocations, devices: setDevices, services: setServices, works: setWorks, suppliers: setSuppliers, budgets: setBudgets, budgetLines: setBudgetLines, deviceTasks: setDeviceTasks, visitBudgets: setVisitBudgets, activity: setActivity, meters: setMeters, meterReadings: setMeterReadings, signins: setSignins, spares: setSpares, keys: setKeysList, reminders: setReminders, audits: setAudits, incidents: setIncidents, projects: setProjects, permits: setPermits, waste: setWaste, purchaseOrders: setPurchaseOrders, invoices: setInvoices, waterOutlets: setWaterOutlets, waterReadings: setWaterReadings, training: setTraining, drills: setDrills, trash: setTrash, notices: setNotices, logEntries: setLogEntries, savings: setSavings, asbestos: setAsbestos, actions: setActions, spaces: setSpaces, walkrounds: setWalkrounds, coshh: setCoshh, equipment: setEquipment, visitSubmissions: setVisitSubmissions, feedback: setFeedback, floorplans: setFloorplans, keyDates: setKeyDates, carPark: setCarPark, isolations: setIsolations, costLines: setCostLines };
+  const SHARED_SETTERS = { users: setUsers, countries: setCountries, locations: setLocations, devices: setDevices, services: setServices, works: setWorks, suppliers: setSuppliers, budgets: setBudgets, budgetLines: setBudgetLines, deviceTasks: setDeviceTasks, visitBudgets: setVisitBudgets, activity: setActivity, meters: setMeters, meterReadings: setMeterReadings, signins: setSignins, spares: setSpares, keys: setKeysList, reminders: setReminders, audits: setAudits, incidents: setIncidents, projects: setProjects, permits: setPermits, waste: setWaste, purchaseOrders: setPurchaseOrders, invoices: setInvoices, waterOutlets: setWaterOutlets, waterReadings: setWaterReadings, training: setTraining, drills: setDrills, trash: setTrash, notices: setNotices, logEntries: setLogEntries, savings: setSavings, asbestos: setAsbestos, actions: setActions, spaces: setSpaces, walkrounds: setWalkrounds, coshh: setCoshh, equipment: setEquipment, visitSubmissions: setVisitSubmissions, feedback: setFeedback, floorplans: setFloorplans, keyDates: setKeyDates, carPark: setCarPark, isolations: setIsolations, costLines: setCostLines, shutdowns: setShutdowns };
   // When two people save the same list at once, the shared-storage layer merges both sets of
   // changes and tells us the merged result, so this screen shows everyone's edits.
   useEffect(() => {
@@ -371,6 +377,7 @@ export function MainApp() {
     carPark: useCallback((next) => { setCarPark(next); saveShared(SKEYS.carPark, next); }, []),
     isolations: useCallback((next) => { setIsolations(next); saveShared(SKEYS.isolations, next); }, []),
     costLines: useCallback((next) => { setCostLines(next); saveShared(SKEYS.costLines, next); }, []),
+    shutdowns: useCallback((next) => { setShutdowns(next); saveShared(SKEYS.shutdowns, next); }, []),
   };
   function saveNav(patch) {
     const next = { currentUserId, selectedCountryId, selectedLocationId, tab, listPrefs, ...patch };
@@ -610,6 +617,12 @@ export function MainApp() {
       const age = last ? -daysUntil(last.date) : null;
       if (!last || age > d.everyDays) extra.push({ key: `log-${d.id}-${last?.date || "none"}`, tone: d.id === "firealarm" || d.firealarm ? "warn" : "info", title: `${d.name} due`, detail: last ? `Last entry ${fmtDate(last.date)} (${age} days ago)` : "No entries yet", tab: "meters" });
     });
+    // Planned shutdowns this week / happening now.
+    shutdowns.filter((s) => s.locationId === selectedLocationId && String(s.end || s.start).slice(0, 10) >= todayISO && String(s.start).slice(0, 10) <= addDays(todayISO, 7)).forEach((s) => extra.push({ key: `sd-${s.id}`, tone: String(s.start).slice(0, 10) <= todayISO ? "warn" : "info", title: `${String(s.start).slice(0, 10) <= todayISO ? "Shutdown today" : "Shutdown coming up"}: ${s.type}`, detail: `${new Date(s.start).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${s.areas ? ` · ${s.areas}` : ""}${s.notifiedAt ? "" : " · occupants not told yet"}`, tab: "meters" }));
+    // Little-used water outlets not flushed for a week (Legionella control).
+    { const lu = locOutlets.filter((o) => o.littleUsed && (!(o.flushLog || [])[0] || -daysUntil(o.flushLog[0].date) > 7)); if (lu.length) extra.push({ key: `flush-${todayISO.slice(0, 8)}${Math.floor(new Date().getDate() / 7)}-${lu.length}`, tone: "warn", title: `${lu.length} little-used outlet${lu.length === 1 ? "" : "s"} need flushing`, detail: lu.slice(0, 4).map((o) => o.name).join(", "), tab: "meters" }); }
+    // Valves and isolators not operated for over a year.
+    { const iv = isolations.filter((i) => i.locationId === selectedLocationId && /valve|stopcock|isolator|shut-off/i.test(i.kind) && i.lastExercised && -daysUntil(i.lastExercised) > 365); if (iv.length) extra.push({ key: `isox-${todayISO.slice(0, 7)}`, tone: "info", title: `${iv.length} isolation point${iv.length === 1 ? "" : "s"} not operated for over a year`, detail: "Operate them so they don't seize — " + iv.slice(0, 3).map((i) => i.kind).join(", "), tab: "meters" }); }
     // Disputed invoices left open, recycling below target, car park permits expiring.
     locInvoices.filter((i) => i.status === "disputed" && i.disputedAt && -daysUntil(i.disputedAt.slice(0, 10)) >= 14).forEach((i) => extra.push({ key: `dsp-${i.id}`, tone: "warn", title: `Invoice still disputed: ${i.number}`, detail: `${gbp(i.amount)} · since ${fmtDate(i.disputedAt.slice(0, 10))}${i.disputeReason ? ` — ${i.disputeReason}` : ""}`, tab: "budget" }));
     { const tgt = Number((settings.recyclingTarget || {})[selectedLocationId]); if (tgt) { const yr = String(new Date().getFullYear()); const ytd = locWaste.filter((w) => String(w.date).startsWith(yr)); const tot = ytd.reduce((t, w) => t + (Number(w.weightKg) || 0), 0); const gen = ytd.filter((w) => w.stream === "general" || w.stream === "hazardous").reduce((t, w) => t + (Number(w.weightKg) || 0), 0); const rate = tot ? Math.round(((tot - gen) / tot) * 100) : null; if (rate != null && rate < tgt) extra.push({ key: `rec-${yr}-${rate}`, tone: "info", title: `Recycling ${rate}% — below your ${tgt}% target`, detail: "Check bins and signage, or talk to your waste contractor", tab: "meters" }); } }
@@ -744,7 +757,7 @@ export function MainApp() {
       if (Number(pj.budget) && Number(pj.spent) > Number(pj.budget)) extra.push({ key: `pjb-${pj.id}`, tone: "warn", title: `Project over budget: ${pj.name}`, detail: `${gbp(pj.spent)} of ${gbp(pj.budget)}`, tab: "works" });
     });
     return [...alerts, ...extra];
-  }, [alerts, locMeters, locReadings, locSpares, locKeys, locReminders, locSuppliers, locIncidents, locProjects, faultsByDevice, locDevices, locServices, locPermits, locInvoices, locPOs, locOutlets, locWaterReadings, locTraining, locDrills, settings.siteDocs, settings.logDefs, logEntries, asbestos, settings.auditTemplates, settings.nextDrill, settings.requiredCourses, locAudits, actions, spaces, weatherTick, locations, coshh, equipment, visitSubmissions, keyDates, locPOs, locInvoices, locWaste, carPark]);
+  }, [alerts, locMeters, locReadings, locSpares, locKeys, locReminders, locSuppliers, locIncidents, locProjects, faultsByDevice, locDevices, locServices, locPermits, locInvoices, locPOs, locOutlets, locWaterReadings, locTraining, locDrills, settings.siteDocs, settings.logDefs, logEntries, asbestos, settings.auditTemplates, settings.nextDrill, settings.requiredCourses, locAudits, actions, spaces, weatherTick, locations, coshh, equipment, visitSubmissions, keyDates, locPOs, locInvoices, locWaste, carPark, shutdowns, locOutlets, isolations]);
   const hiddenGroups = display.hiddenAlertGroups || [];
   const visibleAlerts = useMemo(() => allAlerts.filter((a) => !(snoozed[a.key] && snoozed[a.key] >= todayISO)).filter((a) => a.tone === "danger" || !hiddenGroups.includes(alertGroup(a.key))), [allAlerts, snoozed, todayISO, hiddenGroups.join(",")]);
   const snoozedCount = allAlerts.length - visibleAlerts.length;
@@ -759,6 +772,21 @@ export function MainApp() {
     keys.forEach((k) => { next[k] = addDays(todayISO, days); });
     setSnoozed(next); savePersonal(PKEYS.snooze, next);
     showToast(`${keys.length} alert${keys.length === 1 ? "" : "s"} snoozed until ${days === 1 ? "tomorrow" : fmtDate(addDays(todayISO, days))}`, "Urgent (red) alerts still show");
+  }
+  const shutdownOps = makeRecordOps("shutdowns", shutdowns, "Planned shutdown", (r) => `${r.type} ${String(r.start).slice(0, 10)}`);
+  function snoozeReminder(id, days) { persist.reminders(reminders.map((r) => r.id === id ? { ...r, due: addDays(todayISO, days) } : r)); showToast(days === 1 ? "Moved to tomorrow" : "Moved to next week"); }
+  function addHandover(text) { const all = settings.handover || []; persist.settings({ ...settings, handover: [{ id: uid(), locationId: selectedLocationId, text, by: currentUser?.name, at: new Date().toISOString() }, ...all].slice(0, 200) }); }
+  function printTodaySheet() {
+    const e = escapeHtml; const t = todayISO;
+    const visits = locDevices.filter((d) => !d.archived && ((d.booking?.date === t) || d.nextServiceDate === t || (d.nextServiceDate && d.nextServiceDate < t && !d.booking)));
+    const jobs = locWorks.filter((w) => !["completed", "rejected", "on_hold"].includes(w.status) && (!w.supplierId || w.priority === "high"));
+    const rem = reminders.filter((r) => r.locationId === selectedLocationId && !r.done && r.due && r.due <= t);
+    const sd = shutdowns.filter((s) => s.locationId === selectedLocationId && String(s.start).slice(0, 10) <= t && String(s.end || s.start).slice(0, 10) >= t);
+    openPrintReport(`Today's sheet — ${fmtDate(t)}`, locationLabel({ locationId: selectedLocationId }), `${sd.length ? `<div style="border:2px solid #D97706;border-radius:8px;padding:8px;margin-bottom:10px"><b>Shutdown today:</b> ${sd.map((s) => e(`${s.type}${s.areas ? ` (${s.areas})` : ""}`)).join(", ")}</div>` : ""}
+      <h2>Visits due or booked (${visits.length})</h2>${tableHtml(["", "Service", "Area", "Supplier", "Time / status", "Access"], visits.map((d) => ["☐", `<b>${e(d.name)}</b>`, e(d.area || ""), e(supplierById[d.supplierId]?.name || ""), d.booking?.date === t ? e(d.booking.time || "booked") : d.nextServiceDate < t ? '<span class="bad">overdue</span>' : "due today", e(d.accessNotes || "")]))}
+      <h2>Jobs to do (${jobs.length})</h2><div class="muted">In-house (no supplier) and high-priority open jobs</div>${tableHtml(["", "Job", "Service", "Priority", "Raised", "Notes"], jobs.map((w) => ["☐", `<b>${e(w.description)}</b>`, e(deviceById[w.deviceId]?.name || ""), e(w.priority || "medium"), fmtDate(w.dateRaised), ""]))}
+      ${rem.length ? `<h2>Reminders</h2>${tableHtml(["", "Reminder", "Due"], rem.map((r) => ["☐", e(r.text), fmtDate(r.due)]))}` : ""}
+      <div style="margin-top:16px">Completed by ____________________ &nbsp; Handed back ________</div>`);
   }
   function reassignActions(from, to) {
     const n = actions.filter((a) => a.locationId === selectedLocationId && a.status !== "done" && a.owner === from).length;
@@ -819,8 +847,8 @@ export function MainApp() {
   const openWorksCount = locWorks.filter((w) => w.status === "quoted" || w.status === "approved").length;
 
   /* ---- undo: take a snapshot before a delete, restore it if the user taps Undo ---- */
-  const UNDO_KEYS = ["devices", "services", "works", "suppliers", "budgetLines", "deviceTasks", "visitBudgets", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "signins", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations", "costLines"]; // archive also uses undo
-  const currentCollections = { devices, services, works, suppliers, budgetLines, deviceTasks, visitBudgets, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, signins, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines };
+  const UNDO_KEYS = ["devices", "services", "works", "suppliers", "budgetLines", "deviceTasks", "visitBudgets", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "signins", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations", "costLines", "shutdowns"]; // archive also uses undo
+  const currentCollections = { devices, services, works, suppliers, budgetLines, deviceTasks, visitBudgets, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, signins, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines, shutdowns };
   function withUndo(fn) {
     const snap = { ...currentCollections };
     fn();
@@ -833,7 +861,7 @@ export function MainApp() {
     showToast("Undone — deleted item restored");
   }
   /* ---- backup & restore ---- */
-  const allData = { users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines };
+  const allData = { users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines, shutdowns };
   function downloadBackup() {
     const payload = { app: "PPM Service Book", version: 1, exportedAt: new Date().toISOString(), exportedBy: currentUser?.name || "", data: allData };
     downloadBlob(new Blob([JSON.stringify(payload)], { type: "application/json" }), `ppm-backup-${new Date().toISOString().slice(0, 10)}.json`);
@@ -848,7 +876,7 @@ export function MainApp() {
     });
     if (d.settings && !Array.isArray(d.settings)) persist.settings(d.settings);
     if (Array.isArray(d.activity)) { setActivity(d.activity); saveShared(SKEYS.activity, d.activity); }
-    ["meters", "meterReadings", "signins", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations", "costLines"].forEach((k) => { if (Array.isArray(d[k])) persist[k](d[k]); });
+    ["meters", "meterReadings", "signins", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations", "costLines", "shutdowns"].forEach((k) => { if (Array.isArray(d[k])) persist[k](d[k]); });
     showToast("Backup restored", payload.exportedAt ? `from ${fmtDate(payload.exportedAt.slice(0, 10))}` : "");
     return null;
   }
@@ -1981,7 +2009,7 @@ export function MainApp() {
     const chars = Object.values(allData).reduce((sum, v) => sum + JSON.stringify(v || "").length, 0);
     const limit = 5 * 1024 * 1024;
     return { local, chars, pct: Math.min(100, Math.round((chars / limit) * 100)) };
-  }, [users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines]);
+  }, [users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines, shutdowns]);
 
   // Page headers: title and four key figures for each tab, in the bento style.
   const pageHeaders = (() => {
@@ -2267,11 +2295,12 @@ export function MainApp() {
                 permits={<PermitsView onExtend={extendPermit} permits={locPermits} devices={locDevices} suppliers={locSuppliers} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })} onSave={savePermit} onClose={closePermit} />}
                 waste={<WasteView target={(settings.recyclingTarget || {})[selectedLocationId] ?? null} onSaveTarget={saveRecyclingTarget} waste={locWaste} suppliers={locSuppliers} onSave={saveWaste} onDelete={deleteWaste} />}
                 openPermits={locPermits.filter((x) => x.status === "open").length}
-                water={<WaterTempsView outlets={locOutlets} readings={locWaterReadings} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })}
+                water={<WaterTempsView userName={currentUser?.name} outlets={locOutlets} readings={locWaterReadings} areas={AREA_SUGGESTIONS_CACHE[selectedLocationId] || []} locationName={locationLabel({ locationId: selectedLocationId })}
                   onSaveOutlet={outletOps.save} onDeleteOutlet={outletOps.remove} onAddReadings={addWaterReadings} />}
                 training={<TrainingView required={(settings.requiredCourses || {})[selectedLocationId] || []} onSaveRequired={saveRequiredCourses} records={locTraining} onSave={trainingOps.save} onDelete={trainingOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} />}
+                shutdowns={<ShutdownsView items={shutdowns.filter((x) => x.locationId === selectedLocationId)} onSave={shutdownOps.save} onDelete={shutdownOps.remove} locationName={locationLabel({ locationId: selectedLocationId })} userName={currentUser?.name} />}
                 isolations={<IsolationsView items={isolations.filter((x) => x.locationId === selectedLocationId)} onSave={isoOps.save} onDelete={isoOps.remove} onPrintEmergency={printEmergencySheet} />}
-                carpark={<CarParkView items={carPark.filter((x) => x.locationId === selectedLocationId)} onSave={carOps.save} onDelete={carOps.remove} />}
+                carpark={<CarParkView totalSpaces={((settings.carParkSpaces || {})[selectedLocationId]) ?? null} onSaveSpaces={(v) => persist.settings({ ...settings, carParkSpaces: { ...(settings.carParkSpaces || {}), [selectedLocationId]: v === "" ? null : Number(v) } })} items={carPark.filter((x) => x.locationId === selectedLocationId)} onSave={carOps.save} onDelete={carOps.remove} />}
                 floorplans={<FloorPlansView plans={floorplans.filter((p) => p.locationId === selectedLocationId)} devices={locDevices} onSave={planOps.save} onDelete={planOps.remove} onOpenDevice={(id) => setHistoryFor(id)} />}
                 keydates={<KeyDatesView items={keyDates.filter((k) => k.locationId === selectedLocationId)} onSave={keyDateOps.save} onDelete={keyDateOps.remove} />}
                 feedback={<FeedbackView onRaiseJob={(text) => { setWorkPrefill({ description: text }); startJob(); }} items={feedback.filter((f) => f.locationId === selectedLocationId)} locationId={selectedLocationId} locationName={locationLabel({ locationId: selectedLocationId })} />}
@@ -2316,7 +2345,17 @@ export function MainApp() {
                 signins={locSignins} suppliers={locSuppliers} onSignIn={signIn} onSignOut={signOut}
                 expectedToday={todayItems.bookings} onSignOutAll={signOutAll} locationId={selectedLocationId}
                 complianceMonthAgo={complianceMonthAgo}
-                onTvMode={() => setShowTv(true)} onEmergencySheet={printEmergencySheet}
+                onTvMode={() => setShowTv(true)} onEmergencySheet={printEmergencySheet} onTodaySheet={printTodaySheet} onSnoozeReminder={snoozeReminder}
+                handover={(settings.handover || []).filter((h) => h.locationId === selectedLocationId)} onAddHandover={ACTIVE_CAN_EDIT ? addHandover : null}
+                waitingOnMe={[
+                  [locPOs.filter((p) => p.status === "awaiting").length, "POs to approve", () => { setTab("budget"); saveNav({ budgetView: "finance" }); }],
+                  [locInvoices.filter((i) => i.status === "received").length, "Invoices to approve", () => { setTab("budget"); saveNav({ budgetView: "finance" }); }],
+                  [locWorks.filter((w) => w.status === "quoted").length, "Quotes to decide on", () => setTab("works")],
+                  [locWorks.filter((w) => w.supplierDone && w.status !== "completed").length, "Jobs the supplier says are done", () => setTab("works")],
+                  [locWorks.filter((w) => w.status === "requested" && w.source === "request").length, "New requests to review", () => setTab("works")],
+                  [visitSubmissions.filter((x) => x.locationId === selectedLocationId).length, "Engineer reports to accept", () => setShowSubmissions(true)],
+                ].filter(([n]) => n > 0).map(([n, label, go]) => ({ n, label, go }))}
+                doneToday={{ visits: locServices.filter((v) => v.date === todayISO && !v.skipped).length, jobs: locWorks.filter((w) => w.status === "completed" && String(w.completedAt || "").startsWith(todayISO)).length, readings: locReadings.filter((r) => r.date === todayISO).length, checks: logEntries.filter((e) => e.locationId === selectedLocationId && e.date === todayISO).length }}
                 recentServices={recentIds.map((id) => deviceById[id]).filter((d) => d && d.locationId === selectedLocationId && !d.archived).slice(0, 5)} onOpenService={(id) => setHistoryFor(id)}
                 expected={(settings.expectedVisitors || []).filter((x) => x.locationId === selectedLocationId && x.date >= todayISO).sort((a, b) => a.date.localeCompare(b.date))} onAddExpected={addExpected} onRemoveExpected={removeExpected} onArriveExpected={arriveExpected}
                 notesKey={`ppm:notes:${currentUser?.id || "me"}:${selectedLocationId}`}
@@ -2355,7 +2394,7 @@ export function MainApp() {
                 onGo={(t) => t === "alerts" ? setShowAlerts(true) : setTab(t)} onOpenDevice={setHistoryFor} />
             )}
             {tab === "devices" && (
-              <DevicesTab onCopySite={locations.length > 1 ? () => setShowCopySite(true) : null} spares={locSpares} onBookTogether={() => setBookTogether(true)} history={locServices} onRemindAll={recordChase} onChaseAll={recordChase} allSupplierList={locSuppliers} locationName={locationLabel({ locationId: selectedLocationId })} pinned={pinnedIds} onTogglePin={togglePin} onDataHealth={() => setShowHealth(true)} onLibrary={() => setShowLibrary(true)} faultsByDevice={faultsByDevice} onImport={() => setShowImport(true)} allLocations={locations.filter((l) => l.id !== selectedLocationId).map((l) => ({ id: l.id, label: `${countryById[l.countryId]?.name || ""} · ${l.name}` }))} onCopyTo={copyDevicesToLocation} onBulkUpdate={bulkUpdateDevices} allSuppliers={locSuppliers} archivedDevices={locArchivedDevices} onRestore={restoreDevice} onBulkLog={bulkLogVisits} onBook={saveBooking} prefs={listPrefs} onPrefs={(patch) => setListPrefs((p) => ({ ...p, ...patch }))} devices={searchAllLocations ? globalFilteredDevices : filteredDevices} search={search} setSearch={setSearch}
+              <DevicesTab lastVisitByDevice={(() => { const m = {}; locServices.forEach((v) => { if (v.skipped || v.aborted) return; if (!m[v.deviceId] || String(v.date) > String(m[v.deviceId].date)) m[v.deviceId] = v; }); return m; })()} onCopySite={locations.length > 1 ? () => setShowCopySite(true) : null} spares={locSpares} onBookTogether={() => setBookTogether(true)} history={locServices} onRemindAll={recordChase} onChaseAll={recordChase} allSupplierList={locSuppliers} locationName={locationLabel({ locationId: selectedLocationId })} pinned={pinnedIds} onTogglePin={togglePin} onDataHealth={() => setShowHealth(true)} onLibrary={() => setShowLibrary(true)} faultsByDevice={faultsByDevice} onImport={() => setShowImport(true)} allLocations={locations.filter((l) => l.id !== selectedLocationId).map((l) => ({ id: l.id, label: `${countryById[l.countryId]?.name || ""} · ${l.name}` }))} onCopyTo={copyDevicesToLocation} onBulkUpdate={bulkUpdateDevices} allSuppliers={locSuppliers} archivedDevices={locArchivedDevices} onRestore={restoreDevice} onBulkLog={bulkLogVisits} onBook={saveBooking} prefs={listPrefs} onPrefs={(patch) => setListPrefs((p) => ({ ...p, ...patch }))} devices={searchAllLocations ? globalFilteredDevices : filteredDevices} search={search} setSearch={setSearch}
                 onAdd={() => setDeviceModal({})} onEdit={(record) => setDeviceModal({ record })}
                 onLogService={(id) => setServiceModal({ deviceId: id })} onAddWork={setAddWorkFor}
                 onDelete={deleteDevice} onHistory={setHistoryFor}
@@ -2388,7 +2427,7 @@ export function MainApp() {
               <ProjectsView projects={locProjects} devices={locDevices} suppliers={locSuppliers} onSave={saveProject} onDelete={deleteProject} />
             )}
             {tab === "works" && worksView === "reactive" && (
-              <WorksTab onDuplicateWork={duplicateWork} onInvoiceFromWork={invoiceFromWork} onPoFromWork={poFromWork} onImportWorks={importWorks} spares={locSpares} onUseSpare={useSpareOnWork} onLogChase={logWorkChase} onRepeat={(w) => { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }} invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={convertWorkToProject} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
+              <WorksTab initialOpenId={openJobOnLoad} onDuplicateWork={duplicateWork} onInvoiceFromWork={invoiceFromWork} onPoFromWork={poFromWork} onImportWorks={importWorks} spares={locSpares} onUseSpare={useSpareOnWork} onLogChase={logWorkChase} onRepeat={(w) => { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }} invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={convertWorkToProject} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
                 onUpdate={updateWork} onDelete={deleteWork} currentUserName={currentUser?.name}
                 approvalThreshold={Number(settings.approvalThreshold) || 0} onSetThreshold={(v) => { persist.settings({ ...settings, approvalThreshold: v }); showToast("Approval rule saved"); }}
                 onConvertToPlan={convertWorkToPlanLine} onConvertToService={convertWorkToService}
@@ -2506,10 +2545,10 @@ export function MainApp() {
       {showHealth && <DataHealthModal devices={locDevices} suppliers={locSuppliers} onClose={() => setShowHealth(false)} onEdit={(d) => { setShowHealth(false); setDeviceModal({ record: d }); }} />}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
-      {showTv && <TvDashboard locationName={locationLabel({ locationId: selectedLocationId })} onClose={() => setShowTv(false)} stats={{ pct: computeCompliance(locDevices, locVisitBudgets, locServices).pct, overdue: locDevices.filter((d) => d.nextServiceDate && daysUntil(d.nextServiceDate) < 0).length, openWorks: locWorks.filter((w) => !["completed", "rejected"].includes(w.status)).length, late: locWorks.filter((w) => !["completed", "rejected", "on_hold"].includes(w.status) && workSla(w)?.breached).length, onSite: locSignins.filter((x) => !x.outAt).length, today: [...todayItems.bookings.map((d) => ({ time: d.booking?.time, text: `${d.name}${d.supplierName ? ` — ${d.supplierName}` : ""}` })), ...todayItems.dueToday.map((d) => ({ time: "", text: `${d.name} (due)` }))].slice(0, 8), notices: notices.filter((n) => n.locationId === selectedLocationId && (!n.until || n.until >= new Date().toISOString().slice(0, 10))).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 5).map((n) => n.text) }} />}
+      {showTv && <TvDashboard locationName={locationLabel({ locationId: selectedLocationId })} onClose={() => setShowTv(false)} stats={{ pct: computeCompliance(locDevices, locVisitBudgets, locServices).pct, overdue: locDevices.filter((d) => d.nextServiceDate && daysUntil(d.nextServiceDate) < 0).length, openWorks: locWorks.filter((w) => !["completed", "rejected"].includes(w.status)).length, late: locWorks.filter((w) => !["completed", "rejected", "on_hold"].includes(w.status) && workSla(w)?.breached).length, onSite: locSignins.filter((x) => !x.outAt).length, today: [...todayItems.bookings.map((d) => ({ time: d.booking?.time, text: `${d.name}${d.supplierName ? ` — ${d.supplierName}` : ""}` })), ...todayItems.dueToday.map((d) => ({ time: "", text: `${d.name} (due)` }))].slice(0, 8), notices: notices.filter((n) => n.locationId === selectedLocationId && (!n.until || n.until >= new Date().toISOString().slice(0, 10)) && (!n.from || n.from <= new Date().toISOString().slice(0, 10))).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 5).map((n) => n.text) }} />}
       {!["home", "devices", "suppliers"].includes(tab) && ACTIVE_CAN_EDIT && ( /* Services and Suppliers have their own + button in this corner */
         <div style={{ position: "fixed", right: 16, bottom: "calc(16px + env(safe-area-inset-bottom, 0px))", zIndex: 900, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-          {fabOpen && [["Raise a job", () => startJob()], ["Add a service", () => setDeviceModal({})], ["Search", () => setShowSearch(true)], ["Go to Home", () => setTab("home")]].map(([l, fn]) => (
+          {fabOpen && [["Log a visit", () => setQuickLog({})], ["Raise a job", () => startJob()], ["Add a service", () => setDeviceModal({})], ["Search", () => setShowSearch(true)], ["Go to Home", () => setTab("home")]].map(([l, fn]) => (
             <button key={l} onClick={() => { setFabOpen(false); fn(); }} style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 20, padding: "9px 14px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", boxShadow: "var(--shadow)" }}>{l}</button>
           ))}
           <button aria-label="Quick add" onClick={() => setFabOpen((v) => !v)} style={{ width: 52, height: 52, borderRadius: 26, background: "var(--accent)", color: "var(--on-accent)", border: "none", boxShadow: "0 4px 14px rgba(0,0,0,0.25)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transform: fabOpen ? "rotate(45deg)" : "none", transition: "transform .15s" }}><Plus size={24} /></button>
@@ -2538,7 +2577,7 @@ export function MainApp() {
       )}
       {showAlerts && <AlertsModal onSnoozeAll={(keys) => snoozeMany(keys, 1)} snoozedCount={snoozedCount} onSnooze={snoozeAlert} onClearSnoozes={clearSnoozes} locationName={locationLabel({ locationId: selectedLocationId })} senderName={currentUser?.name} alerts={visibleAlerts} onClose={() => setShowAlerts(false)} onGo={(t) => { setTab(t); setShowAlerts(false); }} />}
       {showReports && <ReportsModal onClose={() => setShowReports(false)} locationName={locationLabel({ locationId: selectedLocationId })}
-        data={{ tenants: (locations.find((l) => l.id === selectedLocationId) || {}).tenants || [], feedback: feedback.filter((f) => f.locationId === selectedLocationId), meters: locMeters, readings: locReadings, invoices: locInvoices, savings: savings.filter((x) => x.locationId === selectedLocationId), waste: locWaste, portfolio: { locations, countries, devices, services, works, budgets, visitBudgets }, settingsFields: settings, incidents: locIncidents, audits: locAudits, signins: locSignins, faultsByDevice, deviceTasks: locDeviceTasks, devices: locDevices, services: locServices, works: locWorks, suppliers: locSuppliers, budgets: locBudgets, budgetLines: locBudgetLines, visitBudgets: locVisitBudgets, deviceById, supplierById }} />}
+        data={{ outlets: locOutlets, spaces: spaces.filter((x) => x.locationId === selectedLocationId), tenants: (locations.find((l) => l.id === selectedLocationId) || {}).tenants || [], feedback: feedback.filter((f) => f.locationId === selectedLocationId), meters: locMeters, readings: locReadings, invoices: locInvoices, savings: savings.filter((x) => x.locationId === selectedLocationId), waste: locWaste, portfolio: { locations, countries, devices, services, works, budgets, visitBudgets }, settingsFields: settings, incidents: locIncidents, audits: locAudits, signins: locSignins, faultsByDevice, deviceTasks: locDeviceTasks, devices: locDevices, services: locServices, works: locWorks, suppliers: locSuppliers, budgets: locBudgets, budgetLines: locBudgetLines, visitBudgets: locVisitBudgets, deviceById, supplierById }} />}
       {supplierModal && (
         <AddSupplierModal key={supplierModal.record?.id || "new-supplier"} existing={supplierModal.record}
           subcategoriesByCategory={subcategoriesByCategory} onClose={() => setSupplierModal(null)}

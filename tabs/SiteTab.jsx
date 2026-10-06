@@ -1,6 +1,6 @@
 // Site tab: meters, spares, keys, audits, incidents, permits to work, waste.
 import { useState, useMemo } from "react";
-import { Activity, BellRing, BookOpen, CalendarClock, Camera, Car, CheckCircle2, ChevronLeft, ClipboardCheck, ClipboardList, FileSignature, FileText, Flame, FlaskConical, Gauge, GraduationCap, Key, KeyRound, LayoutGrid, Leaf as LeafIcon, ListChecks, Mail, MapPin, Megaphone, Package, Pencil, Plus, Power, Printer, QrCode, Recycle, ShieldAlert, Siren, Star, Thermometer, Trash2, Upload, Wrench } from "lucide-react";
+import { Activity, BellRing, BookOpen, CalendarClock, Camera, Car, CheckCircle2, ChevronLeft, ClipboardCheck, ClipboardList, FileSignature, FileText, Flame, FlaskConical, Gauge, GraduationCap, Key, KeyRound, LayoutGrid, Leaf as LeafIcon, ListChecks, Mail, MapPin, Megaphone, Package, Pencil, Plus, Power, Printer, QrCode, Recycle, ShieldAlert, Siren, Star, Thermometer, Trash2, Upload, Wrench, ZapOff } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ConfirmDeleteButton, ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { DEFAULT_CO2, INCIDENT_TYPES, INVESTIGATION_STEPS, METER_TYPES, MONTH_LABELS, PERMIT_PRECAUTIONS, PERMIT_TYPES, WASTE_STREAMS } from "../lib/constants.js";
@@ -218,16 +218,16 @@ export const SITE_GROUPS = [
   ] },
   { key: "building", label: "Building & assets", items: [
     ["meters", "Meters & energy", Gauge], ["waste", "Waste & recycling", Recycle], ["spaces", "Spaces", LayoutGrid], ["floorplans", "Floor plans", MapPin],
-    ["docs", "Documents", FileText], ["keydates", "Key dates", CalendarClock], ["logs", "Logs & checks", BookOpen], ["walkrounds", "Walk-rounds", Camera],
+    ["docs", "Documents", FileText], ["keydates", "Key dates", CalendarClock], ["shutdowns", "Planned shutdowns", ZapOff], ["logs", "Logs & checks", BookOpen], ["walkrounds", "Walk-rounds", Camera],
   ] },
   { key: "people", label: "Security, stores & people", items: [
     ["keys", "Keys & cards", KeyRound], ["carpark", "Car park", Car], ["spares", "Spare parts", Package], ["feedback", "Occupant feedback", Star],
   ] },
 ];
-export function SiteTab({ badges = {}, isolations, carpark, floorplans, keydates, feedback, coshh, equipment, actions, spaces, walkrounds, asbestos, logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
+export function SiteTab({ shutdowns, badges = {}, isolations, carpark, floorplans, keydates, feedback, coshh, equipment, actions, spaces, walkrounds, asbestos, logs, docs, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, openPermits = 0, openIncidents = 0, counts = {} }) {
   const [view, setView] = useState(() => { try { return sessionStorage.getItem("ppm:siteView") || ""; } catch (e) { return ""; } });
   const go = (v) => { setView(v); try { sessionStorage.setItem("ppm:siteView", v); } catch (e) { /* ignore */ } window.scrollTo?.({ top: 0 }); };
-  const content = { meters, spares, keys, audits, incidents, permits, waste, water, training, drills, docs, logs, asbestos, actions, spaces, walkrounds, coshh, equipment, floorplans, keydates, feedback, isolations, carpark };
+  const content = { shutdowns, meters, spares, keys, audits, incidents, permits, waste, water, training, drills, docs, logs, asbestos, actions, spaces, walkrounds, coshh, equipment, floorplans, keydates, feedback, isolations, carpark };
   const b = { ...badges, spares: badges.spares ?? (counts.lowStock ? { text: `${counts.lowStock} low`, tone: "warn" } : null), keys: badges.keys ?? (counts.keysOut ? { text: `${counts.keysOut} out` } : null), incidents: badges.incidents ?? (openIncidents ? { text: `${openIncidents} open`, tone: "warn" } : null), permits: badges.permits ?? (openPermits ? { text: `${openPermits} live` } : null) };
   const group = SITE_GROUPS.find((g) => g.items.some(([k]) => k === view));
   const item = group?.items.find(([k]) => k === view);

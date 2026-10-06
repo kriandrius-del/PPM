@@ -1,10 +1,10 @@
 // Suppliers, supplier form and scorecard.
 import { useState } from "react";
-import { CheckCircle2, Copy, FileSpreadsheet, FileWarning, Gauge, Link2, Mail, Merge, MessageSquare, Pencil, Phone, Plus, Printer, Star, Trash2, Upload, Users as UsersIcon, X } from "lucide-react";
+import { CheckCircle2, Copy, FileSpreadsheet, FileWarning, Gauge, Link2, Mail, Merge, MessageCircle, MessageSquare, Pencil, Phone, Plus, Printer, Star, Trash2, Upload, Users as UsersIcon, X } from "lucide-react";
 import { CategoryOptions, ConfirmDeleteButton, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { CONTACT_TYPES, ONBOARDING_ITEMS, RENEWAL_STEPS, SUPPLIER_STATUSES, WORK_CATEGORIES } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
-import { computeCompliance, daysUntil, fmtDate, gbp, isMirrored, parseDelimited, supplierStats, toISO, uid } from "../lib/utils.js";
+import { computeCompliance, daysUntil, fmtDate, gbp, isMirrored, parseDelimited, supplierStats, toISO, uid, workSla } from "../lib/utils.js";
 import { buildSupplierPack, openPrintReport } from "../lib/reports.js";
 import { xlsxToText } from "../lib/excelTemplate.js";
 import { ContactsEditor } from "./MoreViews.jsx";
@@ -106,6 +106,7 @@ export function SuppliersTab({ onPortal, onBulkEmail, onImport, packData = null,
                       const nextB = devices.filter((d) => d.supplierId === s.id && d.booking?.date && d.booking.date >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.booking.date.localeCompare(b.booking.date))[0];
                       return <>
                         {total > 0 && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>Spend {yr}: <b>{gbp(total)}</b>{wk ? ` (works ${gbp(wk)})` : ""}{lyTotal > 0 ? <span style={{ color: total > lyTotal * 1.1 ? "var(--danger)" : total < lyTotal * 0.9 ? "var(--ok)" : "var(--muted)" }}> · {total >= lyTotal ? "▲" : "▼"} {Math.abs(Math.round(((total - lyTotal) / lyTotal) * 100))}% vs this time last year</span> : null}</div>}
+                        {(() => { const op = works.filter((w) => w.supplierId === s.id && !["completed", "rejected"].includes(w.status)); const late = op.filter((w) => workSla(w)?.breached).length; return op.length ? <div style={{ fontSize: 11.5, marginTop: 2, color: late ? "var(--danger)" : "var(--muted)", fontWeight: late ? 650 : 500 }}>{op.length} open job{op.length === 1 ? "" : "s"}{late ? ` · ${late} past target` : ""}</div> : null; })()}
                         {nextB && <div style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 2 }}>Next booked: {fmtDate(nextB.booking.date)}{nextB.booking.time ? ` ${nextB.booking.time}` : ""} · {nextB.name}</div>}
                       </>;
                     })()}
@@ -145,6 +146,7 @@ export function SuppliersTab({ onPortal, onBulkEmail, onImport, packData = null,
                     {s.managerEmail && (
                       <a href={`mailto:${s.managerEmail}?subject=${encodeURIComponent(`Re: ${s.name}`)}`} title={`Email ${s.managerName || s.managerEmail}`} style={{ padding: 4, display: "flex" }}><Mail size={15} color="#2B4562" /></a>
                     )}
+                    {(s.managerPhone || s.phone) && /^(\+44|0)7/.test(String(s.managerPhone || s.phone).replace(/\s+/g, "")) && <a href={`https://wa.me/${String(s.managerPhone || s.phone).replace(/[^0-9+]/g, "").replace(/^0/, "44").replace(/^\+/, "")}`} target="_blank" rel="noopener noreferrer" title="WhatsApp" style={{ display: "flex", padding: 4 }}><MessageCircle size={15} color="#25A244" /></a>}
                     <button onClick={() => { const t = [s.name, s.managerName && `Contact: ${s.managerName}`, s.managerPhone && `Phone: ${s.managerPhone}`, s.managerEmail && `Email: ${s.managerEmail}`, s.oohPhone && `24h: ${s.oohPhone}`, ...(s.contacts || []).map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}: ${[c.phone, c.email].filter(Boolean).join(" · ")}`)].filter(Boolean).join("\n"); try { navigator.clipboard?.writeText(t); } catch (e) { /* ignore */ } alert("Contact details copied."); }} title="Copy contact details" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}><Copy size={15} color="#5B6672" /></button>
                     {ACTIVE_CAN_EDIT && onPortal && <button onClick={() => { const how = s.portalToken ? window.prompt(`Supplier job link for ${s.name}:\n\n1 = email it to them\n2 = copy it\n3 = make a new link (the old one stops working)\n\nType 1, 2 or 3:`, "1") : "1"; if (how === "1") onPortal(s, "email"); else if (how === "2") onPortal(s, "copy"); else if (how === "3") onPortal(s, "new"); }} title={s.portalToken ? "Supplier job link" : "Send a job link"} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}><Link2 size={15} color={s.portalToken ? "#2F855A" : "#5B6672"} /></button>}
                     {s.managerEmail && ACTIVE_CAN_EDIT && <button onClick={() => { const body = `Hi${s.managerName ? ` ${s.managerName.split(" ")[0]}` : ""},\n\nBefore your next visit to ${locationName}, please send:\n\n- Risk assessment and method statement (RAMS) for the work\n- Names of the engineers attending\n- Current public liability insurance certificate\n- Any permits you will need (hot works, working at height, isolations)\n\nThanks`; window.location.href = `mailto:${encodeURIComponent(s.managerEmail)}?subject=${encodeURIComponent(`RAMS request — ${locationName}`)}&body=${encodeURIComponent(body)}`; }} title="Ask for RAMS" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}><FileWarning size={15} color="#5B6672" /></button>}
@@ -372,6 +374,7 @@ export function SupplierScorecardModal({ supplier, devices, services, works, bud
           ))}
         </div>
         <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.7 }}>
+          {st.devs.length > 0 && <details style={{ marginBottom: 4 }}><summary style={{ cursor: "pointer", color: "var(--accent)", fontWeight: 650 }}>Services they cover ({st.devs.length})</summary><div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>{st.devs.map((d) => <span key={d.id} style={{ background: "var(--card-hi)", borderRadius: 10, padding: "2px 8px", fontSize: 11.5 }}>{d.name}{d.nextServiceDate ? ` · ${fmtDate(d.nextServiceDate)}` : ""}</span>)}</div></details>}
           <div>Services assigned: <b>{st.devs.length}</b> · Visits logged: <b>{st.visits.length}</b> · Spend: <b>{gbp(st.spend)}</b></div>
           <div>Planned visits: <b>{st.comp.totals.onTime}</b> on time, <b>{st.comp.totals.late}</b> late, <b style={{ color: st.comp.totals.missed ? "var(--danger)" : undefined }}>{st.comp.totals.missed}</b> missed</div>
           <div>Failed checks: <b>{st.fails}</b> · Extra jobs / requests: <b>{st.jobs.length}</b> · Times chased: <b>{st.chases}</b></div>

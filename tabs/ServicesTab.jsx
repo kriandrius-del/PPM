@@ -12,7 +12,7 @@ import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js
    Devices Tab
 --------------------------------------------------------- */
 const annualCost = (d) => (Number(d.budgetPerVisit) || 0) * (Number(d.serviceIntervalMonths) > 0 ? 12 / Number(d.serviceIntervalMonths) : 1);
-export function DevicesTab({ onCopySite, spares = [], onBookTogether, history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
+export function DevicesTab({ lastVisitByDevice = {}, onCopySite, spares = [], onBookTogether, history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
   const [chaseFocus, setChaseFocus] = useState(null); // null = closed, "all" or a deviceId
   const overdueList = chaseDevices.filter((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n < 0; });
   const [qrFor, setQrFor] = useState(null);
@@ -210,6 +210,7 @@ export function DevicesTab({ onCopySite, spares = [], onBookTogether, history = 
                     )}
                     <div style={{ fontSize: 12.5, color: "var(--faint)", display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
                       {d.assetTag && <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>#{d.assetTag}</span>}
+                      {(() => { const lv = (lastVisitByDevice || {})[d.id]; const f = (lv?.checklistResults || []).filter((x) => x.result === "fail").length; return f ? <span style={{ color: "var(--danger)", fontWeight: 700 }}>{f} failed check{f === 1 ? "" : "s"} last visit</span> : null; })()}
                       {annualCost(d) > 0 && <span title="Budget per year (budget per visit × visits a year)" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(annualCost(d)).replace(/\.00$/, "")}/yr</span>}
                       {d.category && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Tag size={11} />{d.category}</span>}
                       {d.budgetPerVisit ? <span>{gbp(d.budgetPerVisit)}/visit budget</span> : null}

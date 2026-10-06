@@ -199,6 +199,21 @@ export function BudgetOverview({ model, year, prevModel, services, works, suppli
           {dueSoon.length > 0 && <><div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginTop: 4 }}>Invoices due to pay (30 days)</div>{dueSoon.slice(0, 5).map((i) => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.3, color: daysUntil(i.dueDate) < 0 ? "var(--danger)" : "var(--text)" }}><span>{i.number} · {supById[i.supplierId]?.name || ""}</span><span style={mono}>{gbp(i.amount)} · {fmtDate(i.dueDate)}</span></div>)}</>}
         </div>
       </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+        <div style={card}>
+          <H icon={Wallet}>Biggest single costs {year}</H>
+          {(() => { const items = [...services.filter((v) => inYear(v.date) && Number(v.cost) > 0).map((v) => ({ k: v.id, what: `${devById[v.deviceId]?.name || "Visit"} (visit)`, date: v.date, amount: Number(v.cost) })), ...works.filter((w) => inYear(w.dateRaised) && ["approved", "in_progress", "completed"].includes(w.status) && !w.warranty && Number(w.finalCost ?? w.quoteAmount) > 0).map((w) => ({ k: w.id, what: w.description, date: w.dateRaised, amount: Number(w.finalCost ?? w.quoteAmount) }))].sort((a, b) => b.amount - a.amount).slice(0, 8);
+            return items.length ? items.map((x) => <div key={x.k} style={{ display: "flex", gap: 8, fontSize: 12.3 }}><span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.what}</span><span style={{ color: "var(--faint)" }}>{fmtDate(x.date)}</span><b style={mono}>{gbp(x.amount)}</b></div>) : <div className="bsub">No costs recorded yet.</div>; })()}
+        </div>
+        {year === new Date().getFullYear() && m.elapsedMonths >= 1 && (() => { const i = m.elapsedMonths - 1; const cur = m.monthlySpent[i], prev = i > 0 ? m.monthlySpent[i - 1] : (prevModel ? prevModel.monthlySpent[11] : 0); return (
+          <div style={card}>
+            <H icon={TrendingUp}>This month so far</H>
+            <div className="bbig" style={{ fontSize: 26 }}>{gbp(cur)}</div>
+            <div className="bsub">{MONTH_LABELS[i]} so far · {MONTH_LABELS[(i + 11) % 12]} was {gbp(prev)}{prev ? <b style={{ color: cur > prev ? "var(--danger)" : "var(--ok)" }}> ({cur >= prev ? "▲" : "▼"} {Math.abs(Math.round(((cur - prev) / prev) * 100))}%)</b> : null}</div>
+            <div className="bsub">Phased budget for {MONTH_LABELS[i]}: {gbp(m.monthlyPhased[i])}</div>
+          </div>
+        ); })()}
+      </div>
       <div style={card}>
         <H icon={CalendarRange}>Spend heatmap {year}</H>
         <div style={{ overflowX: "auto" }}>
@@ -260,6 +275,12 @@ export function BudgetChecks({ costLines = [], fyStart = 1, year, services, work
         {contracts.filter((c) => c.inv > 0).sort((a, b) => b.pct - a.pct).slice(0, 10).map((c) => row(c.s.id, c.s.name, `${c.pct}% of ${gbp(c.annual)}`, <span style={{ color: c.pct > Math.round(model.yearFrac * 100) + 10 ? "var(--danger)" : "inherit" }}>{gbp(c.inv)}</span>))}
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Red = invoiced ahead of the year so far ({Math.round(model.yearFrac * 100)}% gone).</div>
       </Section>
+      {(() => { const old = invoices.filter((i) => i.status === "received" && i.date && -daysUntil(i.date) > 14); return (
+        <Section icon={AlertTriangle} title="Invoices waiting for approval over 2 weeks" count={old.length} empty="No invoice has been waiting more than 2 weeks for approval.">
+          {old.slice(0, 10).map((i) => row(i.id, `${i.number}${suppliers.find((s) => s.id === i.supplierId) ? ` · ${suppliers.find((s) => s.id === i.supplierId).name}` : ""}`, `${-daysUntil(i.date)} days`, gbp(i.amount)))}
+          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Late approval often means late payment — approve them in POs & invoices.</div>
+        </Section>
+      ); })()}
       <Section icon={Wallet} title="Monthly contract invoices not recorded" count={missingContractInv.length} empty="Every monthly contract has an invoice recorded for each finished month.">
         {missingContractInv.slice(0, 10).map((x) => row(x.s.id, x.s.name, `${x.months.length} month${x.months.length === 1 ? "" : "s"}`, x.months.join(", ")))}
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Chase the supplier, or record the invoices in POs & invoices, so contract spend isn't missed.</div>
@@ -273,7 +294,7 @@ export function BudgetChecks({ costLines = [], fyStart = 1, year, services, work
 }
 
 /* ---------- Tools ---------- */
-export function BudgetTools({ userName = "", year, model, budgets, devices, bs = {}, onSaveBs, onMoveBudget, onSetBudgetsBulk, users = [], locationName = "", exportData }) {
+export function BudgetTools({ history = [], userName = "", year, model, budgets, devices, bs = {}, onSaveBs, onMoveBudget, onSetBudgetsBulk, users = [], locationName = "", exportData }) {
   const [phCat, setPhCat] = useState(CATEGORY_KEYS[0]);
   const [vir, setVir] = useState({ from: CATEGORY_KEYS[0], to: CATEGORY_KEYS[1] || CATEGORY_KEYS[0], amount: "", reason: "" });
   const [draw, setDraw] = useState({ cat: CATEGORY_KEYS[0], amount: "", reason: "" });
@@ -307,6 +328,14 @@ export function BudgetTools({ userName = "", year, model, budgets, devices, bs =
         <datalist id="bud-owners">{users.map((u) => <option key={u} value={u} />)}</datalist>
       </div>
 
+      {history.length > 1 && <div style={box}>
+        <H icon={CalendarRange}>Budget history</H>
+        <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead><tr style={{ color: "var(--muted)" }}><th style={{ textAlign: "left" }}>Category</th>{history.map((h) => <th key={h.year} style={{ textAlign: "right" }}>{h.year}</th>)}</tr></thead>
+          <tbody>{CATEGORY_KEYS.filter((c) => history.some((h) => h.rows.find((r) => r.cat === c)?.budget || h.rows.find((r) => r.cat === c)?.spent)).map((c) => <tr key={c} style={{ borderTop: "1px solid var(--border)" }}><td>{CATEGORY_META[c]?.label}</td>{history.map((h) => { const r = h.rows.find((x) => x.cat === c) || {}; const v = h.year === year ? r.forecast : r.spent; return <td key={h.year} style={{ textAlign: "right", ...mono }}><div>{gbp(v || 0)}</div><div style={{ fontSize: 10, color: r.budget && v > r.budget ? "var(--danger)" : "var(--faint)" }}>of {gbp(r.budget || 0)}</div></td>; })}</tr>)}</tbody>
+        </table></div>
+        <div style={{ fontSize: 11, color: "var(--faint)" }}>Past years show actual spend; {year} shows the forecast. Small figure = budget.</div>
+      </div>}
       <div style={box}>
         <H icon={Lock}>Original vs revised budget {year}</H>
         {!original ? (
@@ -541,7 +570,7 @@ export function CostLinesView({ serviceRowsFor, onOpenService, lines, suppliers 
               <tbody>
                 {rows.map((l) => { const vb = sum(l.budget, elapsed), va = sum(l.actual, elapsed); return (
                   <tr key={l.id}>
-                    <td style={{ ...td, ...sticky, fontFamily: "inherit", fontSize: 12.3, fontWeight: 650, whiteSpace: "normal" }}><button onClick={() => ACTIVE_CAN_EDIT && setEditLine(l)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontWeight: 650, color: "var(--text)" }}>{l.name}</button>{l.supplierId && <div style={{ fontSize: 10, color: "var(--faint)", fontWeight: 500 }}>{suppliers.find((s) => s.id === l.supplierId)?.name}</div>}</td>
+                    <td style={{ ...td, ...sticky, fontFamily: "inherit", fontSize: 12.3, fontWeight: 650, whiteSpace: "normal" }}><button onClick={() => ACTIVE_CAN_EDIT && setEditLine(l)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontWeight: 650, color: "var(--text)" }}>{l.name}</button>{l.supplierId && <div style={{ fontSize: 10, color: "var(--faint)", fontWeight: 500 }}>{suppliers.find((s) => s.id === l.supplierId)?.name}</div>}{l.note && <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500, fontStyle: "italic" }}>{l.note}</div>}</td>
                     {months.map((_, i) => { const b = Number(l.budget?.[i]) || 0; const a = l.actual?.[i] == null ? null : Number(l.actual[i]); return (
                       <td key={i} onClick={() => ACTIVE_CAN_EDIT && setCell({ line: l, i })} title={`Budget ${gbp(b)}${a != null ? ` · invoiced ${gbp(a)}` : ""}${l.refs?.[i] ? ` · ${l.refs[i]}` : ""}`} style={{ ...td, cursor: ACTIVE_CAN_EDIT ? "pointer" : "default", background: isCurrent(i) ? "var(--accent-soft)" : undefined }}>
                         <div style={{ fontWeight: a != null ? 700 : 400, color: cellColour(b, a) }}>{a != null ? gbp(a).replace(/\.00$/, "") : isPast(i) && b ? "—" : ""}</div>
@@ -602,10 +631,10 @@ export function CostLinesView({ serviceRowsFor, onOpenService, lines, suppliers 
 
 function CostLineModal({ existing, cat, fy, suppliers, months, mLabel, onClose, onSave, onDelete }) {
   const [names, setNames] = useState(existing ? existing.name : ""); const [supplierId, setSupplierId] = useState(existing?.supplierId || "");
-  const [mode, setMode] = useState(existing ? "keep" : "monthly"); const [amount, setAmount] = useState("");
+  const [mode, setMode] = useState(existing ? "keep" : "monthly"); const [amount, setAmount] = useState(""); const [note, setNote] = useState(existing?.note || "");
   const build = () => { const a = Number(amount) || 0; if (mode === "monthly") return Array(12).fill(a); if (mode === "annual") { const base = Math.floor((a / 12) * 100) / 100; const arr = Array(12).fill(base); arr[11] = Math.round((a - base * 11) * 100) / 100; return arr; } return null; };
   function save() {
-    if (existing) { const b = mode === "keep" ? existing.budget : build(); onSave([{ ...existing, name: names.trim() || existing.name, supplierId: supplierId || null, budget: b }]); return; }
+    if (existing) { const b = mode === "keep" ? existing.budget : build(); onSave([{ ...existing, name: names.trim() || existing.name, supplierId: supplierId || null, budget: b, note: note.trim() }]); return; }
     const list = names.split(/\n|,/).map((x) => x.trim()).filter(Boolean); if (!list.length) return;
     onSave(list.map((n) => ({ name: n, category: cat, year: fy, supplierId: supplierId || null, budget: build() || Array(12).fill(0), actual: Array(12).fill(null), refs: {} })));
   }
@@ -615,6 +644,7 @@ function CostLineModal({ existing, cat, fy, suppliers, months, mLabel, onClose, 
         {existing ? <Field label="Name"><TextInput value={names} onChange={(e) => setNames(e.target.value)} /></Field>
           : <Field label="Cost line name(s) — one per line to add several"><TextArea autoFocus value={names} onChange={(e) => setNames(e.target.value)} placeholder={"Salaries\nExtra labour\nStaff travel\nUtilities"} style={{ minHeight: 90 }} /></Field>}
         <Field label="Supplier (optional)"><Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}><option value="">—</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+        {existing && <Field label="Note (shown under the line)"><TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. 3 FTE + 0.5 supervisor; increases April" /></Field>}
         <div style={{ fontSize: 12.5, fontWeight: 700 }}>Budget</div>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
           {existing && <ToggleButton active={mode === "keep"} onClick={() => setMode("keep")}>Keep as it is</ToggleButton>}

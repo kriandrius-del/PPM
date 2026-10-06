@@ -4,8 +4,8 @@ import { addDays, addMonths, appBaseUrl, checklistLabel, compressImage, currentB
 import { buildCleaningSchedule, buildWalkroundReport, openPrintReport, tableHtml } from "../lib/reports.js";
 import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
-import { CalendarCheck, CalendarClock, Camera, Car, CheckCircle2, CheckSquare, ClipboardCheck, Copy, FlaskConical, LayoutGrid, ListChecks, ListPlus, Mail, MapPin, Phone, PhoneCall, Plus, Power, Printer, QrCode, Siren, Sparkles, Square, Star, Trash2, Upload, X } from "lucide-react";
-import { ACTION_SOURCES, CLEANING_FREQ, COSHH_HAZARDS, EQUIPMENT_TYPES, ISOLATION_KINDS, KEY_DATE_TYPES, SPACE_USES } from "../lib/constants.js";
+import { CalendarCheck, CalendarClock, Camera, Car, CheckCircle2, CheckSquare, ClipboardCheck, Copy, FlaskConical, LayoutGrid, ListChecks, ListPlus, Mail, MapPin, Phone, PhoneCall, Plus, Power, Printer, QrCode, Siren, Sparkles, Square, Star, Trash2, Upload, X, ZapOff } from "lucide-react";
+import { ACTION_SOURCES, CLEANING_FREQ, COSHH_HAZARDS, EQUIPMENT_TYPES, ISOLATION_KINDS, KEY_DATE_TYPES, SHUTDOWN_TYPES, SPACE_USES } from "../lib/constants.js";
 import { FEEDBACK_TOPICS } from "../components/PublicPages.jsx";
 
 /* ---------- Action tracker (risk assessment / audit / incident findings) ---------- */
@@ -122,7 +122,7 @@ export function SpacesView({ spaces, devices = [], onSave, onDelete, locationNam
               <div key={s.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => ACTIVE_CAN_EDIT && setEditing(s)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
                   <div style={{ fontSize: 13, fontWeight: 650 }}>{s.name}</div>
-                  <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{s.use || "—"}{s.areaM2 ? ` · ${s.areaM2} m²` : ""}{s.capacity ? ` · ${s.capacity} people` : ""}{s.cleaning ? ` · cleaned ${CLEANING_FREQ[s.cleaning].toLowerCase()}` : ""}</div>
+                  <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{s.use || "—"}{s.areaM2 ? ` · ${s.areaM2} m²` : ""}{s.capacity ? ` · ${s.capacity} people` : ""}{s.cleaning ? ` · cleaned ${CLEANING_FREQ[s.cleaning].toLowerCase()}` : ""}{s.condition ? <span style={{ color: s.condition <= 2 ? "var(--danger)" : "var(--faint)" }}> · {"★".repeat(s.condition)}</span> : ""}</div>
                 </button>
                 {count(s.name) > 0 && <button onClick={() => onOpenArea?.(s.name)} style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 12, padding: "3px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{count(s.name)} service{count(s.name) === 1 ? "" : "s"}</button>}
               </div>
@@ -139,6 +139,7 @@ function SpaceModal({ existing, onClose, onSave, onDelete }) {
   const [use, setUse] = useState(existing?.use || SPACE_USES[0]); const [areaM2, setAreaM2] = useState(existing?.areaM2 != null ? String(existing.areaM2) : "");
   const [capacity, setCapacity] = useState(existing?.capacity != null ? String(existing.capacity) : ""); const [notes, setNotes] = useState(existing?.notes || "");
   const [cleaning, setCleaning] = useState(existing?.cleaning || ""); const [cleaningNotes, setCleaningNotes] = useState(existing?.cleaningNotes || "");
+  const [condition, setCondition] = useState(existing?.condition || 0); const [conditionNote, setConditionNote] = useState(existing?.conditionNote || "");
   return (
     <Modal title={existing ? "Space" : "Add a space"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -151,12 +152,13 @@ function SpaceModal({ existing, onClose, onSave, onDelete }) {
           <Field label="Floor area (m²)"><TextInput type="number" min="0" value={areaM2} onChange={(e) => setAreaM2(e.target.value)} /></Field>
           <Field label="Capacity (people)"><TextInput type="number" min="0" value={capacity} onChange={(e) => setCapacity(e.target.value)} /></Field>
         </div>
+        <Field label="Condition"><div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>{[1, 2, 3, 4, 5].map((n) => <button key={n} type="button" onClick={() => setCondition(condition === n ? 0 : n)} title={["", "Poor", "Below average", "Fair", "Good", "Excellent"][n]} style={{ background: condition >= n ? "#D97706" : "var(--card-hi)", color: condition >= n ? "#fff" : "var(--faint)", border: "none", borderRadius: 7, width: 34, height: 30, fontSize: 15, cursor: "pointer" }}>★</button>)}<TextInput value={conditionNote} onChange={(e) => setConditionNote(e.target.value)} placeholder="e.g. Carpet worn by door" style={{ flex: 1, minWidth: 120 }} /></div></Field>
         <div style={{ display: "flex", gap: 8 }}>
           <Field label="Cleaned"><Select value={cleaning} onChange={(e) => setCleaning(e.target.value)}><option value="">—</option>{Object.entries(CLEANING_FREQ).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
           <Field label="Cleaning notes"><TextInput value={cleaningNotes} onChange={(e) => setCleaningNotes(e.target.value)} placeholder="e.g. Deep clean monthly" /></Field>
         </div>
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: 50 }} /></Field>
-        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), floor: floor.trim(), use, areaM2: areaM2 === "" ? null : Number(areaM2), capacity: capacity === "" ? null : Number(capacity), notes: notes.trim(), cleaning, cleaningNotes: cleaningNotes.trim() })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), floor: floor.trim(), use, areaM2: areaM2 === "" ? null : Number(areaM2), capacity: capacity === "" ? null : Number(capacity), notes: notes.trim(), cleaning, cleaningNotes: cleaningNotes.trim(), condition: condition || null, conditionNote: conditionNote.trim(), conditionAt: condition && condition !== existing?.condition ? new Date().toISOString().slice(0, 10) : existing?.conditionAt })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this space" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -358,7 +360,7 @@ export function CoshhView({ items, areas = [], onSave, onDelete, locationName })
               <div key={i.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => ACTIVE_CAN_EDIT && setEditing(i)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
                   <div style={{ fontSize: 13, fontWeight: 650 }}>{i.product}</div>
-                  <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{[(i.hazards || []).join(", "), i.location].filter(Boolean).join(" · ") || "—"}</div>
+                  <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{[(i.hazards || []).join(", "), i.location, i.qty].filter(Boolean).join(" · ") || "—"}</div>
                   {n !== null && <div style={{ fontSize: 11.5, fontWeight: n <= 30 ? 700 : 500, color: n < 0 ? "var(--danger)" : n <= 30 ? "var(--warn)" : "var(--muted)" }}>Review {fmtDate(i.reviewDate)}</div>}
                 </button>
                 {i.sdsUrl ? <a href={i.sdsUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent)" }}>SDS</a> : <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)" }}>No SDS</span>}
@@ -375,7 +377,7 @@ function CoshhModal({ existing, areas, onClose, onSave, onDelete }) {
   const [product, setProduct] = useState(existing?.product || ""); const [maker, setMaker] = useState(existing?.maker || "");
   const [use, setUse] = useState(existing?.use || ""); const [location, setLocation] = useState(existing?.location || "");
   const [hazards, setHazards] = useState(existing?.hazards || []); const [controls, setControls] = useState(existing?.controls || "");
-  const [firstAid, setFirstAid] = useState(existing?.firstAid || ""); const [sdsUrl, setSdsUrl] = useState(existing?.sdsUrl || "");
+  const [firstAid, setFirstAid] = useState(existing?.firstAid || ""); const [sdsUrl, setSdsUrl] = useState(existing?.sdsUrl || ""); const [qty, setQty] = useState(existing?.qty || "");
   const [assessed, setAssessed] = useState(existing?.assessed || new Date().toISOString().slice(0, 10)); const [reviewDate, setReviewDate] = useState(existing?.reviewDate || addMonths(new Date().toISOString().slice(0, 10), 12));
   return (
     <Modal title={existing ? "Substance" : "Add a substance"} onClose={onClose}>
@@ -391,12 +393,13 @@ function CoshhModal({ existing, areas, onClose, onSave, onDelete }) {
         <Field label="Hazards"><div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{COSHH_HAZARDS.map((h) => <ToggleButton key={h} active={hazards.includes(h)} onClick={() => setHazards((p) => p.includes(h) ? p.filter((x) => x !== h) : [...p, h])}>{h}</ToggleButton>)}</div></Field>
         <Field label="Controls & PPE"><TextArea value={controls} onChange={(e) => setControls(e.target.value)} placeholder="e.g. Gloves and goggles; ventilate; never mix with other products" style={{ minHeight: 50 }} /></Field>
         <Field label="First aid"><TextInput value={firstAid} onChange={(e) => setFirstAid(e.target.value)} placeholder="e.g. Eyes: rinse with water for 15 minutes" /></Field>
+        <Field label="Quantity held"><TextInput value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 4 × 5 L" /></Field>
         <Field label="Safety data sheet link"><TextInput value={sdsUrl} onChange={(e) => setSdsUrl(e.target.value)} placeholder="https://…" /></Field>
         <div style={{ display: "flex", gap: 8 }}>
           <Field label="Assessed"><TextInput type="date" value={assessed} onChange={(e) => { setAssessed(e.target.value); if (e.target.value) setReviewDate(addMonths(e.target.value, 12)); }} /></Field>
           <Field label="Review by"><TextInput type="date" value={reviewDate} onChange={(e) => setReviewDate(e.target.value)} /></Field>
         </div>
-        <PrimaryButton onClick={() => product.trim() && onSave({ id: existing?.id, product: product.trim(), maker: maker.trim(), use: use.trim(), location: location.trim(), hazards, controls: controls.trim(), firstAid: firstAid.trim(), sdsUrl: sdsUrl.trim() ? (/^https?:\/\//i.test(sdsUrl.trim()) ? sdsUrl.trim() : `https://${sdsUrl.trim()}`) : "", assessed: assessed || null, reviewDate: reviewDate || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <PrimaryButton onClick={() => product.trim() && onSave({ id: existing?.id, product: product.trim(), maker: maker.trim(), use: use.trim(), location: location.trim(), hazards, controls: controls.trim(), firstAid: firstAid.trim(), qty: qty.trim(), sdsUrl: sdsUrl.trim() ? (/^https?:\/\//i.test(sdsUrl.trim()) ? sdsUrl.trim() : `https://${sdsUrl.trim()}`) : "", assessed: assessed || null, reviewDate: reviewDate || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <button type="button" onClick={() => { const e = escapeHtml; openPrintReport(`COSHH — ${existing.product}`, "", `<div style="border:3px solid #D97706;border-radius:12px;padding:16px;max-width:520px"><div style="font-size:22px;font-weight:800">${e(existing.product)}</div><div style="font-size:12px;color:#56616D">${e(existing.maker || "")}${existing.use ? ` · ${e(existing.use)}` : ""}</div><div style="margin:10px 0;font-weight:800;color:#C53030">${e((existing.hazards || []).join(" · ") || "No hazards recorded")}</div><div><b>Controls & PPE:</b> ${e(existing.controls || "—")}</div><div style="margin-top:6px"><b>First aid:</b> ${e(existing.firstAid || "—")}</div><div style="margin-top:6px"><b>Stored:</b> ${e(existing.location || "—")}</div><div style="margin-top:10px;font-size:11px;color:#56616D">Safety data sheet: ${existing.sdsUrl ? e(existing.sdsUrl) : "ask the facilities team"} · Review by ${existing.reviewDate ? fmtDate(existing.reviewDate) : "—"}</div></div>`); }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Print data card (to display where it's stored)</button>}
         {existing && <ConfirmTextDelete label="Delete" onConfirm={() => onDelete(existing.id)} />}
       </div>
@@ -469,6 +472,7 @@ function EquipmentModal({ existing, onClose, onSave, onDelete }) {
         {next && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: -4 }}>Next inspection: <b>{fmtDate(next)}</b></div>}
         <div style={{ display: "flex", gap: 6 }}>{[["ok", "In use"], ["failed", "Failed — do not use"], ["withdrawn", "Withdrawn / disposed"]].map(([k, l]) => <ToggleButton key={k} active={status === k} onClick={() => setStatus(k)}>{l}</ToggleButton>)}</div>
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: 45 }} /></Field>
+        {(existing?.history || []).length > 0 && <div style={{ fontSize: 12, background: "var(--card-hi)", borderRadius: 9, padding: "7px 10px" }}><b>Inspection history</b>{existing.history.slice(0, 8).map((h, k) => <div key={k} style={{ color: h.result === "fail" ? "var(--danger)" : "var(--text-2)" }}>{fmtDate(h.date)} — {h.result === "fail" ? "failed" : "passed"}</div>)}</div>}
         <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), type, ref: ref.trim(), location: location.trim(), everyMonths: Number(everyMonths) || 12, lastInspected: lastInspected || null, nextDue: next, status, notes: notes.trim(), history: existing?.history || [] })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete" onConfirm={() => onDelete(existing.id)} />}
       </div>
@@ -706,7 +710,7 @@ export function KeyDatesView({ items, onSave, onDelete }) {
             <div key={i.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${n < 0 ? "var(--danger)" : warn ? "var(--warn)" : "var(--ok)"}`, borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
               <button onClick={() => ACTIVE_CAN_EDIT && setEditing(i)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
                 <div style={{ fontSize: 13, fontWeight: 650 }}>{i.title}</div>
-                <div style={{ fontSize: 11.5, color: n < 0 ? "var(--danger)" : warn ? "var(--warn)" : "var(--faint)", fontWeight: warn ? 700 : 500 }}>{i.type} · {fmtDate(i.date)} · {n < 0 ? `${-n} days ago` : n === 0 ? "today" : `in ${n} days`}</div>
+                <div style={{ fontSize: 11.5, color: n < 0 ? "var(--danger)" : warn ? "var(--warn)" : "var(--faint)", fontWeight: warn ? 700 : 500 }}>{i.type} · {fmtDate(i.date)} · {n < 0 ? `${-n} days ago` : n === 0 ? "today" : `in ${n} days`}{i.url && <a href={/^https?:/i.test(i.url) ? i.url : `https://${i.url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, color: "var(--accent)" }}>document</a>}</div>
               </button>
               {ACTIVE_CAN_EDIT && <button onClick={() => { const m = window.prompt("Postpone by how many months?", "1"); if (m && Number(m)) onSave({ ...i, date: addMonths(i.date, Number(m)), notes: `${i.notes ? `${i.notes}\n` : ""}Postponed from ${fmtDate(i.date)}` }); }} title="Postpone" style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 9px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Postpone</button>}
               {ACTIVE_CAN_EDIT && <button onClick={() => onSave({ ...i, done: true, doneAt: new Date().toISOString() })} style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Done</button>}
@@ -721,7 +725,7 @@ export function KeyDatesView({ items, onSave, onDelete }) {
 }
 function KeyDateModal({ existing, onClose, onSave, onDelete }) {
   const [title, setTitle] = useState(existing?.title || ""); const [type, setType] = useState(existing?.type || KEY_DATE_TYPES[0]);
-  const [date, setDate] = useState(existing?.date || ""); const [notifyDays, setNotifyDays] = useState(String(existing?.notifyDays ?? 90)); const [notes, setNotes] = useState(existing?.notes || "");
+  const [date, setDate] = useState(existing?.date || ""); const [notifyDays, setNotifyDays] = useState(String(existing?.notifyDays ?? 90)); const [notes, setNotes] = useState(existing?.notes || ""); const [url, setUrl] = useState(existing?.url || "");
   return (
     <Modal title={existing ? "Key date" : "Add a key date"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -732,7 +736,8 @@ function KeyDateModal({ existing, onClose, onSave, onDelete }) {
         </div>
         <Field label="Remind me this many days before"><TextInput type="number" min="0" value={notifyDays} onChange={(e) => setNotifyDays(e.target.value)} /></Field>
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. 6 months' written notice required" style={{ minHeight: 50 }} /></Field>
-        <PrimaryButton onClick={() => title.trim() && date && onSave({ id: existing?.id, title: title.trim(), type, date, notifyDays: Number(notifyDays) || 0, notes: notes.trim(), done: existing?.done || false })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <Field label="Document link (lease, policy…)"><TextInput value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" /></Field>
+        <PrimaryButton onClick={() => title.trim() && date && onSave({ id: existing?.id, title: title.trim(), type, date, notifyDays: Number(notifyDays) || 0, notes: notes.trim(), url: url.trim(), done: existing?.done || false })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -759,6 +764,9 @@ export function FeedbackView({ onRaiseJob, items, locationId, locationName, area
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 10 }}>
             {FEEDBACK_TOPICS.map((t) => { const a = avg(t); return <MetricBlock key={t} label={t} value={a == null ? "—" : `${a.toFixed(1)} ★`} tone={a == null ? undefined : a >= 4 ? "ok" : a >= 3 ? undefined : "danger"} />; })}
           </div>
+          {(() => { const ms = Array.from({ length: 6 }, (_, k) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (5 - k)); return d.toISOString().slice(0, 7); }); const av = ms.map((m) => { const v = items.filter((f) => String(f.at).startsWith(m) && f.ratings?.Overall).map((f) => f.ratings.Overall); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }); if (av.filter((x) => x != null).length < 2) return null; return (
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 54, marginBottom: 10 }}>{av.map((v, k) => <div key={k} style={{ flex: 1, textAlign: "center" }}><div title={v == null ? "No responses" : `${v.toFixed(1)}★`} style={{ height: v == null ? 3 : `${(v / 5) * 40}px`, background: v == null ? "var(--card-hi)" : v >= 4 ? "var(--ok)" : v >= 3 ? "var(--warn)" : "var(--danger)", borderRadius: "3px 3px 0 0" }} /><div style={{ fontSize: 9.5, color: "var(--faint)" }}>{new Date(ms[k] + "-01").toLocaleDateString("en-GB", { month: "short" })}</div></div>)}<span style={{ fontSize: 10.5, color: "var(--faint)" }}>Overall ★ by month</span></div>
+          ); })()}
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{list.length} response{list.length === 1 ? "" : "s"} in this period</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {list.filter((f) => f.comment).slice(0, 40).map((f) => (
@@ -828,7 +836,7 @@ export function IsolationsView({ items, onSave, onDelete, onPrintEmergency }) {
           {[...items].sort((a, b) => ISOLATION_KINDS.indexOf(a.kind) - ISOLATION_KINDS.indexOf(b.kind)).map((i) => (
             <button key={i.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(i)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)", width: "100%", minWidth: 0, boxSizing: "border-box" }}>
               {i.photo ? <img src={i.photo} alt="" style={{ width: 52, height: 52, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} /> : <span style={{ width: 52, height: 52, borderRadius: 8, background: "var(--danger-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Power size={20} color="var(--danger)" /></span>}
-              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}><b style={{ fontSize: 13.5 }}>{i.kind}</b><span style={{ display: "block", fontSize: 12.3 }}>{i.location}</span>{i.serves && <span style={{ display: "block", fontSize: 11.3, color: "var(--faint)" }}>Serves: {i.serves}</span>}</span>
+              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}><b style={{ fontSize: 13.5 }}>{i.kind}</b><span style={{ display: "block", fontSize: 12.3 }}>{i.location}</span>{/valve|stopcock|isolator|shut-off/i.test(i.kind) && <span style={{ display: "block", fontSize: 11, fontWeight: 650, color: !i.lastExercised || -daysUntil(i.lastExercised) > 365 ? "var(--warn)" : "var(--ok)" }}>{i.lastExercised ? `Last operated ${fmtDate(i.lastExercised)}` : "Not operated on record"}{ACTIVE_CAN_EDIT && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onSave({ ...i, lastExercised: new Date().toISOString().slice(0, 10) }); }} style={{ marginLeft: 8, color: "var(--accent)", textDecoration: "underline" }}>operated today</span>}</span>}{i.serves && <span style={{ display: "block", fontSize: 11.3, color: "var(--faint)" }}>Serves: {i.serves}</span>}</span>
             </button>
           ))}
         </div>
@@ -856,7 +864,7 @@ function IsolationModal({ existing, onClose, onSave, onDelete }) {
 }
 
 /* ---------- Car park register ---------- */
-export function CarParkView({ items, onSave, onDelete }) {
+export function CarParkView({ totalSpaces = null, onSaveSpaces, items, onSave, onDelete }) {
   const [editing, setEditing] = useState(null); const [q, setQ] = useState("");
   const norm = (s) => String(s || "").replace(/\s+/g, "").toUpperCase();
   const list = items.filter((i) => !q.trim() || norm(i.reg).includes(norm(q)) || String(i.name).toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -868,6 +876,7 @@ export function CarParkView({ items, onSave, onDelete }) {
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: "1 1 180px" }}><Plus size={15} /> Add a vehicle</PrimaryButton>}
         {items.length > 0 && <ExportButton label="CSV" filename="car-park.csv" rows={[["Name", "Registration", "Vehicle", "Space", "Permit", "Expires", "Phone"], ...items.map((i) => [i.name, i.reg, i.vehicle || "", i.space || "", i.permit || "", i.expiry || "", i.phone || ""])]} />}
       </div>
+      {(onSaveSpaces || totalSpaces) && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12.5, flexWrap: "wrap" }}><span style={{ color: "var(--muted)" }}>Spaces on site</span>{ACTIVE_CAN_EDIT && onSaveSpaces ? <TextInput type="number" min="0" defaultValue={totalSpaces ?? ""} onBlur={(e) => onSaveSpaces(e.target.value)} style={{ width: 70, padding: "5px 8px" }} /> : <b>{totalSpaces}</b>}{totalSpaces ? <span><b>{items.filter((i) => i.space).length}</b> allocated · <b style={{ color: "var(--ok)" }}>{Math.max(0, totalSpaces - items.filter((i) => i.space).length)}</b> free</span> : null}</div>}
       {expiring > 0 && <div style={{ fontSize: 12, color: "var(--warn)", fontWeight: 650, marginBottom: 8 }}>{expiring} permit{expiring === 1 ? "" : "s"} expired or expiring within 30 days</div>}
       {items.length === 0 ? <EmptyState icon={Car} title="No vehicles yet" body="Staff and regular contractors' vehicles, parking spaces and permits — so you can find who to call when a car is blocking a delivery bay." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -908,6 +917,67 @@ function CarModal({ existing, onClose, onSave, onDelete }) {
           <Field label="Permit expires"><TextInput type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
         </div>
         <PrimaryButton onClick={() => reg.trim() && name.trim() && onSave({ id: existing?.id, name: name.trim(), reg: reg.trim(), vehicle: vehicle.trim(), space: space.trim(), permit: permit.trim(), expiry: expiry || null, phone: phone.trim() })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        {existing && <ConfirmTextDelete label="Delete" onConfirm={() => onDelete(existing.id)} />}
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- Planned shutdowns (power, water, lifts…) with occupant notices ---------- */
+export function ShutdownsView({ items, onSave, onDelete, locationName = "", userName = "" }) {
+  const [editing, setEditing] = useState(null);
+  const now = new Date().toISOString().slice(0, 16);
+  const upcoming = items.filter((s) => (s.end || s.start) >= now).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  const past = items.filter((s) => (s.end || s.start) < now).sort((a, b) => String(b.start).localeCompare(String(a.start)));
+  const when = (s) => `${new Date(s.start).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${s.end ? ` – ${new Date(s.end).toLocaleString("en-GB", s.end.slice(0, 10) === s.start.slice(0, 10) ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}`;
+  const notice = (s) => { const e = escapeHtml; openPrintReport(`Planned ${s.type.toLowerCase()} shutdown`, locationName, `<div style="border:4px solid #D97706;border-radius:14px;padding:22px;text-align:center"><div style="font-size:15px;font-weight:800;letter-spacing:.1em;color:#B45309">PLANNED SHUTDOWN</div><div style="font-size:30px;font-weight:800;margin:8px 0">${e(s.type)}</div><div style="font-size:20px;font-weight:700">${e(when(s))}</div>${s.areas ? `<div style="font-size:16px;margin-top:10px">Affected: <b>${e(s.areas)}</b></div>` : ""}${s.reason ? `<div style="font-size:14px;margin-top:10px">${e(s.reason)}</div>` : ""}${s.impact ? `<div style="font-size:14px;margin-top:10px;background:#FEF3C7;border-radius:8px;padding:8px">${e(s.impact)}</div>` : ""}<div style="font-size:12px;color:#56616D;margin-top:14px">Questions? Contact the facilities team${s.contact ? ` — ${e(s.contact)}` : ""}. We're sorry for any inconvenience.</div></div>`); };
+  const email = (s) => { window.location.href = `mailto:?subject=${encodeURIComponent(`Planned ${s.type.toLowerCase()} shutdown — ${when(s)}`)}&body=${encodeURIComponent(`Hello,\n\nPlease note there will be a planned ${s.type.toLowerCase()} shutdown at ${locationName}:\n\nWhen: ${when(s)}${s.areas ? `\nAffected areas: ${s.areas}` : ""}${s.reason ? `\nWhy: ${s.reason}` : ""}${s.impact ? `\n\nWhat this means for you: ${s.impact}` : ""}\n\nWe're sorry for any inconvenience.${s.contact ? `\nQuestions: ${s.contact}` : ""}\n\n${userName}`)}`; onSave({ ...s, notifiedAt: new Date().toISOString() }); };
+  const row = (s) => (
+    <div key={s.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${s.start <= now && (s.end || s.start) >= now ? "var(--danger)" : "#D97706"}`, borderRadius: 10, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 4 }}>
+      <button onClick={() => ACTIVE_CAN_EDIT && setEditing(s)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.type}{s.start <= now && (s.end || s.start) >= now ? <span style={{ color: "var(--danger)" }}> · happening now</span> : null}</div>
+        <div style={{ fontSize: 12.3 }}>{when(s)}</div>
+        <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{[s.areas, s.contractor && `by ${s.contractor}`, s.notifiedAt && `occupants told ${fmtDate(s.notifiedAt.slice(0, 10))}`].filter(Boolean).join(" · ")}</div>
+      </button>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button onClick={() => notice(s)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Print notice</button>
+        {ACTIVE_CAN_EDIT && <button onClick={() => email(s)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{s.notifiedAt ? "Email occupants again" : "Email occupants"}</button>}
+      </div>
+    </div>
+  );
+  return (
+    <div>
+      {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ width: "100%", marginBottom: 10 }}><Plus size={15} /> Plan a shutdown</PrimaryButton>}
+      {items.length === 0 ? <EmptyState icon={ZapOff} title="No planned shutdowns" body="Power, water, gas, heating, lifts… record planned outages, print a notice for doors and lifts, and email occupants in advance. You'll be reminded the week before." /> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {upcoming.map(row)}
+          {past.length > 0 && <details style={{ marginTop: 6 }}><summary style={{ cursor: "pointer", fontSize: 12.5, color: "var(--muted)" }}>Past shutdowns ({past.length})</summary><div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>{past.slice(0, 20).map(row)}</div></details>}
+        </div>
+      )}
+      {editing && <ShutdownModal existing={editing.id ? editing : null} onClose={() => setEditing(null)} onSave={(x) => { onSave(x); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
+    </div>
+  );
+}
+function ShutdownModal({ existing, onClose, onSave, onDelete }) {
+  const [type, setType] = useState(existing?.type || SHUTDOWN_TYPES[0]); const [start, setStart] = useState(existing?.start || ""); const [end, setEnd] = useState(existing?.end || "");
+  const [areas, setAreas] = useState(existing?.areas || ""); const [reason, setReason] = useState(existing?.reason || ""); const [impact, setImpact] = useState(existing?.impact || "");
+  const [contractor, setContractor] = useState(existing?.contractor || ""); const [contact, setContact] = useState(existing?.contact || "");
+  return (
+    <Modal title={existing ? "Planned shutdown" : "Plan a shutdown"} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Field label="What's being shut down"><Select value={type} onChange={(e) => setType(e.target.value)}>{SHUTDOWN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></Field>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
+          <Field label="From"><TextInput type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+          <Field label="Until"><TextInput type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+        </div>
+        <Field label="Areas affected"><TextInput value={areas} onChange={(e) => setAreas(e.target.value)} placeholder="e.g. Whole building / Level 2 east wing" /></Field>
+        <Field label="Why (shown on the notice)"><TextInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Annual electrical safety testing" /></Field>
+        <Field label="What it means for people"><TextArea value={impact} onChange={(e) => setImpact(e.target.value)} placeholder="e.g. No lifts — use the stairs. Save your work and shut down PCs before 7am." style={{ minHeight: 60 }} /></Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <Field label="Contractor"><TextInput value={contractor} onChange={(e) => setContractor(e.target.value)} /></Field>
+          <Field label="Contact for questions"><TextInput value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Name / phone" /></Field>
+        </div>
+        <PrimaryButton onClick={() => start && onSave({ id: existing?.id, type, start, end, areas: areas.trim(), reason: reason.trim(), impact: impact.trim(), contractor: contractor.trim(), contact: contact.trim(), notifiedAt: existing?.notifiedAt })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>

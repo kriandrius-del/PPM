@@ -4,12 +4,13 @@ import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, FileSpreadsheet, 
 import { BudgetTypeTag, CategoryBadge, ConfirmTextDelete, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, PriorityTag, Select, TextArea, TextInput, ToggleButton, WorkStatusTag, inputStyle } from "../components/ui.jsx";
 import { PRIORITY_RANK, PROJECT_STATUSES, SLA_DAYS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_SLA, ACTIVE_USERS, siteInfoText } from "../lib/globals.js";
-import { addDays, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, parseDelimited, replacementYear, toISO, uid, workSla } from "../lib/utils.js";
+import { addDays, appBaseUrl, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, parseDelimited, replacementYear, toISO, uid, workSla } from "../lib/utils.js";
 import { buildWorkOrderSheet, openPrintReport, tableHtml } from "../lib/reports.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
-export function WorksTab({ onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
+export function WorksTab({ initialOpenId = null, onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
   const [importOpen, setImportOpen] = useState(false);
+  const [waitingOnly, setWaitingOnly] = useState(false);
   const needsApproval = (w) => approvalThreshold > 0 && Number(w.quoteAmount) >= approvalThreshold && !w.approvedBy && w.status !== "rejected" && w.status !== "completed";
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState(String(approvalThreshold || ""));
@@ -18,7 +19,7 @@ export function WorksTab({ onDuplicateWork, onInvoiceFromWork, onPoFromWork, onI
   const [sortBy, setSortBy] = useState("priority");
   const [chaseOpen, setChaseOpen] = useState(false);
   const overdueWorks = works.filter((w) => !["completed", "rejected", "on_hold"].includes(w.status) && workSla(w)?.breached && w.supplierId);
-  const [openWorkId, setOpenWorkId] = useState(null);
+  const [openWorkId, setOpenWorkId] = useState(initialOpenId);
   const [layout, setLayout] = useState("list"); // 'list' | 'board'
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState([]);
@@ -34,6 +35,7 @@ export function WorksTab({ onDuplicateWork, onInvoiceFromWork, onPoFromWork, onI
   const requestedCount = works.filter((w) => w.status === "requested").length;
   const filtered = works
     .filter((w) => !tradeFilter || w.category === tradeFilter)
+    .filter((w) => !waitingOnly || (w.waitingOn && !isClosed(w)))
     .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : !isClosed(w))
     .sort((a, b) => sortBy === "newest" ? (b.dateRaised || "").localeCompare(a.dateRaised || "") : sortBy === "oldest" ? (a.dateRaised || "").localeCompare(b.dateRaised || "") : sortBy === "target" ? String(workSla(a)?.deadline || "9999").localeCompare(String(workSla(b)?.deadline || "9999")) : sortBy === "value" ? (Number(b.quoteAmount) || 0) - (Number(a.quoteAmount) || 0) : (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || ""));
   const openWork = openWorkId ? works.find((w) => w.id === openWorkId) : null;
@@ -141,6 +143,7 @@ export function WorksTab({ onDuplicateWork, onInvoiceFromWork, onPoFromWork, onI
         <ToggleButton active={statusFilter === "requested"} onClick={() => setStatusFilter("requested")}>New requests{requestedCount ? ` (${requestedCount})` : ""}</ToggleButton>
         <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Closed</ToggleButton>
         <ToggleButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All</ToggleButton>
+        {works.some((w) => w.waitingOn && !isClosed(w)) && <ToggleButton active={waitingOnly} onClick={() => setWaitingOnly((v) => !v)}>Waiting on something ({works.filter((w) => w.waitingOn && !isClosed(w)).length})</ToggleButton>}
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "7px 8px", fontSize: 12.5 }}>
           <option value="priority">Priority first</option><option value="target">Target date</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="value">Highest value</option>
         </select>
@@ -181,6 +184,8 @@ export function WorksTab({ onDuplicateWork, onInvoiceFromWork, onPoFromWork, onI
                 {w.poNumber && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>PO {w.poNumber}</span>}
                 {w.finalCost != null && Number(w.quoteAmount) > 0 && (() => { const v = Number(w.finalCost) - Number(w.quoteAmount); const pct = Math.round((v / Number(w.quoteAmount)) * 100); return <span style={{ fontSize: 11, fontWeight: 700, color: v > 0 ? "var(--danger)" : "var(--ok)", background: v > 0 ? "var(--danger-soft)" : "var(--ok-soft)", padding: "3px 8px", borderRadius: 20 }}>Final {gbp(w.finalCost)} ({v > 0 ? "+" : ""}{pct}%)</span>; })()}
                 {w.eta && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: daysUntil(w.eta) < 0 ? "var(--danger)" : "var(--accent)", background: daysUntil(w.eta) < 0 ? "var(--danger-soft)" : "var(--accent-soft)", padding: "3px 8px", borderRadius: 20 }}>Supplier ETA {fmtDate(w.eta)}</span>}
+                {w.escalatedAt && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>Escalated</span>}
+                {w.status === "completed" && w.completedAt && w.dateRaised && <span style={{ fontSize: 11, fontWeight: 650, color: "var(--muted)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>Done in {Math.max(0, Math.round((new Date(w.completedAt) - new Date(`${w.dateRaised}T09:00:00`)) / 864e5))} day{Math.max(0, Math.round((new Date(w.completedAt) - new Date(`${w.dateRaised}T09:00:00`)) / 864e5)) === 1 ? "" : "s"}</span>}
                 {w.waitingOn && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)", background: "var(--warn-soft)", padding: "3px 8px", borderRadius: 20 }}>Waiting: {w.waitingOn.toLowerCase()}</span>}
                 {!["completed", "rejected"].includes(w.status) && w.dateRaised && -daysUntil(w.dateRaised) > 7 && <span style={{ fontSize: 11, fontWeight: 650, color: -daysUntil(w.dateRaised) > 30 ? "var(--danger)" : "var(--muted)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>Open {-daysUntil(w.dateRaised)} days</span>}
                 {w.priority === "high" && !w.attendedAt && !["completed", "rejected", "on_hold"].includes(w.status) && (Date.now() - new Date(w.loggedAt || `${w.dateRaised}T09:00:00`).getTime()) > 86400000 && <span style={{ fontSize: 11, fontWeight: 750, color: "#fff", background: "var(--danger)", padding: "3px 8px", borderRadius: 20 }}>No attendance 24h+</span>}
@@ -227,7 +232,7 @@ export function WorksTab({ onDuplicateWork, onInvoiceFromWork, onPoFromWork, onI
         </div>
       )}
       {openWork && (
-        <WorkDetailModal onDuplicate={onDuplicateWork ? () => { onDuplicateWork(openWork); setOpenWorkId(null); } : null} onInvoice={onInvoiceFromWork ? () => onInvoiceFromWork(openWork) : null} onRaisePO={onPoFromWork ? () => onPoFromWork(openWork) : null} spares={spares} onUseSpare={onUseSpare ? (sid, q) => onUseSpare(openWork.id, sid, q) : null} onRepeat={onRepeat ? () => { const w = openWork; setOpenWorkId(null); onRepeat(w); } : null} locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
+        <WorkDetailModal allWorks={works} onDuplicate={onDuplicateWork ? () => { onDuplicateWork(openWork); setOpenWorkId(null); } : null} onInvoice={onInvoiceFromWork ? () => onInvoiceFromWork(openWork) : null} onRaisePO={onPoFromWork ? () => onPoFromWork(openWork) : null} spares={spares} onUseSpare={onUseSpare ? (sid, q) => onUseSpare(openWork.id, sid, q) : null} onRepeat={onRepeat ? () => { const w = openWork; setOpenWorkId(null); onRepeat(w); } : null} locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
           approvalThreshold={approvalThreshold} needsApproval={needsApproval(openWork)}
           onConvertToProject={onConvertToProject ? () => { onConvertToProject(openWork); setOpenWorkId(null); } : null}
           onConvertToPlan={() => onConvertToPlan?.(openWork)} onConvertToService={() => onConvertToService?.(openWork)}
@@ -238,7 +243,7 @@ export function WorksTab({ onDuplicateWork, onInvoiceFromWork, onPoFromWork, onI
   );
 }
 
-export function WorkDetailModal({ onDuplicate, onInvoice, onRaisePO, spares = [], onUseSpare, onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
+export function WorkDetailModal({ allWorks = [], onDuplicate, onInvoice, onRaisePO, spares = [], onUseSpare, onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
   const [po, setPo] = useState(work.poNumber || "");
   const [statusMsg, setStatusMsg] = useState("");
   const [comment, setComment] = useState("");
@@ -319,11 +324,14 @@ export function WorkDetailModal({ onDuplicate, onInvoice, onRaisePO, spares = []
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {[
             onDuplicate && ACTIVE_CAN_EDIT && ["Duplicate job", onDuplicate],
+            ["Copy link", () => { const u = `${appBaseUrl()}?job=${work.id}`; try { navigator.clipboard?.writeText(u); } catch (e) { /* ignore */ } alert("Link to this job copied — anyone on the team can open it from the link."); }],
             ["Copy summary", () => { const sup = suppliers.find((s) => s.id === work.supplierId); const t = `${device?.name || "Job"}: ${work.description}\nRef ${work.id.slice(-6).toUpperCase()} · ${(work.priority || "medium").toUpperCase()} · ${WORK_STATUSES.find((x) => x.key === work.status)?.label || work.status}${sup ? ` · ${sup.name}` : ""}${work.quoteAmount ? ` · ${gbp(work.finalCost ?? work.quoteAmount)}` : ""}${work.poNumber ? ` · PO ${work.poNumber}` : ""}\nRaised ${fmtDate(work.dateRaised)}${workSla(work) ? ` · target ${fmtDate(workSla(work).deadline)}` : ""}`; try { navigator.clipboard?.writeText(t); } catch (e) { /* ignore */ } alert("Job summary copied — paste it into Teams, WhatsApp or an email."); }],
             onRaisePO && ACTIVE_CAN_EDIT && !work.poNumber && Number(work.quoteAmount) > 0 && ["Raise a PO", onRaisePO],
             onInvoice && ACTIVE_CAN_EDIT && ["approved", "in_progress", "completed"].includes(work.status) && ["Record the invoice", onInvoice],
           ].filter(Boolean).map(([l, fn]) => <button key={l} type="button" onClick={fn} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{l}</button>)}
         </div>
+        {(() => { const others = allWorks.filter((x) => x.id !== work.id && x.deviceId === work.deviceId && !["completed", "rejected"].includes(x.status)); return others.length ? <div style={{ fontSize: 12, background: "var(--warn-soft)", borderRadius: 9, padding: "7px 10px" }}><b>{others.length} other open job{others.length === 1 ? "" : "s"} on this service:</b> {others.slice(0, 4).map((x) => `${x.description} (${(WORK_STATUSES.find((st) => st.key === x.status)?.label || x.status).toLowerCase()})`).join(" · ")}</div> : null; })()}
+        <QuotesPanel work={work} suppliers={suppliers} device={device} locationName={locationName} onUpdate={onUpdate} userName={currentUserName} />
         <LabourMaterials work={work} onUpdate={onUpdate} spares={spares} onUseSpare={onUseSpare} />
         <WorkLinks links={work.links || []} onChange={ACTIVE_CAN_EDIT ? (links) => onUpdate({ links }) : null} />
         {onConvertToProject && ACTIVE_CAN_EDIT && !work.projectId && !["completed", "rejected"].includes(work.status) && (
@@ -871,5 +879,31 @@ function ImportWorksModal({ devices, suppliers, onClose, onImport }) {
         <PrimaryButton onClick={() => ok.length && onImport(ok.map(({ device, ...w }) => w))} style={{ opacity: ok.length ? 1 : 0.5 }}><Upload size={15} /> Import {ok.length} job{ok.length === 1 ? "" : "s"}</PrimaryButton>
       </div>
     </Modal>
+  );
+}
+
+/* Emails to ask suppliers for quotes and to ask a manager for approval (quote comparison itself is in QuoteComparison). */
+function QuotesPanel({ work, suppliers, device, locationName = "", onUpdate, userName = "" }) {
+  if (!ACTIVE_CAN_EDIT || ["completed", "rejected"].includes(work.status)) return null;
+  const quotes = work.quotes || [];
+  const sup = (id) => suppliers.find((s) => s.id === id);
+  const askQuotes = () => {
+    const tradeSups = suppliers.filter((s) => s.managerEmail && s.status !== "blocked" && (!work.category || (s.trades || []).includes(work.category) || s.id === work.supplierId));
+    const to = (tradeSups.length ? tradeSups : suppliers.filter((s) => s.managerEmail)).map((s) => s.managerEmail);
+    const body = `Hello,\n\nPlease could you quote for the following at ${locationName}:\n\n${device?.name || ""}${device?.area ? ` (${device.area})` : ""}\n${work.description}\n\nPriority: ${(work.priority || "medium").toUpperCase()}${device?.accessNotes ? `\nAccess: ${device.accessNotes}` : ""}\nOur reference: ${work.id.slice(-6).toUpperCase()}\n\nPlease include labour, materials, any access equipment and your earliest start date.\n\nThanks,\n${userName}`;
+    window.location.href = `mailto:?bcc=${encodeURIComponent(to.join(","))}&subject=${encodeURIComponent(`Request for quotation — ${device?.name || "works"} — ${locationName}`)}&body=${encodeURIComponent(body)}`;
+    onUpdate({ quoteRequestedAt: new Date().toISOString().slice(0, 10), comments: [...(work.comments || []), { text: `Quotes requested from ${to.length} supplier${to.length === 1 ? "" : "s"}`, by: userName || "Unknown", at: new Date().toISOString() }] });
+  };
+  const askApproval = () => {
+    const amount = Number(work.quoteAmount) || (quotes.length ? Math.min(...quotes.map((q) => Number(q.amount) || Infinity)) : 0);
+    const body = `Hi,\n\nPlease could you approve this job at ${locationName}?\n\n${device?.name || ""}: ${work.description}\nPriority: ${(work.priority || "medium").toUpperCase()}\nQuote: ${gbp(amount)}${sup(work.supplierId) ? ` from ${sup(work.supplierId).name}` : ""}${quotes.length > 1 ? `\n\nQuotes received:\n${quotes.map((q) => `- ${sup(q.supplierId)?.name || "?"}: ${gbp(q.amount)}${q.note ? ` (${q.note})` : ""}`).join("\n")}` : ""}\n\nReference: ${work.id.slice(-6).toUpperCase()}\n\nThanks,\n${userName}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(`Approval needed: ${device?.name || "job"} ${gbp(amount)}`)}&body=${encodeURIComponent(body)}`;
+  };
+  const btn = { background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" };
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <button type="button" onClick={askQuotes} style={btn}>Ask suppliers to quote</button>
+      {(Number(work.quoteAmount) > 0 || quotes.length > 0) && ["requested", "quoted"].includes(work.status) && <button type="button" onClick={askApproval} style={btn}>Ask for approval</button>}
+    </div>
   );
 }

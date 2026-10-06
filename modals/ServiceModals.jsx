@@ -5,7 +5,7 @@ import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, ExportB
 import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, IMPORT_FIELDS, JOB_TEMPLATES, LATE_REASONS, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
 import { ACTIVE_BRAND, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
 import { buildAssetRecord, buildBlankChecklist, openPrintReport, tableHtml } from "../lib/reports.js";
-import { addDays, addMonths, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, formatCustomValues, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
+import { addDays, addMonths, appBaseUrl, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, formatCustomValues, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
 import { TEMPLATE_EXAMPLE_PREFIX, buildServicesTemplate, readSpreadsheetRows } from "../lib/excelTemplate.js";
 
 export function DeviceHistoryModal({ budgetInfo = null, onRebuildPlan, changeLog = [], spares = [], onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
@@ -52,6 +52,7 @@ export function DeviceHistoryModal({ budgetInfo = null, onRebuildPlan, changeLog
             style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Printer size={14} /> Asset record
           </button>
+          <button onClick={() => { const u = `${appBaseUrl()}?service=${device.id}`; try { navigator.clipboard?.writeText(u); } catch (e) { /* ignore */ } alert("Link copied — anyone on the team can open this service straight from it."); }} title="Copy a link to this service" style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "8px 10px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}><Link2 size={14} /> Link</button>
           <ExportButton label="CSV" filename={`history-${device.name.replace(/[^a-z0-9]+/gi, "-")}.csv`} rows={[["Date", "Visit", "Supplier", "Technician", "Outcome", "Cost", "Labour", "Parts", "Call-out", "Checks passed", "Checks failed", "PO", "Notes"], ...services.map((v) => [v.date, v.name || "", supplierById[v.supplierId]?.name || "", v.technician || "", v.aborted ? `Not completed: ${v.abortReason || ""}` : v.skipped ? `Skipped: ${v.skipReason || ""}` : "Done", v.cost || 0, v.costBreakdown?.labour ?? "", v.costBreakdown?.parts ?? "", v.costBreakdown?.callout ?? "", (v.checklistResults || []).filter((r) => r.result === "pass").length, (v.checklistResults || []).filter((r) => r.result === "fail").length, v.poNumber || "", v.notes || ""])]} />
           </div>
           {(() => {
@@ -76,6 +77,31 @@ export function DeviceHistoryModal({ budgetInfo = null, onRebuildPlan, changeLog
                   ))}
                 </div>
               </>
+            );
+          })()}
+          {(() => {
+            const done = sorted.filter((v) => !v.skipped && !v.aborted);
+            const costed = done.filter((v) => Number(v.cost) > 0);
+            const total = costed.reduce((t, v) => t + Number(v.cost), 0);
+            const repeat = (device.checklist || []).filter((item) => done.length >= 2 && done.slice(0, 2).every((v) => (v.checklistResults || []).some((x) => x.item === item && x.result === "fail")));
+            const trend = [...costed].slice(0, 8).reverse(); const mx = Math.max(1, ...trend.map((v) => Number(v.cost)));
+            if (!done.length) return null;
+            return (
+              <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.3 }}>
+                  <span>Visits logged <b>{done.length}</b></span>
+                  {total > 0 && <span>All-time cost <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(total)}</b></span>}
+                  {costed.length > 0 && <span>Average <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(total / costed.length)}</b></span>}
+                  {done[done.length - 1]?.date && <span style={{ color: "var(--faint)" }}>since {fmtDate(done[done.length - 1].date)}</span>}
+                </div>
+                {trend.length >= 2 && (
+                  <div title="Cost of the last visits, oldest to newest" style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 34 }}>
+                    {trend.map((v) => <div key={v.id} title={`${fmtDate(v.date)}: ${gbp(v.cost)}`} style={{ flex: 1, maxWidth: 26, height: `${Math.max(8, (Number(v.cost) / mx) * 100)}%`, background: Number(v.cost) > (Number(device.budgetPerVisit) || Infinity) ? "var(--danger)" : "var(--accent)", borderRadius: "3px 3px 0 0", opacity: 0.85 }} />)}
+                    <span style={{ fontSize: 10.5, color: "var(--faint)", marginLeft: 4 }}>last {trend.length} visit costs</span>
+                  </div>
+                )}
+                {repeat.length > 0 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--danger)" }}>Failed at the last 2 visits: {repeat.map((x) => checklistLabel(x)).join(", ")} — consider a repair job.</div>}
+              </div>
             );
           })()}
           {budgetInfo && (budgetInfo.perVisit > 0 || budgetInfo.spent > 0) && (
@@ -839,6 +865,7 @@ export function LogServiceModal({ onVerify, spares = [], lastVisit = null, locat
           </Select>
         </Field>
         <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" /></Field>
+        {!existing && Number(cost) > 0 && Number(lastVisit?.cost) > 0 && Number(cost) > Number(lastVisit.cost) * 1.5 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--warn)", marginTop: -6 }}>That's {Math.round((Number(cost) / Number(lastVisit.cost) - 1) * 100)}% more than last visit ({gbp(lastVisit.cost)} on {fmtDate(lastVisit.date)}) — worth checking the invoice.</div>}
         {Number(cost) > 0 && Number(device?.budgetPerVisit) > 0 && Number(cost) > Number(device.budgetPerVisit) * 1.2 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--warn)", marginTop: -6 }}>That's {Math.round((Number(cost) / Number(device.budgetPerVisit) - 1) * 100)}% over the {gbp(device.budgetPerVisit)} budgeted per visit — add a note explaining why.</div>}
         {breakdown ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, background: "var(--card-hi)", borderRadius: 9, padding: 8 }}>
@@ -876,7 +903,7 @@ export function LogServiceModal({ onVerify, spares = [], lastVisit = null, locat
               {checkResults.map((r, i) => (
                 <div key={i} style={{ background: r.result === "fail" ? "var(--danger-soft)" : "var(--card-hi)", borderRadius: 8, padding: "8px 10px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <span style={{ fontSize: 13, color: "var(--text)", fontWeight: 600, flex: 1 }}>{checklistLabel(r.item)}</span>
+                    <span style={{ fontSize: 13, color: "var(--text)", fontWeight: 600, flex: 1 }}>{checklistLabel(r.item)}{!existing && (lastVisit?.checklistResults || []).some((x) => x.item === r.item && x.result === "fail") && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 750, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 8, padding: "1px 6px" }}>failed last time</span>}</span>
                     {parseReading(r.item) && (() => { const rd = parseReading(r.item); return (
                       <TextInput type="number" inputMode="decimal" step="any" value={r.value} placeholder={rd.unit || "value"} style={{ width: 78, padding: "5px 7px" }}
                         onChange={(e) => { const v = e.target.value; const num = Number(v); setCheck(i, { value: v, result: v === "" ? "" : num >= rd.min && num <= rd.max ? "pass" : "fail", note: v !== "" && !(num >= rd.min && num <= rd.max) && !r.note ? `Reading ${v}${rd.unit ? ` ${rd.unit}` : ""} outside ${rd.min}–${rd.max}` : r.note }); }} />

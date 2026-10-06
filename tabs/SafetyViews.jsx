@@ -8,7 +8,7 @@ import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
 import { CheckCircle2, ClipboardList, Droplets, FileText, Flame, GraduationCap, Link2, Plus, Printer, QrCode, ShieldAlert, X } from "lucide-react";
 
 /* ---------- Water temperatures (legionella control) ---------- */
-export function WaterTempsView({ outlets, readings, areas, locationName, onSaveOutlet, onDeleteOutlet, onAddReadings }) {
+export function WaterTempsView({ userName = "", outlets, readings, areas, locationName, onSaveOutlet, onDeleteOutlet, onAddReadings }) {
   const [editing, setEditing] = useState(null);
   const [logging, setLogging] = useState(false);
   const last = (o) => readings.filter((r) => r.outletId === o.id).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
@@ -43,7 +43,8 @@ export function WaterTempsView({ outlets, readings, areas, locationName, onSaveO
             return (
               <button key={o.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(o)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${!l ? "#8A94A0" : ok ? "#2F855A" : "#C53030"}`, borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 650 }}>{o.name}{o.sentinel && <span style={{ fontSize: 10.5, color: "#2B6CB0", fontWeight: 700 }}> · sentinel</span>}</div>
+                  <div style={{ fontSize: 13, fontWeight: 650 }}>{o.name}{o.sentinel && <span style={{ fontSize: 10.5, color: "#2B6CB0", fontWeight: 700 }}> · sentinel</span>}{o.littleUsed && <span style={{ fontSize: 10.5, color: "#B7791F", fontWeight: 700 }}> · little used</span>}</div>
+                  {o.littleUsed && (() => { const last = (o.flushLog || [])[0]; const n = last ? -daysUntil(last.date) : null; return <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, marginTop: 2 }}><span style={{ color: n == null || n > 7 ? "var(--danger)" : "var(--ok)", fontWeight: 650 }}>{n == null ? "Never flushed" : n === 0 ? "Flushed today" : `Flushed ${n} day${n === 1 ? "" : "s"} ago`}</span>{ACTIVE_CAN_EDIT && (() => { const flush = (e) => { e.stopPropagation(); e.preventDefault?.(); const today = new Date().toISOString().slice(0, 10); onSaveOutlet({ ...o, flushLog: [{ date: today, by: userName }, ...(o.flushLog || [])].slice(0, 200) }); }; return <span role="button" tabIndex={0} onClick={flush} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") flush(e); }} style={{ background: "var(--accent-soft)", color: "var(--accent)", borderRadius: 7, padding: "3px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Flushed now</span>; })()}</div>; })()}
                   <div style={{ fontSize: 11, color: "var(--faint)" }}>{WATER_LIMITS[o.type]?.label}{o.area ? ` · ${o.area}` : ""}{l ? ` · ${fmtDate(l.date)}` : " · not checked"}</div>
                 </div>
                 {l && <b style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, color: ok ? "var(--ok)" : "var(--danger)" }}>{l.temp}°C</b>}
@@ -67,6 +68,7 @@ function OutletModal({ existing, areas, onClose, onSave, onDelete }) {
   const [type, setType] = useState(existing?.type || "hot");
   const [area, setArea] = useState(existing?.area || "");
   const [sentinel, setSentinel] = useState(!!existing?.sentinel);
+  const [littleUsed, setLittleUsed] = useState(!!existing?.littleUsed);
   const listId = useMemo(() => `wo-${uid()}`, []);
   return (
     <Modal title={existing ? "Edit outlet" : "Add an outlet"} onClose={onClose}>
@@ -75,7 +77,8 @@ function OutletModal({ existing, areas, onClose, onSave, onDelete }) {
         <div style={{ display: "flex", gap: 6 }}>{Object.entries(WATER_LIMITS).map(([k, v]) => <ToggleButton key={k} active={type === k} onClick={() => setType(k)}>{v.label}</ToggleButton>)}</div>
         <Field label="Area"><TextInput list={listId} value={area} onChange={(e) => setArea(e.target.value)} /><datalist id={listId}>{areas.map((a) => <option key={a} value={a} />)}</datalist></Field>
         <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, cursor: "pointer" }}><input type="checkbox" checked={sentinel} onChange={(e) => setSentinel(e.target.checked)} style={{ margin: 0 }} /> Sentinel outlet (nearest / furthest from the source)</label>
-        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), type, area: area.trim(), sentinel })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, cursor: "pointer" }}><input type="checkbox" checked={littleUsed} onChange={(e) => setLittleUsed(e.target.checked)} style={{ margin: 0 }} /> Little used — flush weekly (Legionella control)</label>
+        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), type, area: area.trim(), sentinel, littleUsed, flushLog: existing?.flushLog || [] })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this outlet" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -115,6 +118,7 @@ export function TrainingView({ required = [], onSaveRequired, records, locationN
   const current = (course) => records.filter((r) => r.course === course && (!r.expiry || daysUntil(r.expiry) >= 0));
   const people = [...new Set(records.map((r) => r.person))].sort();
   const sorted = [...records].sort((a, b) => (a.expiry || "9999").localeCompare(b.expiry || "9999"));
+  const refresherMail = (t) => { window.location.href = `mailto:?subject=${encodeURIComponent(`Refresher due: ${t.course}`)}&body=${encodeURIComponent(`Hi ${String(t.person).split(" ")[0]},\n\nYour ${t.course} ${t.expiry && daysUntil(t.expiry) < 0 ? "expired" : "expires"} on ${t.expiry ? fmtDate(t.expiry) : "soon"}. Please book a refresher${t.provider ? ` (last time with ${t.provider})` : ""} and send me the date.\n\nThanks`)}`; };
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
@@ -165,7 +169,7 @@ export function TrainingView({ required = [], onSaveRequired, records, locationN
             return (
               <button key={r.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(r)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${n === null ? "#8A94A0" : n < 0 ? "#C53030" : n <= 45 ? "#D97706" : "#2F855A"}`, borderRadius: 10, padding: "8px 10px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                 <div style={{ fontSize: 13, fontWeight: 650 }}>{r.person} <span style={{ color: "var(--faint)", fontWeight: 500 }}>· {r.course}</span></div>
-                <div style={{ fontSize: 11, color: n !== null && n < 0 ? "var(--danger)" : "var(--faint)", fontWeight: n !== null && n <= 45 ? 700 : 500 }}>{r.date ? `Done ${fmtDate(r.date)}` : ""}{r.expiry ? ` · ${n < 0 ? "expired" : "expires"} ${fmtDate(r.expiry)}` : " · no expiry"}{r.provider ? ` · ${r.provider}` : ""}</div>
+                <div style={{ fontSize: 11, color: n !== null && n < 0 ? "var(--danger)" : "var(--faint)", fontWeight: n !== null && n <= 45 ? 700 : 500 }}>{r.date ? `Done ${fmtDate(r.date)}` : ""}{r.expiry ? ` · ${n < 0 ? "expired" : "expires"} ${fmtDate(r.expiry)}` : " · no expiry"}{r.provider ? ` · ${r.provider}` : ""}{n !== null && n <= 60 && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); refresherMail(r); }} style={{ marginLeft: 8, color: "var(--accent)", textDecoration: "underline", fontWeight: 650 }}>email about refresher</span>}</div>
               </button>
             );
           })}
@@ -408,6 +412,13 @@ export function LogsView({ locationId = "", defs, entries, onSaveDefs, onSave, o
           {ACTIVE_CAN_EDIT && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>{LOG_TEMPLATES.filter((t) => !defs.some((d) => d.template === t.id)).map((t) => <button key={t.id} onClick={() => addTemplate(t)} style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 8, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>+ {t.name}</button>)}</div>}
         </>
       )}
+      {def && Number(def.everyDays) === 1 && (() => { const days = Array.from({ length: 30 }, (_, k) => { const d = new Date(); d.setDate(d.getDate() - (29 - k)); return d.toISOString().slice(0, 10); }); const done = new Set(list.map((e) => e.date)); const missed = days.slice(0, -1).filter((d) => !done.has(d)).length; return (
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 10, marginTop: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Last 30 days <span style={{ fontWeight: 500, color: missed ? "var(--warn)" : "var(--ok)" }}>· {missed ? `${missed} day${missed === 1 ? "" : "s"} with no check` : "every day done"}</span></div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(15, 1fr)", gap: 3 }}>{days.map((d) => <div key={d} title={`${fmtDate(d)}${done.has(d) ? " — done" : " — no check"}`} style={{ height: 16, borderRadius: 3, background: done.has(d) ? "var(--ok)" : new Date(d + "T12:00:00").getDay() % 6 === 0 ? "var(--card-hi)" : "var(--danger-soft)" }} />)}</div>
+          <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4 }}>Green = checked · pink = missed weekday · grey = missed weekend</div>
+        </div>
+      ); })()}
       {adding && def && <LogEntryModal def={def} existing={adding.id ? adding : null} suggestCallPoint={def.firealarm ? nextCallPoint(def) : null} onClose={() => setAdding(null)} onSave={(x) => { onSave({ ...x, logId: def.id }); setAdding(null); }} onDelete={(id) => { onDelete(id); setAdding(null); }} onSetCallPoints={(n) => onSaveDefs(defs.map((d) => d.id === def.id ? { ...d, callPoints: n } : d))} />}
       {building && <LogBuilderModal onClose={() => setBuilding(false)} onSave={(d) => { onSaveDefs([...defs, d]); setOpenId(d.id); setBuilding(false); }} />}
     </div>

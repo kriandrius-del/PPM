@@ -1,6 +1,6 @@
 // Home dashboard: KPIs, reminders, contractor sign-in, emergency contacts, statutory register.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Clock, Cloud, CloudOff, CloudSun, Contact, Flame, HardHat, History, ListTodo, LogIn, LogOut, Mail, Megaphone, Monitor, Pencil, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, StickyNote, Sun, UserCheck, UserPlus, Wrench, X } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, ArrowUpRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, ClipboardList, Clock, Cloud, CloudOff, CloudSun, Contact, Flame, HardHat, History, Inbox, ListTodo, LogIn, LogOut, Mail, Megaphone, Monitor, Pencil, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, StickyNote, Sun, UserCheck, UserPlus, Wrench, X } from "lucide-react";
 import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { DEFAULT_EMERGENCY, REPEAT_OPTIONS, STATUTORY_ITEMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
@@ -12,7 +12,7 @@ import { OnCallCard, printBadge } from "./MoreViews.jsx";
 /* ---------------------------------------------------------
    Home dashboard
 --------------------------------------------------------- */
-export function HomeTab({ recentServices = [], onOpenService, expected = [], onAddExpected, onRemoveExpected, onArriveExpected, notesKey = "", onEmergencySheet, upcomingKeyDates = [], onTvMode, submissionsCount = 0, onReviewSubmissions, onRollCall, onPeopleDirectory, myActions = [], myReminders = [], weatherSource = null, site = null, onEditSite, complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
+export function HomeTab({ onSnoozeReminder, waitingOnMe = [], doneToday = null, handover = [], onAddHandover, onTodaySheet, recentServices = [], onOpenService, expected = [], onAddExpected, onRemoveExpected, onArriveExpected, notesKey = "", onEmergencySheet, upcomingKeyDates = [], onTvMode, submissionsCount = 0, onReviewSubmissions, onRollCall, onPeopleDirectory, myActions = [], myReminders = [], weatherSource = null, site = null, onEditSite, complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
   const today = new Date().toISOString().slice(0, 10);
   const hour = new Date().getHours();
   const comp = useMemo(() => computeCompliance(devices, visitBudgets, services), [devices, visitBudgets, services]);
@@ -87,6 +87,7 @@ export function HomeTab({ recentServices = [], onOpenService, expected = [], onA
         <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto" }}>
           {onPrintBriefing && <button className="bbtn" onClick={onPrintBriefing} style={{ flexShrink: 0 }}><Printer size={16} color="var(--accent)" /> Today's briefing</button>}
           {onWeeklyEmail && <button className="bbtn" onClick={onWeeklyEmail} style={{ flexShrink: 0 }}><Mail size={16} color="var(--accent)" /> Weekly update email</button>}
+          {onTodaySheet && <button className="bbtn" onClick={onTodaySheet} style={{ flexShrink: 0 }}><ClipboardList size={16} color="var(--accent)" /> Today's sheet</button>}
           {onTvMode && <button className="bbtn" onClick={onTvMode} style={{ flexShrink: 0 }}><Monitor size={16} color="var(--accent)" /> TV mode</button>}
           {onEmergencySheet && <button className="bbtn" onClick={onEmergencySheet} style={{ flexShrink: 0 }}><Siren size={16} color="var(--danger)" /> Emergency sheet</button>}
           {[["visit", "Log a visit", CheckCircle2], ["work", "Raise a job", Wrench], ["service", "Add service", Plus], ["incident", "Report incident", Siren]].map(([k, l, I]) => (
@@ -162,7 +163,7 @@ export function HomeTab({ recentServices = [], onOpenService, expected = [], onA
         {show("today") && todayItems && <div className="wrap c2"><TodayCard items={todayItems} onOpenDevice={onOpenDevice} onGo={onGo} /></div>}
         {show("week") && weekAhead && <div className="wrap c2"><WeekAheadCard days={weekAhead} onOpenDevice={onOpenDevice} /></div>}
         {show("notices") && (ACTIVE_CAN_EDIT || notices.length > 0) && <div className="wrap c2"><NoticeBoard notices={notices} onSave={onSaveNotice} onDelete={onDeleteNotice} /></div>}
-        {show("reminders") && <div className="wrap c2"><RemindersCard reminders={reminders} users={users} onAdd={onAddReminder} onToggle={onToggleReminder} onDelete={onDeleteReminder} /></div>}
+        {show("reminders") && <div className="wrap c2"><RemindersCard onSnooze={onSnoozeReminder} reminders={reminders} users={users} onAdd={onAddReminder} onToggle={onToggleReminder} onDelete={onDeleteReminder} /></div>}
 
         {show("upcoming") && (
           <section className="bcard c2" aria-label="Coming up">
@@ -270,6 +271,20 @@ export function HomeTab({ recentServices = [], onOpenService, expected = [], onA
           </section>
         ) : null; })()}
         {(expected.length > 0 || onAddExpected) && ACTIVE_CAN_EDIT && <div className="wrap c2"><ExpectedVisitors list={expected} onAdd={onAddExpected} onRemove={onRemoveExpected} onArrive={onArriveExpected} /></div>}
+        {waitingOnMe.length > 0 && ACTIVE_CAN_EDIT && (
+          <section className="bcard c2" aria-label="Waiting on me">
+            <div className="blabel"><Inbox size={14} /><span>Waiting on you</span></div>
+            {waitingOnMe.map((w) => <button key={w.label} onClick={w.go} style={{ display: "flex", justifyContent: "space-between", gap: 8, background: "none", border: "none", borderTop: "1px solid var(--border)", padding: "7px 0", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: "var(--text)", textAlign: "left" }}><span>{w.label}</span><b style={{ color: "var(--accent)" }}>{w.n}</b></button>)}
+          </section>
+        )}
+        {doneToday && (doneToday.visits + doneToday.jobs + doneToday.readings + doneToday.checks) > 0 && (
+          <section className="bcard c1" aria-label="Done today">
+            <div className="blabel"><CheckCircle2 size={14} /><span>Done today</span></div>
+            <div className="bbig" style={{ fontSize: 28 }}>{doneToday.visits + doneToday.jobs + doneToday.readings + doneToday.checks}</div>
+            <div className="bsub">{[doneToday.visits && `${doneToday.visits} visit${doneToday.visits === 1 ? "" : "s"}`, doneToday.jobs && `${doneToday.jobs} job${doneToday.jobs === 1 ? "" : "s"} closed`, doneToday.readings && `${doneToday.readings} reading${doneToday.readings === 1 ? "" : "s"}`, doneToday.checks && `${doneToday.checks} check${doneToday.checks === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}</div>
+          </section>
+        )}
+        {onAddHandover && <div className="wrap c2"><HandoverCard items={handover} onAdd={onAddHandover} /></div>}
         {recentServices.length > 0 && (
           <section className="bcard c2" aria-label="Recently opened">
             <div className="blabel"><History size={14} /><span>Recently opened</span></div>
@@ -432,7 +447,7 @@ export function SiteRegister({ onRollCall, locationId = null, expected = [], onS
           {onSite.map((x) => (
             <div key={x.id} style={{ background: "var(--card-hi)", borderRadius: 9, padding: "7px 9px", display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.8, fontWeight: 700 }}>{x.name}{x.kind === "visitor" && <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--accent)" }}> VISITOR{x.host ? ` · visiting ${x.host}` : ""}</span>}{x.selfService && <span style={{ fontSize: 10.5, color: "var(--faint)" }}> · self sign-in</span>}{x.vehicleReg && <span style={{ fontSize: 10.5, color: "var(--faint)" }}> · 🚗 {x.vehicleReg}</span>}{x.company ? <span style={{ color: "var(--faint)", fontWeight: 600 }}> · {x.company}</span> : null}</div>
+                <div style={{ fontSize: 12.8, fontWeight: 700 }}>{x.name}{x.kind === "visitor" && <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--accent)" }}> VISITOR{x.host ? ` · visiting ${x.host}` : ""}</span>}{x.selfService && <span style={{ fontSize: 10.5, color: "var(--faint)" }}> · self sign-in</span>}{!x.outAt && Date.now() - new Date(x.inAt).getTime() > 10 * 3600000 && <span style={{ fontSize: 10.5, color: "var(--danger)", fontWeight: 700 }}> · on site {Math.floor((Date.now() - new Date(x.inAt).getTime()) / 3600000)}h — signed out?</span>}{x.vehicleReg && <span style={{ fontSize: 10.5, color: "var(--faint)" }}> · 🚗 {x.vehicleReg}</span>}{x.company ? <span style={{ color: "var(--faint)", fontWeight: 600 }}> · {x.company}</span> : null}</div>
                 <div style={{ fontSize: 11, color: "var(--faint)" }}>In {time(x.inAt)}{x.purpose ? ` · ${x.purpose}` : ""}{x.ramsChecked ? " · RAMS ✓" : ""}{x.inducted ? " · inducted ✓" : <b style={{ color: "var(--danger)" }}> · no induction</b>}{x.badge ? ` · pass ${x.badge}` : ""}</div>
               </div>
               {ACTIVE_CAN_EDIT && <><button onClick={() => printBadge(x, locationName)} title="Print badge" style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "5px 7px", cursor: "pointer", display: "flex", marginRight: 4 }}><Contact size={14} color="#2B4562" /></button>
@@ -530,7 +545,7 @@ export function SignInModal({ prefill = null, signins = [], suppliers, devices, 
 /* ---------------------------------------------------------
    Reminders / to-do on Home
 --------------------------------------------------------- */
-export function RemindersCard({ reminders, users, onAdd, onToggle, onDelete }) {
+export function RemindersCard({ onSnooze, reminders, users, onAdd, onToggle, onDelete }) {
   const [text, setText] = useState("");
   const [due, setDue] = useState("");
   const [assignee, setAssignee] = useState("");
@@ -577,6 +592,7 @@ export function RemindersCard({ reminders, users, onAdd, onToggle, onDelete }) {
               <div style={{ fontSize: 10.8, color: n !== null && n < 0 ? "var(--danger)" : n === 0 ? "var(--warn)" : "var(--faint)", fontWeight: n !== null && n <= 0 ? 700 : 500 }}>
                 {r.due ? (n < 0 ? `Overdue — ${fmtDate(r.due)}` : n === 0 ? "Today" : `Due ${fmtDate(r.due)}`) : "No date"}{r.assignee ? ` · ${r.assignee}` : ""}{r.repeat && r.repeat !== "none" ? ` · repeats ${REPEAT_OPTIONS[r.repeat].toLowerCase()}` : ""}
               </div>
+              {ACTIVE_CAN_EDIT && onSnooze && n !== null && n <= 0 && <div style={{ display: "flex", gap: 8, marginTop: 2 }}>{[[1, "Tomorrow"], [7, "Next week"]].map(([dd, l]) => <button key={dd} onClick={() => onSnooze(r.id, dd)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 10.8, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{l}</button>)}</div>}
             </div>
             <ConfirmDeleteButton onConfirm={() => onDelete(r.id)} size={12} />
           </div>
@@ -775,8 +791,8 @@ export function WeekAheadCard({ days, onOpenDevice }) {
 
 export function NoticeBoard({ notices, onSave, onDelete }) {
   const [text, setText] = useState("");
-  const [until, setUntil] = useState("");
-  const list = [...notices].filter((n) => !n.until || n.until >= new Date().toISOString().slice(0, 10)).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(b.at).localeCompare(String(a.at))).slice(0, 8);
+  const [until, setUntil] = useState(""); const [from, setFrom] = useState("");
+  const list = [...notices].filter((n) => (!n.until || n.until >= new Date().toISOString().slice(0, 10)) && (!n.from || n.from <= new Date().toISOString().slice(0, 10) || ACTIVE_CAN_EDIT)).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(b.at).localeCompare(String(a.at))).slice(0, 8);
   if (!ACTIVE_CAN_EDIT && !list.length) return null;
   return (
     <div style={{ background: "var(--warn-soft)", border: "1px solid #F5E1A4", borderRadius: 12, padding: 12, marginTop: 8 }}>
@@ -793,9 +809,10 @@ export function NoticeBoard({ notices, onSave, onDelete }) {
       ))}
       {ACTIVE_CAN_EDIT && (
         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-          <TextInput value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { onSave({ text: text.trim(), until: until || null }); setText(""); setUntil(""); } }} placeholder="Post a note for the team, e.g. Lift 2 out until Thursday" style={{ flex: 1, fontSize: 12.5 }} />
+          <TextInput value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { onSave({ text: text.trim(), until: until || null, from: from || null }); setText(""); setUntil(""); } }} placeholder="Post a note for the team, e.g. Lift 2 out until Thursday" style={{ flex: 1, fontSize: 12.5 }} />
+          <TextInput type="date" value={from} onChange={(e) => setFrom(e.target.value)} title="Show from (optional)" style={{ width: 140 }} />
           <TextInput type="date" value={until} onChange={(e) => setUntil(e.target.value)} title="Show until (optional)" style={{ width: 130, fontSize: 12 }} />
-          <button onClick={() => { if (text.trim()) { onSave({ text: text.trim(), until: until || null }); setText(""); setUntil(""); } }} style={{ background: "#B7791F", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Post</button>
+          <button onClick={() => { if (text.trim()) { onSave({ text: text.trim(), until: until || null, from: from || null }); setText(""); setUntil(""); } }} style={{ background: "#B7791F", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Post</button>
         </div>
       )}
     </div>
@@ -936,6 +953,18 @@ function MyNotes({ storageKey }) {
     <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between" }}><span className="blabel" style={{ margin: 0 }}><StickyNote size={14} /><span>My notes</span></span><span style={{ fontSize: 10.5, color: "var(--faint)" }}>{saved ? "Saved on this device · private" : "Saving…"}</span></div>
       <textarea value={t} onChange={(e) => { setT(e.target.value); setSaved(false); }} placeholder="Jot things down — only you see these, on this device." style={{ ...inputStyle, minHeight: 80, resize: "vertical", fontSize: 13 }} />
+    </div>
+  );
+}
+
+function HandoverCard({ items, onAdd }) {
+  const [t, setT] = useState("");
+  return (
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+      <span className="blabel" style={{ margin: 0 }}><ArrowRightLeft size={14} /><span>Shift handover</span></span>
+      {ACTIVE_CAN_EDIT && <div style={{ display: "flex", gap: 6 }}><TextInput value={t} onChange={(e) => setT(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && t.trim()) { onAdd(t.trim()); setT(""); } }} placeholder="e.g. Boiler 2 locked out at 16:00 — engineer booked 8am" style={{ flex: 1, minWidth: 0 }} /><button onClick={() => { if (t.trim()) { onAdd(t.trim()); setT(""); } }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Add</button></div>}
+      {items.length === 0 && <div className="bsub">Leave notes for the next shift or a colleague — everyone on the team sees them.</div>}
+      {items.slice(0, 6).map((h) => <div key={h.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 5 }}><div style={{ fontSize: 12.8 }}>{h.text}</div><div style={{ fontSize: 10.8, color: "var(--faint)" }}>{h.by || "—"} · {new Date(h.at).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</div></div>)}
     </div>
   );
 }
