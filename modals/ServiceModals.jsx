@@ -1302,7 +1302,10 @@ export function ImportModal({ suppliers, existing, areas = [], locationName = ""
     if (supName && !sup) issues.push(`supplier "${supName}" not found`);
     const match = (get("assetTag") && existing.find((d) => d.assetTag && d.assetTag.trim().toLowerCase() === get("assetTag").toLowerCase())) || (get("name") && existing.find((d) => d.name.trim().toLowerCase() === get("name").toLowerCase()));
     if (match && !updateMode) issues.push("already exists");
-    const interval = Number(get("serviceIntervalMonths")) || null;
+    const rawInt = get("serviceIntervalMonths").toLowerCase();
+    const interval = /week/.test(rawInt) ? null : /month(ly)?|^every month/.test(rawInt) && !/\d/.test(rawInt) ? 1 : /quarter/.test(rawInt) ? 3 : /half|six.?month|bi-?annual/.test(rawInt) ? 6 : /annual|year/.test(rawInt) && !/\d/.test(rawInt) ? 12 : /(\d+)\s*(times|x|per|a)\s*(a\s*)?year/.test(rawInt) ? Math.max(1, Math.round(12 / Number(rawInt.match(/(\d+)/)[1]))) : Number(rawInt.replace(/[^0-9.]/g, "")) || null;
+    if (rawInt && !interval) issues.push(`interval "${get("serviceIntervalMonths")}" not understood — use months, e.g. 1 = monthly`);
+    if (interval >= 12 && Number(String(get("budgetPerVisit")).replace(/[£$€,]/g, "")) > 0) issues.push(`repeats once every ${interval} months — if this is a monthly charge, use 1`);
     return {
       issues, skip: !get("name"), matchId: updateMode && match ? match.id : null,
       device: {
@@ -1368,6 +1371,7 @@ export function ImportModal({ suppliers, existing, areas = [], locationName = ""
                 <div key={i} style={{ padding: "6px 9px", borderTop: i ? "1px solid var(--border)" : "none", fontSize: 12, opacity: p.skip ? 0.5 : 1 }}>
                   <b>{p.device.name || "(no name)"}</b>
                   <span style={{ color: "var(--faint)" }}> · {CATEGORY_META[p.device.serviceCategory]?.label}{p.device.area ? ` · ${p.device.area}` : ""}{p.device.serviceIntervalMonths ? ` · every ${p.device.serviceIntervalMonths} mo` : ""}{p.device.nextServiceDate ? ` · due ${fmtDate(p.device.nextServiceDate)}` : ""}{p.device.budgetPerVisit ? ` · ${gbp(p.device.budgetPerVisit)}` : ""}</span>
+                  {!p.skip && <div style={{ fontSize: 11, color: "var(--muted)" }}>Repeats: <b>{!p.device.serviceIntervalMonths ? "once (no repeat)" : p.device.serviceIntervalMonths === 1 ? "monthly (12 visits a year)" : p.device.serviceIntervalMonths === 3 ? "quarterly (4 a year)" : p.device.serviceIntervalMonths === 6 ? "every 6 months (2 a year)" : p.device.serviceIntervalMonths === 12 ? "yearly (1 a year)" : `every ${p.device.serviceIntervalMonths} months`}</b>{p.device.budgetPerVisit ? ` · ${gbp(p.device.budgetPerVisit)} a visit ≈ ${gbp(p.device.budgetPerVisit * (p.device.serviceIntervalMonths ? 12 / p.device.serviceIntervalMonths : 1))} a year` : ""}</div>}
                   {p.issues.length > 0 && <div style={{ color: p.skip ? "var(--danger)" : "var(--warn)", fontSize: 11 }}>{p.issues.join(" · ")}</div>}
                 </div>
               ))}
