@@ -1268,6 +1268,13 @@ export function MainApp() {
       persist.visitBudgets(visitBudgets.map((v) => v.deviceId in moves && v.date === moves[v.deviceId] ? { ...v, date: value } : v));
       persist.budgetLines(budgetLines.map((l) => l.deviceId in moves && l.date === moves[l.deviceId] && l.actualAmount == null ? { ...l, date: value } : l));
       showToast(`${Object.keys(moves).length} services moved to ${fmtDate(value)}`, names.join(", ").slice(0, 200));
+    } else if (action === "interval") {
+      let lines = budgetLines, vbs = visitBudgets, added = 0;
+      const nextDevices = devices.map((d) => set.has(d.id) ? { ...d, serviceIntervalMonths: value, repeatMode: "interval" } : d);
+      nextDevices.filter((d) => set.has(d.id)).forEach((d) => { const r = rebuildPlan(d, lines, vbs); lines = r.lines; vbs = r.vbs; added += r.added; });
+      persist.devices(nextDevices); persist.budgetLines(lines); persist.visitBudgets(vbs);
+      logActivity(`Set ${ids.length} services to every ${value} month${value === 1 ? "" : "s"}`);
+      showToast(`${ids.length} services now every ${value} month${value === 1 ? "" : "s"}`, `${added} planned visits in the budget (next 12 months)`);
     } else if (action === "budget") {
       let lines = budgetLines, vbs = visitBudgets, added = 0;
       const nextDevices = devices.map((d) => set.has(d.id) ? { ...d, budgetPerVisit: value } : d);
@@ -2452,6 +2459,7 @@ export function MainApp() {
                   orphans: locBudgetLines.filter((l) => l.deviceId && !active.has(l.deviceId) && l.date >= today && l.actualAmount == null),
                   unplanned: locDevices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0 && d.nextServiceDate && !locBudgetLines.some((l) => l.deviceId === d.id && l.date >= today && l.status !== "skipped")),
                   thin: locDevices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0 && Number(d.serviceIntervalMonths) > 0 && d.nextServiceDate && locBudgetLines.some((l) => l.deviceId === d.id && l.date >= today) && !locBudgetLines.some((l) => l.deviceId === d.id && l.date >= addMonths(today, 9))),
+                  yearly: locDevices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0 && Number(d.serviceIntervalMonths) >= 12),
                   noBudget: locDevices.filter((d) => !d.archived && !Number(d.budgetPerVisit) && services.some((v) => v.deviceId === d.id && Number(v.cost) > 0)),
                   onPlan: (ids, months) => planVisitsForServices(ids, months), onRemoveOrphans: removeOrphanLines, onOpen: (id) => setHistoryFor(id) }; })()}
                 key={CATEGORY_KEYS.join("|")} onOpenService={(id) => setHistoryFor(id)} costLines={costLines.filter((l) => l.locationId === selectedLocationId)} onSaveCostLines={saveCostLines} onDeleteCostLine={deleteCostLine} onRecordInvoice={recordCostInvoice} invoices={locInvoices} pos={locPOs} savings={savings.filter((x) => x.locationId === selectedLocationId)}
