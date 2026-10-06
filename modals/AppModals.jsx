@@ -2,7 +2,7 @@
 import { useState, useMemo, useRef } from "react";
 import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, ChevronRight, Cloud, CloudOff, CloudSun, Download, FileText, Globe2, HardDrive, LayoutDashboard, Lock, Mail, MapPin, Moon, Palette, Pencil, Plus, Printer, Search, Smartphone, Sparkles, Trash2, Type, Upload, X } from "lucide-react";
 import { Badge, ConfirmTextDelete, EmptyState, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { ACCENTS, ALERT_GROUPS, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, SITE_TYPES, STAFF_ROLES, START_TABS, STATUTORY_ITEMS, WHATS_NEW, authSql } from "../lib/constants.js";
+import { ACCENTS, ALERT_GROUPS, APP_VERSION, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, SITE_TYPES, STAFF_ROLES, START_TABS, STATUTORY_ITEMS, WHATS_NEW, authSql } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, BUILTIN_CATEGORY_META, CATEGORY_ICONS, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
 import { buildAssetAge, buildAssetRegister, buildCarbonReport, buildChecklistFailures, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractCalendar, buildContractorHours, buildFlushingRecord, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMonthCalendar, buildPortfolioReport, buildReactiveVsPlanned, buildRecharges, buildRepeatFaults, buildRequestsByPerson, buildResponseTimes, buildSlaReport, buildSpaceCondition, buildSpendReport, buildStatutoryCalendar, buildSupplierCategoryMatrix, buildSupplierCompliance, buildSupplierLeague, buildSupplierReport, buildSupplierSpend, buildSupplierYoY, buildTco, buildVatSummary, buildVisitsBySupplierMonth, buildWaitingOn, buildWallPlanner, buildWorksAgeing, buildWorstAssets, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
 import { addDays, compressImage, countryCodeFor, daysUntil, downloadBlob, findPostcode, fmtDate, gbp, placeFromCoords, placeFromPostcode, relativeDays, replacementYear, searchPlaces, uid } from "../lib/utils.js";
@@ -821,6 +821,7 @@ export function SettingsModal({ settings, devices, usage, onClose, onSave }) {
   const TYPES = { text: "Text", number: "Number", date: "Date", select: "Choice list", yesno: "Yes / No" };
   return (
     <Modal title="Settings" onClose={onClose}>
+      <div style={{ fontSize: 11.5, color: "var(--faint)", marginBottom: 8 }}>App version: <b>{APP_VERSION}</b></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 6 }}>
           <ToggleButton active={tab === "categories"} onClick={() => setTab("categories")}>Categories</ToggleButton>

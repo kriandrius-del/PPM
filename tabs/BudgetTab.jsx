@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from "react";
 import { ShieldAlert, Plus, Sparkles, CopyPlus, FileCheck, CheckCircle2, Pencil, ChevronDown, Trash2, Loader2, Camera, ChevronLeft, ChevronRight, Receipt, Download } from "lucide-react";
 import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar } from "recharts";
 import { CategoryBadge, CategoryOptions, ConfirmDeleteButton, EmptyState, ExportButton, Field, MetricBlock, Modal, PrimaryButton, Select, SubCategoryField, TextInput, ToggleButton } from "../components/ui.jsx";
-import { MONTH_LABELS, WEEKDAY_LABELS } from "../lib/constants.js";
+import { APP_VERSION, MONTH_LABELS, WEEKDAY_LABELS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, CATEGORY_KEYS, CATEGORY_META, emptyCatMap } from "../lib/globals.js";
 import { buildAccountingCsv } from "../lib/reports.js";
 import { addDays, addMonths, collectActuals, compressImage, downloadBlob, fmtDate, gbp, getMonthGrid, isMirrored, suggestForDevice, toISODate } from "../lib/utils.js";
@@ -342,6 +342,7 @@ export function BudgetTab({ serviceSync = null, onOpenService, costLines = [], o
         </div>
       </div>
 
+      <div style={{ fontSize: 10.5, color: "var(--faint)", textAlign: "right", marginTop: -8, marginBottom: 6 }}>App version {APP_VERSION}</div>
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
         {[["overview", "Overview"], ["costlines", "Cost lines"], ["plan", "Plan"], ["month", "Month"], ["year", "Year"], ["calendar", "Calendar"], ["variance", "Variance"], ["checks", "Checks"], ["tools", "Tools"]].map(([k, l]) => <ToggleButton key={k} active={view === k} onClick={() => setView(k)}>{l}</ToggleButton>)}
       </div>
