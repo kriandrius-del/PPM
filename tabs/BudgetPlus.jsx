@@ -64,13 +64,26 @@ export function budgetModel({ year, budgets, services, works, suppliers, devices
     const c = s.category; if (spent[c] === undefined) return; const monthly = s.costFrequency === "annual" ? (Number(s.costAmount) || 0) / 12 : Number(s.costAmount) || 0; if (!monthly) return;
     for (let i = 0; i < 12; i++) { if (i < elapsedMonths) { spent[c] += monthly; mSpent[c][i] += monthly; split.opex += monthly; split.planned += monthly; } else { contractLeft[c] += monthly; mFuture[c][i] += monthly; } }
   });
+  // Planned month-by-month (plan lines, cost lines, contracts) — used as the phasing unless the user set their own.
+  const planM = zm();
+  budgetLines.forEach((l) => { if (inYear(l.date) && planM[l.category] && l.status !== "skipped") planM[l.category][mon(l.date)] += Number(l.amount) || 0; });
+  costLines.forEach((l) => { if (!planM[l.category]) return; for (let i = 0; i < 12; i++) { const idx = fyS - 1 + i; const cy = l.year + Math.floor(idx / 12); if (cy === year) planM[l.category][idx % 12] += Number(l.budget?.[i]) || 0; } });
+  suppliers.forEach((s) => { if (!planM[s.category]) return; const mo = s.costFrequency === "annual" ? (Number(s.costAmount) || 0) / 12 : Number(s.costAmount) || 0; for (let i = 0; i < 12; i++) planM[s.category][i] += mo; });
+  // What the plan says should have been spent by today (dated lines up to today, finished cost-line months, contract months so far).
+  const planTo = z();
+  budgetLines.forEach((l) => { if (inYear(l.date) && planTo[l.category] !== undefined && l.status !== "skipped" && l.date <= today) planTo[l.category] += Number(l.amount) || 0; });
+  costLines.forEach((l) => { if (planTo[l.category] === undefined) return; for (let i = 0; i < 12; i++) { const idx = fyS - 1 + i; const cy = l.year + Math.floor(idx / 12); const ym = `${cy}-${String((idx % 12) + 1).padStart(2, "0")}`; if (cy === year && (ym < today.slice(0, 7) || (ym === today.slice(0, 7) && l.actual?.[i] != null))) planTo[l.category] += Number(l.budget?.[i]) || 0; } });
+  suppliers.forEach((s) => { if (planTo[s.category] === undefined) return; const mo = s.costFrequency === "annual" ? (Number(s.costAmount) || 0) / 12 : Number(s.costAmount) || 0; planTo[s.category] += mo * Math.max(0, elapsedMonths - 1); });
   const rows = CATEGORY_KEYS.map((c) => {
     const budget = setB[c] > 0 ? setB[c] : planned[c];
-    const w = phaseWeights(bs, c); const wSum = w.reduce((a, b) => a + b, 0) || 12;
+    const custom = Array.isArray(bs?.phasing?.[c]) && bs.phasing[c].some((x) => Number(x) > 0);
+    const w = custom ? phaseWeights(bs, c) : planM[c].some((x) => x > 0) ? planM[c] : PHASE_PRESETS.even; const wSum = w.reduce((a, b) => a + b, 0) || 12;
     const phasedMonthly = w.map((x) => (budget * x) / wSum);
     const phasedToDate = phasedMonthly.slice(0, elapsedMonths).reduce((a, b) => a + b, 0) - (elapsedMonths ? phasedMonthly[elapsedMonths - 1] * (1 - (yearFrac * 12 - (elapsedMonths - 1))) : 0);
+    const planSum = planM[c].reduce((a, b) => a + b, 0);
+    const phasedToDateFinal = !custom && planSum > 0 ? planTo[c] * (budget / planSum) : Math.max(0, phasedToDate);
     const forecast = spent[c] + committed[c] + plannedLeft[c] + contractLeft[c];
-    return { cat: c, budget, isSet: setB[c] > 0, planned: planned[c], spent: spent[c], committed: committed[c], plannedLeft: plannedLeft[c], contractLeft: contractLeft[c], forecast, remaining: budget - forecast, phasedMonthly, phasedToDate: Math.max(0, phasedToDate), mSpent: mSpent[c], mFuture: mFuture[c] };
+    return { cat: c, budget, isSet: setB[c] > 0, phasing: custom ? "custom" : planM[c].some((x) => x > 0) ? "plan" : "even", planned: planned[c], spent: spent[c], committed: committed[c], plannedLeft: plannedLeft[c], contractLeft: contractLeft[c], forecast, remaining: budget - forecast, phasedMonthly, phasedToDate: phasedToDateFinal, mSpent: mSpent[c], mFuture: mFuture[c] };
   });
   const tot = (k) => rows.reduce((t, r) => t + (r[k] || 0), 0);
   const mTot = (k) => Array.from({ length: 12 }, (_, i) => rows.reduce((t, r) => t + r[k][i], 0));
@@ -80,7 +93,7 @@ export function budgetModel({ year, budgets, services, works, suppliers, devices
 const card = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 };
 const H = ({ icon: I, children, right }) => <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div className="blabel">{I && <I size={14} />}<span>{children}</span></div>{right}</div>;
 const Bar2 = ({ pct, color }) => <div style={{ height: 7, background: "var(--track)", borderRadius: 4, overflow: "hidden" }}><div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: "100%", background: color, borderRadius: 4 }} /></div>;
-const rag = (r) => { if (!r.budget) return ["—", "var(--faint)"]; const p = r.forecast / r.budget; return p > 1.02 ? ["Over", "var(--danger)"] : p > 0.95 ? ["Tight", "var(--warn)"] : ["On track", "var(--ok)"]; };
+const rag = (r) => { if (!r.budget) return ["—", "var(--faint)"]; const p = r.forecast / r.budget; if (!r.isSet) return p > 1.02 ? ["Over plan", "var(--danger)"] : ["On plan", "var(--muted)"]; return p > 1.02 ? ["Over", "var(--danger)"] : p > 0.95 ? ["Tight", "var(--warn)"] : ["On track", "var(--ok)"]; };
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
 
 /* ---------- Overview ---------- */
@@ -116,15 +129,15 @@ export function BudgetOverview({ model, year, prevModel, services, works, suppli
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div className="bento kpis">
-        {k("Budget used", usedPct == null ? "—" : `${usedPct}%`, usedPct != null && usedPct > yearPct + 5 && year === new Date().getFullYear() ? "var(--warn)" : "var(--text)", `${gbp(m.spent)} of ${gbp(m.budget)}`)}
+        {k("Budget used", usedPct == null ? "—" : `${usedPct}%`, "var(--text)", `${gbp(m.spent)} of ${gbp(m.budget)}${m.rows.some((r) => r.budget && !r.isSet) ? " (planned — no max set)" : ""}`)}
         {k("Committed", gbp(m.committed), m.committed ? "var(--warn)" : "var(--text)", "approved jobs not finished")}
         {k("Still to come", gbp(m.plannedLeft + m.contractLeft), "var(--text)", "planned lines, visits & contracts")}
         {k(m.budget && m.forecast > m.budget ? "Over at year end" : "Left at year end", m.budget ? gbp(Math.abs(m.budget - m.forecast)) : "—", m.budget && m.forecast > m.budget ? "var(--danger)" : "var(--ok)", `forecast ${gbp(m.forecast)}`)}
       </div>
       {m.budget > 0 && year === new Date().getFullYear() && (
-        <div style={{ ...card, flexDirection: "row", alignItems: "center", gap: 12, background: usedPct > yearPct + 5 ? "var(--warn-soft)" : "var(--ok-soft)", border: "none" }}>
-          <Gauge size={22} color={usedPct > yearPct + 5 ? "var(--warn)" : "var(--ok)"} />
-          <div style={{ flex: 1, fontSize: 13 }}><b>{usedPct}% of the budget used with {yearPct}% of the year gone</b> — {usedPct > yearPct + 5 ? "spending is running ahead of the year. Check the categories below." : usedPct < yearPct - 15 ? "well under — check planned visits are being logged with their costs." : "on track."}{m.phasedToDate > 0 ? ` Against your monthly phasing you'd expect ${gbp(m.phasedToDate)} by now.` : ""}</div>
+        <div style={{ ...card, flexDirection: "row", alignItems: "center", gap: 12, background: m.phasedToDate >= 1 && (m.spent > m.phasedToDate * 1.05 || m.spent < m.phasedToDate * 0.8) ? "var(--warn-soft)" : "var(--ok-soft)", border: "none" }}>
+          <Gauge size={22} color={m.phasedToDate >= 1 && (m.spent > m.phasedToDate * 1.05 || m.spent < m.phasedToDate * 0.8) ? "var(--warn)" : "var(--ok)"} />
+          <div style={{ flex: 1, fontSize: 13 }}>{m.phasedToDate < 1 ? <><b>Nothing was planned to be spent before now</b> — most of the budget falls later in the year, so £0 spent is expected. Spend will show here as visits are logged with their costs.</> : <><b>{gbp(m.spent)} spent — {gbp(m.phasedToDate)} was planned by now</b> ({Math.round((m.spent / m.phasedToDate) * 100)}%). {m.spent > m.phasedToDate * 1.05 ? "Spending is running ahead of plan — check the categories below." : m.spent < m.phasedToDate * 0.8 ? "Behind plan — check due visits are being logged with their costs." : "On track."}</>}</div>
         </div>
       )}
       <div style={card}>
@@ -502,7 +515,11 @@ export function CostLinesView({ serviceRowsFor, onOpenService, lines, suppliers 
   const catsUsed = [...new Set(lines.filter((l) => l.year === fy).map((l) => l.category))];
   const sum = (arr, to = 12) => (arr || []).slice(0, to).reduce((t, x) => t + (Number(x) || 0), 0);
   const tB = allRows.reduce((t, l) => t + sum(l.budget), 0), tA = allRows.reduce((t, l) => t + sum(l.actual), 0);
-  const ytdB = allRows.reduce((t, l) => t + sum(l.budget, elapsed), 0), ytdA = allRows.reduce((t, l) => t + sum(l.actual, elapsed), 0);
+  const curIdx = months.findIndex((_, i) => isCurrent(i)); const doneMonths = curIdx >= 0 ? curIdx : elapsed; // whole months already finished
+  // Budget due by today: finished months, plus this month only once its invoice is in (own lines) or its visit date has passed (service rows).
+  const bTo = (l) => (l.auto ? (l.budgetToDate || 0) : sum(l.budget, doneMonths) + (curIdx >= 0 && l.actual?.[curIdx] != null ? Number(l.budget?.[curIdx]) || 0 : 0));
+  const aTo = (l) => sum(l.actual, elapsed);
+  const ytdB = allRows.reduce((t, l) => t + bTo(l), 0), ytdA = allRows.reduce((t, l) => t + aTo(l), 0);
   const missing = rows.reduce((t, l) => t + months.filter((_, i) => isPast(i) && l.actual?.[i] == null && Number(l.budget?.[i]) > 0).length, 0);
   const colB = (i) => allRows.reduce((t, l) => t + (Number(l.budget?.[i]) || 0), 0); const colA = (i) => allRows.reduce((t, l) => t + (Number(l.actual?.[i]) || 0), 0);
   const hasA = (i) => allRows.some((l) => l.actual?.[i] != null);
@@ -568,7 +585,7 @@ export function CostLinesView({ serviceRowsFor, onOpenService, lines, suppliers 
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr><th style={{ ...th, ...sticky, background: "var(--card-hi)" }}>Cost line</th>{months.map((_, i) => <th key={i} style={{ ...th, color: isCurrent(i) ? "var(--accent)" : th.color }}>{mLabel(i)}</th>)}<th style={th}>Year</th><th style={th}>To date</th></tr></thead>
               <tbody>
-                {rows.map((l) => { const vb = sum(l.budget, elapsed), va = sum(l.actual, elapsed); return (
+                {rows.map((l) => { const vb = bTo(l), va = aTo(l); return (
                   <tr key={l.id}>
                     <td style={{ ...td, ...sticky, fontFamily: "inherit", fontSize: 12.3, fontWeight: 650, whiteSpace: "normal" }}><button onClick={() => ACTIVE_CAN_EDIT && setEditLine(l)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontWeight: 650, color: "var(--text)" }}>{l.name}</button>{l.supplierId && <div style={{ fontSize: 10, color: "var(--faint)", fontWeight: 500 }}>{suppliers.find((s) => s.id === l.supplierId)?.name}</div>}{l.note && <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500, fontStyle: "italic" }}>{l.note}</div>}</td>
                     {months.map((_, i) => { const b = Number(l.budget?.[i]) || 0; const a = l.actual?.[i] == null ? null : Number(l.actual[i]); return (
@@ -578,11 +595,11 @@ export function CostLinesView({ serviceRowsFor, onOpenService, lines, suppliers 
                       </td>
                     ); })}
                     <td style={{ ...td, fontWeight: 700 }}>{gbp(sum(l.budget)).replace(/\.00$/, "")}</td>
-                    <td style={{ ...td, fontWeight: 700, color: va > vb ? "var(--danger)" : "var(--ok)" }}>{va || vb ? `${va > vb ? "+" : "−"}${gbp(Math.abs(va - vb)).replace(/\.00$/, "")}` : ""}</td>
+                    <td style={{ ...td, fontWeight: 700, color: va > vb ? "var(--danger)" : "var(--ok)" }}>{va || vb ? `${gbp(Math.abs(va - vb)).replace(/\.00$/, "")} ${va > vb ? "over" : "under"}` : ""}</td>
                   </tr>
                 ); })}
                 {svcRows.length > 0 && <tr><td colSpan={15} style={{ ...td, textAlign: "left", fontFamily: "inherit", fontSize: 11, fontWeight: 750, color: "var(--muted)", background: "var(--card-hi)", position: "sticky", left: 0 }}>FROM SERVICES — automatic: budget from planned visits, actual from logged visit costs</td></tr>}
-                {svcRows.map((l) => { const vb = sum(l.budget, elapsed), va = sum(l.actual, elapsed); return (
+                {svcRows.map((l) => { const vb = bTo(l), va = aTo(l); return (
                   <tr key={l.id}>
                     <td style={{ ...td, ...sticky, fontFamily: "inherit", fontSize: 12.3, fontWeight: 600, whiteSpace: "normal" }}><button onClick={() => onOpenService && onOpenService(l.deviceId)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, color: "var(--accent)" }}>{l.name}</button><div style={{ fontSize: 10, color: "var(--faint)", fontWeight: 500 }}>service{l.visits ? ` · ${l.visits} visit${l.visits === 1 ? "" : "s"} planned` : ""}</div></td>
                     {months.map((_, i) => { const b = Number(l.budget?.[i]) || 0; const a = l.actual?.[i] == null ? null : Number(l.actual[i]); return (
@@ -592,19 +609,19 @@ export function CostLinesView({ serviceRowsFor, onOpenService, lines, suppliers 
                       </td>
                     ); })}
                     <td style={{ ...td, fontWeight: 700 }}>{gbp(sum(l.budget)).replace(/\.00$/, "")}</td>
-                    <td style={{ ...td, fontWeight: 700, color: va > vb ? "var(--danger)" : "var(--ok)" }}>{va || vb ? `${va > vb ? "+" : "−"}${gbp(Math.abs(va - vb)).replace(/\.00$/, "")}` : ""}</td>
+                    <td style={{ ...td, fontWeight: 700, color: va > vb ? "var(--danger)" : "var(--ok)" }}>{va || vb ? `${gbp(Math.abs(va - vb)).replace(/\.00$/, "")} ${va > vb ? "over" : "under"}` : ""}</td>
                   </tr>
                 ); })}
                 <tr style={{ background: "var(--card-hi)" }}>
                   <td style={{ ...td, ...sticky, background: "var(--card-hi)", fontFamily: "inherit", fontWeight: 800, fontSize: 12.3 }}>Total</td>
                   {months.map((_, i) => <td key={i} style={{ ...td, fontWeight: 800 }}><div style={{ color: hasA(i) ? cellColour(colB(i), colA(i)) : "var(--faint)" }}>{hasA(i) ? gbp(colA(i)).replace(/\.00$/, "") : ""}</div><div style={{ fontSize: 9.5, color: "var(--faint)", fontWeight: 500 }}>{gbp(colB(i)).replace(/\.00$/, "")}</div></td>)}
                   <td style={{ ...td, fontWeight: 800 }}>{gbp(tB).replace(/\.00$/, "")}</td>
-                  <td style={{ ...td, fontWeight: 800, color: ytdA > ytdB ? "var(--danger)" : "var(--ok)" }}>{`${ytdA > ytdB ? "+" : "−"}${gbp(Math.abs(ytdA - ytdB)).replace(/\.00$/, "")}`}</td>
+                  <td style={{ ...td, fontWeight: 800, color: ytdA > ytdB ? "var(--danger)" : "var(--ok)" }}>{ytdA || ytdB ? `${gbp(Math.abs(ytdA - ytdB)).replace(/\.00$/, "")} ${ytdA > ytdB ? "over" : "under"}` : ""}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div style={{ fontSize: 11, color: "var(--faint)", padding: "7px 10px", borderTop: "1px solid var(--border)" }}>Each cell: <b>invoiced</b> (top) · budget (small). <span style={{ color: "var(--danger)" }}>Red</span> = over budget by 5%+, <span style={{ color: "var(--ok)" }}>green</span> = under. "To date" = invoiced minus budget so far. Tap a cell to change it, or a line name to edit the line.{svcRows.length ? " Service rows update themselves when you log visits — tap a service name to open it." : ""}</div>
+          <div style={{ fontSize: 11, color: "var(--faint)", padding: "7px 10px", borderTop: "1px solid var(--border)" }}>Each cell: <b>invoiced</b> (top) · budget (small). <span style={{ color: "var(--danger)" }}>Red</span> = over budget by 5%+, <span style={{ color: "var(--ok)" }}>green</span> = under. "To date" compares what's been invoiced with the budget that was due by today (this month counts once its invoice is in or its visit date has passed). Tap a cell to change it, or a line name to edit the line.{svcRows.length ? " Service rows update themselves when you log visits — tap a service name to open it." : ""}</div>
         </div>
       )}
       {allRows.length > 0 && (

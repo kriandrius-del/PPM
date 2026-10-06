@@ -472,7 +472,7 @@ export function BulkActionsModal({ locations = [], count, suppliers, areas, onCl
     <Modal title={`Change ${count} service${count === 1 ? "" : "s"}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[["reschedule", "Move due date"], ["supplier", "Set supplier"], ["budget", "Set budget per visit"], ["checklist", "Add checklist items"], ...(ACTIVE_USERS.length ? [["assign", "Assign to"]] : []), ["area", "Set area"], ["pause", "Pause"], ["qr", "Print QR stickers"], ...(locations.length ? [["copy", "Copy to site"]] : []), ["archive", "Archive"]].map(([k, l]) => <ToggleButton key={k} active={action === k} onClick={() => { setAction(k); setConfirmArchive(false); }}>{l}</ToggleButton>)}
+          {[["reschedule", "Move due date"], ["supplier", "Set supplier"], ["interval", "Set how often"], ["budget", "Set budget per visit"], ["checklist", "Add checklist items"], ...(ACTIVE_USERS.length ? [["assign", "Assign to"]] : []), ["area", "Set area"], ["pause", "Pause"], ["qr", "Print QR stickers"], ...(locations.length ? [["copy", "Copy to site"]] : []), ["archive", "Archive"]].map(([k, l]) => <ToggleButton key={k} active={action === k} onClick={() => { setAction(k); setConfirmArchive(false); }}>{l}</ToggleButton>)}
         </div>
         {action === "reschedule" && (
           <>
@@ -490,6 +490,14 @@ export function BulkActionsModal({ locations = [], count, suppliers, areas, onCl
               </Select>
             </Field>
             <PrimaryButton onClick={() => onApply("supplier", supplierId)}><UsersIcon size={15} /> Apply to {count}</PrimaryButton>
+          </>
+        )}
+        {action === "interval" && (
+          <>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{[[1, "Monthly"], [3, "Quarterly"], [6, "Every 6 months"], [12, "Yearly"]].map(([m, l]) => <ToggleButton key={m} active={String(area) === String(m)} onClick={() => setArea(String(m))}>{l}</ToggleButton>)}</div>
+            <Field label="Or every … months"><TextInput type="number" min="1" value={area} onChange={(e) => setArea(e.target.value)} /></Field>
+            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Each service keeps its next due date. Planned visits in the budget are rebuilt for the next 12 months.</div>
+            <PrimaryButton onClick={() => Number(area) > 0 && onApply("interval", Number(area))}><CheckCircle2 size={15} /> Apply to {count}</PrimaryButton>
           </>
         )}
         {action === "budget" && (

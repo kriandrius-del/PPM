@@ -352,7 +352,9 @@ export function BudgetTab({ serviceSync = null, onOpenService, costLines = [], o
           const budget = Array(12).fill(0); const actual = Array(12).fill(null); let visits = 0;
           budgetLines.forEach((l) => { if (l.deviceId !== d.id || l.status === "skipped") return; const [y, m] = String(l.date).split("-").map(Number); const k = key(y, m); if (k < 0) return; budget[k] += Number(l.amount) || 0; visits++; });
           services.forEach((v) => { if (v.deviceId !== d.id || !Number(v.cost)) return; const [y, m] = String(v.date).split("-").map(Number); const k = key(y, m); if (k < 0) return; actual[k] = (actual[k] || 0) + Number(v.cost); });
-          return { id: `svc-${d.id}`, deviceId: d.id, name: d.name, budget, actual, visits, auto: true };
+          const todayISO = new Date().toISOString().slice(0, 10);
+          const budgetToDate = budgetLines.filter((l) => l.deviceId === d.id && l.status !== "skipped" && l.date <= todayISO && key(...String(l.date).split("-").map(Number).slice(0, 2)) >= 0).reduce((t, l) => t + (Number(l.amount) || 0), 0);
+          return { id: `svc-${d.id}`, deviceId: d.id, name: d.name, budget, actual, visits, auto: true, budgetToDate };
         }).filter((r) => r.budget.some(Boolean) || r.actual.some((x) => x != null));
       }} lines={costLines} suppliers={suppliers} fyStart={Number(bs.fyStart) || 1} bs={bs} onSaveBs={onSaveBs} onSaveMany={onSaveCostLines} onDelete={onDeleteCostLine} onRecordInvoice={onRecordInvoice} locationName={locationName} userName={userName} />}
       {view === "checks" && serviceSync && <ServiceSyncPanel sync={serviceSync} />}
@@ -1296,8 +1298,8 @@ function PlanBulkPanel({ lines, onApply, onDelete }) {
 
 // Services and the budget out of step — with one-tap fixes.
 function ServiceSyncPanel({ sync }) {
-  const { orphans = [], unplanned = [], thin = [], noBudget = [], onPlan, onRemoveOrphans, onOpen } = sync;
-  const total = orphans.length + unplanned.length + thin.length + noBudget.length;
+  const { orphans = [], unplanned = [], thin = [], noBudget = [], yearly = [], onPlan, onRemoveOrphans, onOpen } = sync;
+  const total = orphans.length + unplanned.length + thin.length + noBudget.length;  // yearly services are a "check", not an error
   const box = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 7, marginBottom: 12 };
   const act = { background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", alignSelf: "flex-start" };
   const link = (d) => <button key={d.id} onClick={() => onOpen(d.id)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 12, padding: "3px 9px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>{d.name}{Number(d.budgetPerVisit) ? ` · ${gbp(d.budgetPerVisit)}` : ""}</button>;
@@ -1319,6 +1321,10 @@ function ServiceSyncPanel({ sync }) {
         <div style={{ fontSize: 12.5, marginTop: 4 }}><b>{orphans.length} planned visit{orphans.length === 1 ? "" : "s"} for services that were deleted or archived</b> — still counted in your forecast ({gbp(orphans.reduce((t, l) => t + (Number(l.amount) || 0), 0))}).</div>
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{[...new Set(orphans.map((l) => l.description))].slice(0, 8).join(" · ")}</div>
         {ACTIVE_CAN_EDIT && <button onClick={() => onRemoveOrphans(orphans.map((l) => l.id))} style={{ ...act, background: "var(--danger)" }}>Remove them from the budget</button>}
+      </>}
+      {yearly.length > 0 && <>
+        <div style={{ fontSize: 12.5, marginTop: 4 }}><b>{yearly.length} budgeted service{yearly.length === 1 ? " repeats" : "s repeat"} only once a year</b> — so each counts its budget per visit once. If any are monthly charges, select them in Services → <b>Select…</b> → <b>Set how often</b> → Monthly.</div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{yearly.slice(0, 20).map(link)}</div>
       </>}
       {noBudget.length > 0 && <>
         <div style={{ fontSize: 12.5, marginTop: 4 }}><b>{noBudget.length} service{noBudget.length === 1 ? " has" : "s have"} visit costs but no budget per visit</b> — set one so the spend has a budget behind it.</div>
