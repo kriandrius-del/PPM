@@ -1,6 +1,6 @@
 // Home dashboard: KPIs, reminders, contractor sign-in, emergency contacts, statutory register.
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRightLeft, ArrowUpRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, ClipboardList, Clock, Cloud, CloudOff, CloudSun, Contact, Flame, HardHat, History, Inbox, ListTodo, LogIn, LogOut, Mail, Megaphone, Monitor, Pencil, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, StickyNote, Sun, UserCheck, UserPlus, Wrench, X } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, ArrowUpRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, ClipboardList, Clock, Cloud, CloudOff, CloudSun, Contact, Flame, HardHat, History, Inbox, ListTodo, LogIn, LogOut, Mail, Megaphone, Monitor, Pencil, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, StickyNote, Sun, UserCheck, UserPlus, Wallet, Wrench, X } from "lucide-react";
 import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { DEFAULT_EMERGENCY, REPEAT_OPTIONS, STATUTORY_ITEMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
@@ -12,7 +12,7 @@ import { OnCallCard, printBadge } from "./MoreViews.jsx";
 /* ---------------------------------------------------------
    Home dashboard
 --------------------------------------------------------- */
-export function HomeTab({ onSnoozeReminder, waitingOnMe = [], doneToday = null, handover = [], onAddHandover, onTodaySheet, recentServices = [], onOpenService, expected = [], onAddExpected, onRemoveExpected, onArriveExpected, notesKey = "", onEmergencySheet, upcomingKeyDates = [], onTvMode, submissionsCount = 0, onReviewSubmissions, onRollCall, onPeopleDirectory, myActions = [], myReminders = [], weatherSource = null, site = null, onEditSite, complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
+export function HomeTab({ monthBudget = null, onSnoozeReminder, waitingOnMe = [], doneToday = null, handover = [], onAddHandover, onTodaySheet, recentServices = [], onOpenService, expected = [], onAddExpected, onRemoveExpected, onArriveExpected, notesKey = "", onEmergencySheet, upcomingKeyDates = [], onTvMode, submissionsCount = 0, onReviewSubmissions, onRollCall, onPeopleDirectory, myActions = [], myReminders = [], weatherSource = null, site = null, onEditSite, complianceMonthAgo = null, onCall = [], onSaveOnCall, onPrintBriefing, onWeeklyEmail, locationId = null, expectedToday = [], onSignOutAll, notices = [], onSaveNotice, onDeleteNotice, recentDevices = [], overdueBySupplier = [], onQuick, weekAhead = null, siteInfo = null, onSaveSiteInfo, customStatutory = [], onSaveCustomStatutory, pinnedDevices = [], onUnpin, todayItems = null, hiddenCards = [], myName, myWorks = [], emergency, onSaveEmergency, pendingCount = 0, setup, onHideSetup, syncInfo, reminders = [], users = [], onAddReminder, onToggleReminder, onDeleteReminder, userName, devices, services, works, visitBudgets, alerts, activity, spend, onGo, onOpenDevice, statutoryNA = [], onStatutoryNA, onAddStatutory, locationName = "", signins = [], suppliers = [], onSignIn, onSignOut }) {
   const today = new Date().toISOString().slice(0, 10);
   const hour = new Date().getHours();
   const comp = useMemo(() => computeCompliance(devices, visitBudgets, services), [devices, visitBudgets, services]);
@@ -275,6 +275,13 @@ export function HomeTab({ onSnoozeReminder, waitingOnMe = [], doneToday = null, 
           <section className="bcard c2" aria-label="Waiting on me">
             <div className="blabel"><Inbox size={14} /><span>Waiting on you</span></div>
             {waitingOnMe.map((w) => <button key={w.label} onClick={w.go} style={{ display: "flex", justifyContent: "space-between", gap: 8, background: "none", border: "none", borderTop: "1px solid var(--border)", padding: "7px 0", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: "var(--text)", textAlign: "left" }}><span>{w.label}</span><b style={{ color: "var(--accent)" }}>{w.n}</b></button>)}
+          </section>
+        )}
+        {monthBudget && monthBudget.planned + monthBudget.spent > 0 && (
+          <section className="bcard c1" aria-label="This month's budget" onClick={monthBudget.go} style={{ cursor: "pointer" }}>
+            <div className="blabel"><Wallet size={14} /><span>{monthBudget.label}</span></div>
+            <div className="bbig" style={{ fontSize: 24 }}>{gbp(monthBudget.spent).replace(/\.00$/, "")}</div>
+            <div className="bsub">spent · {gbp(monthBudget.planned).replace(/\.00$/, "")} planned this month{monthBudget.planned > 0 ? ` (${Math.round((monthBudget.spent / monthBudget.planned) * 100)}%)` : ""}</div>
           </section>
         )}
         {doneToday && (doneToday.visits + doneToday.jobs + doneToday.readings + doneToday.checks) > 0 && (

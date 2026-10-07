@@ -8,9 +8,9 @@ import { addDays, appBaseUrl, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp,
 import { buildWorkOrderSheet, openPrintReport, tableHtml } from "../lib/reports.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
-export function WorksTab({ initialOpenId = null, onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
+export function WorksTab({ budgetByCat = null, initialOpenId = null, onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
   const [importOpen, setImportOpen] = useState(false);
-  const [waitingOnly, setWaitingOnly] = useState(false);
+  const [waitingOnly, setWaitingOnly] = useState(false); const [overQuoteOnly, setOverQuoteOnly] = useState(false);
   const needsApproval = (w) => approvalThreshold > 0 && Number(w.quoteAmount) >= approvalThreshold && !w.approvedBy && w.status !== "rejected" && w.status !== "completed";
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState(String(approvalThreshold || ""));
@@ -36,6 +36,7 @@ export function WorksTab({ initialOpenId = null, onDuplicateWork, onInvoiceFromW
   const filtered = works
     .filter((w) => !tradeFilter || w.category === tradeFilter)
     .filter((w) => !waitingOnly || (w.waitingOn && !isClosed(w)))
+    .filter((w) => !overQuoteOnly || (Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1))
     .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : !isClosed(w))
     .sort((a, b) => sortBy === "newest" ? (b.dateRaised || "").localeCompare(a.dateRaised || "") : sortBy === "oldest" ? (a.dateRaised || "").localeCompare(b.dateRaised || "") : sortBy === "target" ? String(workSla(a)?.deadline || "9999").localeCompare(String(workSla(b)?.deadline || "9999")) : sortBy === "value" ? (Number(b.quoteAmount) || 0) - (Number(a.quoteAmount) || 0) : (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || ""));
   const openWork = openWorkId ? works.find((w) => w.id === openWorkId) : null;
@@ -138,11 +139,13 @@ export function WorksTab({ initialOpenId = null, onDuplicateWork, onInvoiceFromW
       )}
       {(() => { const rated = works.filter((w) => w.satisfaction); return rated.length ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>Requester satisfaction: <b style={{ color: "#D97706" }}>{(rated.reduce((t, w) => t + w.satisfaction, 0) / rated.length).toFixed(1)} ★</b> from {rated.length} job{rated.length === 1 ? "" : "s"}</div> : null; })()}
       {chaseOpen && <ChaseWorksModal works={overdueWorks} suppliers={suppliers} deviceById={deviceById} locationName={locationName} onClose={() => setChaseOpen(false)} onSent={onLogChase} />}
+      {(() => { const open = works.filter((w) => ["approved", "in_progress"].includes(w.status)); const v = open.reduce((a, w) => a + (Number(w.finalCost ?? w.quoteAmount) || 0), 0); return open.length ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(v)}</b> committed on {open.length} approved / in-progress job{open.length === 1 ? "" : "s"}</div> : null; })()}
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
         <ToggleButton active={statusFilter === "open"} onClick={() => setStatusFilter("open")}>Open</ToggleButton>
         <ToggleButton active={statusFilter === "requested"} onClick={() => setStatusFilter("requested")}>New requests{requestedCount ? ` (${requestedCount})` : ""}</ToggleButton>
         <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Closed</ToggleButton>
         <ToggleButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All</ToggleButton>
+        {works.some((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1) && <ToggleButton active={overQuoteOnly} onClick={() => setOverQuoteOnly((v) => !v)}>Over quote ({works.filter((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1).length})</ToggleButton>}
         {works.some((w) => w.waitingOn && !isClosed(w)) && <ToggleButton active={waitingOnly} onClick={() => setWaitingOnly((v) => !v)}>Waiting on something ({works.filter((w) => w.waitingOn && !isClosed(w)).length})</ToggleButton>}
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "7px 8px", fontSize: 12.5 }}>
           <option value="priority">Priority first</option><option value="target">Target date</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="value">Highest value</option>
@@ -184,6 +187,7 @@ export function WorksTab({ initialOpenId = null, onDuplicateWork, onInvoiceFromW
                 {w.poNumber && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>PO {w.poNumber}</span>}
                 {w.finalCost != null && Number(w.quoteAmount) > 0 && (() => { const v = Number(w.finalCost) - Number(w.quoteAmount); const pct = Math.round((v / Number(w.quoteAmount)) * 100); return <span style={{ fontSize: 11, fontWeight: 700, color: v > 0 ? "var(--danger)" : "var(--ok)", background: v > 0 ? "var(--danger-soft)" : "var(--ok-soft)", padding: "3px 8px", borderRadius: 20 }}>Final {gbp(w.finalCost)} ({v > 0 ? "+" : ""}{pct}%)</span>; })()}
                 {w.eta && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: daysUntil(w.eta) < 0 ? "var(--danger)" : "var(--accent)", background: daysUntil(w.eta) < 0 ? "var(--danger-soft)" : "var(--accent-soft)", padding: "3px 8px", borderRadius: 20 }}>Supplier ETA {fmtDate(w.eta)}</span>}
+                {Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1 && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>{Math.round((Number(w.finalCost) / Number(w.quoteAmount) - 1) * 100)}% over quote</span>}
                 {w.escalatedAt && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>Escalated</span>}
                 {w.status === "completed" && w.completedAt && w.dateRaised && <span style={{ fontSize: 11, fontWeight: 650, color: "var(--muted)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>Done in {Math.max(0, Math.round((new Date(w.completedAt) - new Date(`${w.dateRaised}T09:00:00`)) / 864e5))} day{Math.max(0, Math.round((new Date(w.completedAt) - new Date(`${w.dateRaised}T09:00:00`)) / 864e5)) === 1 ? "" : "s"}</span>}
                 {w.waitingOn && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)", background: "var(--warn-soft)", padding: "3px 8px", borderRadius: 20 }}>Waiting: {w.waitingOn.toLowerCase()}</span>}
@@ -232,7 +236,7 @@ export function WorksTab({ initialOpenId = null, onDuplicateWork, onInvoiceFromW
         </div>
       )}
       {openWork && (
-        <WorkDetailModal allWorks={works} onDuplicate={onDuplicateWork ? () => { onDuplicateWork(openWork); setOpenWorkId(null); } : null} onInvoice={onInvoiceFromWork ? () => onInvoiceFromWork(openWork) : null} onRaisePO={onPoFromWork ? () => onPoFromWork(openWork) : null} spares={spares} onUseSpare={onUseSpare ? (sid, q) => onUseSpare(openWork.id, sid, q) : null} onRepeat={onRepeat ? () => { const w = openWork; setOpenWorkId(null); onRepeat(w); } : null} locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
+        <WorkDetailModal catBudget={budgetByCat?.[deviceById?.[works.find((x) => x.id === openWorkId)?.deviceId]?.serviceCategory || "maintenance"] || null} allWorks={works} onDuplicate={onDuplicateWork ? () => { onDuplicateWork(openWork); setOpenWorkId(null); } : null} onInvoice={onInvoiceFromWork ? () => onInvoiceFromWork(openWork) : null} onRaisePO={onPoFromWork ? () => onPoFromWork(openWork) : null} spares={spares} onUseSpare={onUseSpare ? (sid, q) => onUseSpare(openWork.id, sid, q) : null} onRepeat={onRepeat ? () => { const w = openWork; setOpenWorkId(null); onRepeat(w); } : null} locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
           approvalThreshold={approvalThreshold} needsApproval={needsApproval(openWork)}
           onConvertToProject={onConvertToProject ? () => { onConvertToProject(openWork); setOpenWorkId(null); } : null}
           onConvertToPlan={() => onConvertToPlan?.(openWork)} onConvertToService={() => onConvertToService?.(openWork)}
@@ -243,7 +247,7 @@ export function WorksTab({ initialOpenId = null, onDuplicateWork, onInvoiceFromW
   );
 }
 
-export function WorkDetailModal({ allWorks = [], onDuplicate, onInvoice, onRaisePO, spares = [], onUseSpare, onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
+export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, onInvoice, onRaisePO, spares = [], onUseSpare, onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
   const [po, setPo] = useState(work.poNumber || "");
   const [statusMsg, setStatusMsg] = useState("");
   const [comment, setComment] = useState("");
@@ -331,6 +335,7 @@ export function WorkDetailModal({ allWorks = [], onDuplicate, onInvoice, onRaise
           ].filter(Boolean).map(([l, fn]) => <button key={l} type="button" onClick={fn} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{l}</button>)}
         </div>
         {(() => { const others = allWorks.filter((x) => x.id !== work.id && x.deviceId === work.deviceId && !["completed", "rejected"].includes(x.status)); return others.length ? <div style={{ fontSize: 12, background: "var(--warn-soft)", borderRadius: 9, padding: "7px 10px" }}><b>{others.length} other open job{others.length === 1 ? "" : "s"} on this service:</b> {others.slice(0, 4).map((x) => `${x.description} (${(WORK_STATUSES.find((st) => st.key === x.status)?.label || x.status).toLowerCase()})`).join(" · ")}</div> : null; })()}
+        {catBudget && catBudget.budget > 0 && ["requested", "quoted"].includes(work.status) && Number(work.quoteAmount) > 0 && (() => { const after = catBudget.forecast + Number(work.quoteAmount); const pct = Math.round((after / catBudget.budget) * 100); return <div style={{ fontSize: 12, background: pct > 100 ? "var(--danger-soft)" : "var(--card-hi)", borderRadius: 9, padding: "7px 10px" }}>Approving this ({gbp(work.quoteAmount)}) takes the {catBudget.label} forecast to <b style={{ color: pct > 100 ? "var(--danger)" : "inherit" }}>{gbp(after)} — {pct}% of its {gbp(catBudget.budget)} budget</b>.</div>; })()}
         <QuotesPanel work={work} suppliers={suppliers} device={device} locationName={locationName} onUpdate={onUpdate} userName={currentUserName} />
         <LabourMaterials work={work} onUpdate={onUpdate} spares={spares} onUseSpare={onUseSpare} />
         <WorkLinks links={work.links || []} onChange={ACTIVE_CAN_EDIT ? (links) => onUpdate({ links }) : null} />

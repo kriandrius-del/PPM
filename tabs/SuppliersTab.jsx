@@ -12,7 +12,7 @@ import { ContactsEditor } from "./MoreViews.jsx";
 /* ---------------------------------------------------------
    Suppliers Tab
 --------------------------------------------------------- */
-export function SuppliersTab({ onPortal, onBulkEmail, onImport, packData = null, locationName = "", onFollowUpDone, invoices = [], onAddContact, onMerge, userName = "", suppliers, onAdd, onEdit, onDelete, devices = [], services = [], works = [], budgetLines = [], visitBudgets = [] }) {
+export function SuppliersTab({ onApplyUplift, onPortal, onBulkEmail, onImport, packData = null, locationName = "", onFollowUpDone, invoices = [], onAddContact, onMerge, userName = "", suppliers, onAdd, onEdit, onDelete, devices = [], services = [], works = [], budgetLines = [], visitBudgets = [] }) {
   const [scoreFor, setScoreFor] = useState(null);
   const [contactFor, setContactFor] = useState(null);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -106,6 +106,7 @@ export function SuppliersTab({ onPortal, onBulkEmail, onImport, packData = null,
                       const nextB = devices.filter((d) => d.supplierId === s.id && d.booking?.date && d.booking.date >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.booking.date.localeCompare(b.booking.date))[0];
                       return <>
                         {total > 0 && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>Spend {yr}: <b>{gbp(total)}</b>{wk ? ` (works ${gbp(wk)})` : ""}{lyTotal > 0 ? <span style={{ color: total > lyTotal * 1.1 ? "var(--danger)" : total < lyTotal * 0.9 ? "var(--ok)" : "var(--muted)" }}> · {total >= lyTotal ? "▲" : "▼"} {Math.abs(Math.round(((total - lyTotal) / lyTotal) * 100))}% vs this time last year</span> : null}</div>}
+                        {(() => { const y = String(new Date().getFullYear()); const ls = budgetLines.filter((l) => l.supplierId === s.id && String(l.date).startsWith(y) && l.status !== "skipped"); if (!ls.length) return null; const plan = ls.reduce((a, l) => a + (Number(l.amount) || 0), 0); const done = ls.filter((l) => l.actualAmount != null || l.actualServiceId).reduce((a, l) => a + (Number(l.actualAmount) || 0), 0); return <div style={{ fontSize: 11.5, marginTop: 2, color: "var(--muted)" }}>{y}: <b style={{ color: "var(--text)" }}>{gbp(done)}</b> spent of <b style={{ color: "var(--text)" }}>{gbp(plan)}</b> planned</div>; })()}
                         {(() => { const op = works.filter((w) => w.supplierId === s.id && !["completed", "rejected"].includes(w.status)); const late = op.filter((w) => workSla(w)?.breached).length; return op.length ? <div style={{ fontSize: 11.5, marginTop: 2, color: late ? "var(--danger)" : "var(--muted)", fontWeight: late ? 650 : 500 }}>{op.length} open job{op.length === 1 ? "" : "s"}{late ? ` · ${late} past target` : ""}</div> : null; })()}
                         {nextB && <div style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 2 }}>Next booked: {fmtDate(nextB.booking.date)}{nextB.booking.time ? ` ${nextB.booking.time}` : ""} · {nextB.name}</div>}
                       </>;
@@ -163,7 +164,7 @@ export function SuppliersTab({ onPortal, onBulkEmail, onImport, packData = null,
           </div>
         );
       })}
-      {scoreFor && <SupplierScorecardModal supplier={scoreFor} devices={devices} services={services} works={works} budgetLines={budgetLines} visitBudgets={visitBudgets} onClose={() => setScoreFor(null)} />}
+      {scoreFor && <SupplierScorecardModal onApplyUplift={onApplyUplift ? (s) => { onApplyUplift(s); setScoreFor(null); } : null} supplier={scoreFor} devices={devices} services={services} works={works} budgetLines={budgetLines} visitBudgets={visitBudgets} onClose={() => setScoreFor(null)} />}
     </div>
   );
 }
@@ -345,7 +346,7 @@ export function AddSupplierModal({ existing, subcategoriesByCategory, onClose, o
 /* ---------------------------------------------------------
    Supplier scorecard
 --------------------------------------------------------- */
-export function SupplierScorecardModal({ supplier, devices, services, works, budgetLines, visitBudgets, onClose }) {
+export function SupplierScorecardModal({ onApplyUplift, supplier, devices, services, works, budgetLines, visitBudgets, onClose }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const st = supplierStats(supplier, { devices, services, works, budgetLines, visitBudgets }, year);
   const tone = (p) => p === null ? "#8A94A0" : p >= 90 ? "#2F855A" : p >= 70 ? "#B7791F" : "#C53030";
@@ -376,6 +377,8 @@ export function SupplierScorecardModal({ supplier, devices, services, works, bud
         <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.7 }}>
           {st.devs.length > 0 && <details style={{ marginBottom: 4 }}><summary style={{ cursor: "pointer", color: "var(--accent)", fontWeight: 650 }}>Services they cover ({st.devs.length})</summary><div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>{st.devs.map((d) => <span key={d.id} style={{ background: "var(--card-hi)", borderRadius: 10, padding: "2px 8px", fontSize: 11.5 }}>{d.name}{d.nextServiceDate ? ` · ${fmtDate(d.nextServiceDate)}` : ""}</span>)}</div></details>}
           <div>Services assigned: <b>{st.devs.length}</b> · Visits logged: <b>{st.visits.length}</b> · Spend: <b>{gbp(st.spend)}</b></div>
+          {(() => { const pairs = services.filter((v) => Number(v.cost) > 0 && (v.supplierId === supplier.id || (!v.supplierId && st.devs.some((d) => d.id === v.deviceId)))).map((v) => { const ln = budgetLines.find((l) => l.actualServiceId === v.id); const ref = Number(ln?.amount) || Number(devices.find((d) => d.id === v.deviceId)?.budgetPerVisit) || 0; return ref > 0 ? Number(v.cost) / ref - 1 : null; }).filter((x) => x != null); if (pairs.length < 2) return null; const avg = pairs.reduce((a, b) => a + b, 0) / pairs.length; return <div>Visit cost vs budget: <b style={{ color: avg > 0.05 ? "var(--danger)" : avg < -0.05 ? "var(--ok)" : "inherit" }}>{avg >= 0 ? "+" : ""}{Math.round(avg * 100)}%</b> on average over {pairs.length} visits</div>; })()}
+          {onApplyUplift && Number(supplier.upliftPct) > 0 && st.devs.some((d) => Number(d.budgetPerVisit) > 0) && ACTIVE_CAN_EDIT && <button onClick={() => onApplyUplift(supplier)} style={{ alignSelf: "flex-start", background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", marginBottom: 4 }}>Apply their +{supplier.upliftPct}% price rise to {st.devs.filter((d) => Number(d.budgetPerVisit) > 0).length} service budgets</button>}
           <div>Planned visits: <b>{st.comp.totals.onTime}</b> on time, <b>{st.comp.totals.late}</b> late, <b style={{ color: st.comp.totals.missed ? "var(--danger)" : undefined }}>{st.comp.totals.missed}</b> missed</div>
           <div>Failed checks: <b>{st.fails}</b> · Extra jobs / requests: <b>{st.jobs.length}</b> · Times chased: <b>{st.chases}</b></div>
           {supplier.contractEnd && <div>Contract: {supplier.contractStart ? `${fmtDate(supplier.contractStart)} – ` : "ends "}{fmtDate(supplier.contractEnd)}{supplier.contractRef ? ` · ${supplier.contractRef}` : ""}</div>}

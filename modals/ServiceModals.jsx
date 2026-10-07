@@ -2,13 +2,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Ban, BookOpen, Camera, CheckCircle2, CheckSquare, ChevronDown, ClipboardList, Copy, Download, FileSpreadsheet, HardHat, ImagePlus, KeyRound, Link2, Loader2, Mail, MapPin, PauseCircle, Pencil, Plus, Printer, RefreshCw, ShieldCheck, SkipForward, Square, Star, StickyNote, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, SignOffSection, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, IMPORT_FIELDS, JOB_TEMPLATES, LATE_REASONS, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
+import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, FREQ_HINTS, IMPORT_FIELDS, JOB_TEMPLATES, LATE_REASONS, MONTH_NAMES, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
 import { ACTIVE_BRAND, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
 import { buildAssetRecord, buildBlankChecklist, openPrintReport, tableHtml } from "../lib/reports.js";
 import { addDays, addMonths, appBaseUrl, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, formatCustomValues, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
 import { TEMPLATE_EXAMPLE_PREFIX, buildServicesTemplate, readSpreadsheetRows } from "../lib/excelTemplate.js";
 
-export function DeviceHistoryModal({ budgetInfo = null, onRebuildPlan, changeLog = [], spares = [], onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
+export function DeviceHistoryModal({ plannedLines = [], budgetInfo = null, onRebuildPlan, changeLog = [], spares = [], onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
   const sorted = [...services].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const sortedVisitBudgets = [...visitBudgets].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const [addingTask, setAddingTask] = useState(false);
@@ -104,6 +104,13 @@ export function DeviceHistoryModal({ budgetInfo = null, onRebuildPlan, changeLog
               </div>
             );
           })()}
+          {Number(device.upliftPct) > 0 && Number(device.upliftMonth) > 0 && (() => { const t0 = new Date().toISOString().slice(0, 10); let r = `${t0.slice(0, 4)}-${String(device.upliftMonth).padStart(2, "0")}-01`; if (r <= t0) r = `${Number(t0.slice(0, 4)) + 1}-${String(device.upliftMonth).padStart(2, "0")}-01`; return <div style={{ fontSize: 12.3, background: "var(--card-hi)", borderRadius: 10, padding: "7px 11px" }}>Annual price rise <b>+{device.upliftPct}%</b> · next on <b>{fmtDate(r)}</b>: {gbp(device.budgetPerVisit)} → <b>{gbp(Number(device.budgetPerVisit) * (1 + Number(device.upliftPct) / 100))}</b> a visit</div>; })()}
+          {plannedLines.length > 0 && (
+            <details style={{ background: "var(--card-hi)", borderRadius: 10, padding: "8px 11px" }}>
+              <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Planned visits in the budget ({plannedLines.length})</summary>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>{plannedLines.slice(0, 12).map((l) => <div key={l.id} style={{ display: "flex", gap: 8, fontSize: 12 }}><span style={{ flex: 1 }}>{fmtDate(l.date)}{l.plannedFor ? <span style={{ color: "var(--accent)", fontWeight: 650 }}> · booked (planned {fmtDate(l.plannedFor)})</span> : null}</span><b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(l.amount)}</b></div>)}{plannedLines.length > 12 && <div style={{ fontSize: 11, color: "var(--faint)" }}>…and {plannedLines.length - 12} more</div>}</div>
+            </details>
+          )}
           {budgetInfo && (budgetInfo.perVisit > 0 || budgetInfo.spent > 0) && (
             <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 4 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -317,7 +324,7 @@ export function AddDeviceTaskModal({ existing, onClose, onSave, onDelete }) {
 /* ---------------------------------------------------------
    Add Device Modal
 --------------------------------------------------------- */
-export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, onResume, onArchive, countries, locations, defaultLocationId, existing, prefill, subcategoriesByCategory, suppliers, onClose, onSave, onDelete, onDuplicate }) {
+export function AddDeviceModal({ plannedCount = 0, siblingNames = [], allTags = [], budgetHeadByCat = {}, onPause, onResume, onArchive, countries, locations, defaultLocationId, existing, prefill, subcategoriesByCategory, suppliers, onClose, onSave, onDelete, onDuplicate }) {
   const isEdit = !!existing;
   const src = existing || prefill || null; // prefill = duplicating another service
   const [name, setName] = useState(src?.name || "");
@@ -346,6 +353,7 @@ export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, on
   const [interval, setInterval] = useState(src?.serviceIntervalMonths != null ? String(src.serviceIntervalMonths) : "12");
   const [nextDate, setNextDate] = useState(src?.nextServiceDate || new Date().toISOString().slice(0, 10));
   const [budgetPerVisit, setBudgetPerVisit] = useState(src?.budgetPerVisit ? String(src.budgetPerVisit) : "");
+  const [upliftPct, setUpliftPct] = useState(src?.upliftPct ? String(src.upliftPct) : ""); const [upliftMonth, setUpliftMonth] = useState(src?.upliftMonth ? String(src.upliftMonth) : "4");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [manufacturer, setManufacturer] = useState(src?.manufacturer || "");
   const [model, setModel] = useState(src?.model || "");
@@ -400,6 +408,7 @@ export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, on
       subCategory: subCategory.trim(), locationId, supplierId: supplierId || null, checklist, custom,
       lastServiceDate: existing?.lastServiceDate ?? null,
       budgetPerVisit: budgetPerVisit ? Number(budgetPerVisit) : 0,
+      upliftPct: Number(upliftPct) > 0 ? Number(upliftPct) : null, upliftMonth: Number(upliftPct) > 0 ? Number(upliftMonth) || 4 : null,
       manufacturer: manufacturer.trim(), model: model.trim(), serialNumber: serialNumber.trim(),
       installDate: installDate || null, warrantyEnd: warrantyEnd || null, usageInterval: usageInterval === "" ? null : Number(usageInterval), gallery,
       expectedLifeYears: expectedLifeYears ? Number(expectedLifeYears) : null, replacementCost: replacementCost ? Number(replacementCost) : null,
@@ -435,8 +444,9 @@ export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, on
       intervalMonths = null;
     }
     scheduleDates = scheduleDates.filter(Boolean).sort();
+    const repeatEveryDays = repeat === "weekly" ? 7 : repeat === "custom" ? Math.round(365 / Math.max(1, Number(customCount) || 1)) : null;
     onSave({
-      ...base, serviceIntervalMonths: intervalMonths, nextServiceDate: scheduleDates[0] || nextDate,
+      ...base, serviceIntervalMonths: intervalMonths, repeatEveryDays, nextServiceDate: scheduleDates[0] || nextDate,
       scheduleDates,
     });
   }
@@ -454,6 +464,13 @@ export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, on
           </Field>
         )}
         <Field label="Service name"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Rooftop AHU 3, or Cleaning" /></Field>
+        {!isEdit && name.trim().length > 2 && siblingNames.some((n) => n.trim().toLowerCase() === name.trim().toLowerCase()) && <div style={{ fontSize: 12, color: "var(--warn)", fontWeight: 650, marginTop: -6 }}>A service called "{name.trim()}" already exists at this site — add a number or area to tell them apart.</div>}
+        {!isEdit && (() => { const h = FREQ_HINTS.find(([re]) => re.test(name)); if (!h) return null; const [, m, note] = h; const label = m === 1 ? "monthly" : m === 3 ? "every 3 months" : m === 6 ? "every 6 months" : m === 12 ? "once a year" : m === 24 ? "every 2 years" : m === 60 ? "every 5 years" : `every ${m} months`; const applied = repeat === "interval" && Number(interval) === m; return (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, background: "var(--card-hi)", borderRadius: 9, padding: "6px 10px", marginTop: -4 }}>
+            <span style={{ flex: 1, minWidth: 160 }}>Typical: <b>{label}</b> — {note}</span>
+            {applied ? <span style={{ color: "var(--ok)", fontWeight: 700 }}>Using this</span> : <button type="button" onClick={() => { setRepeat("interval"); setInterval(String(m)); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 7, padding: "4px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use</button>}
+          </div>
+        ); })()}
         <Field label="Location">
           <Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
             {countries.map((c) => (
@@ -600,9 +617,20 @@ export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, on
           )}
         </Field>
         <Field label={`Budget per visit (${ACTIVE_CURRENCY_CODE}, optional)`}><TextInput type="number" min="0" step="0.01" value={budgetPerVisit} onChange={(e) => setBudgetPerVisit(e.target.value)} placeholder="0.00" /></Field>
+        {isEdit && plannedCount > 0 && ((Number(budgetPerVisit) || 0) !== (Number(existing?.budgetPerVisit) || 0) || (Number(interval) || 0) !== (Number(existing?.serviceIntervalMonths) || 0) || nextDate !== (existing?.nextServiceDate || nextDate)) && <div style={{ fontSize: 11.8, color: "var(--accent)", fontWeight: 650, marginTop: -4 }}>Saving rebuilds this service's {plannedCount} planned visit{plannedCount === 1 ? "" : "s"} in the budget to match. Visits already logged aren't changed.</div>}
+        {Number(budgetPerVisit) > 0 && (
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <Field label="Annual price rise % (optional)"><TextInput type="number" min="0" step="0.1" value={upliftPct} onChange={(e) => setUpliftPct(e.target.value)} placeholder="e.g. 4" style={{ width: 110 }} /></Field>
+            {Number(upliftPct) > 0 && <Field label="Each year from"><Select value={upliftMonth} onChange={(e) => setUpliftMonth(e.target.value)}>{MONTH_NAMES.map((mn, i) => <option key={i} value={i + 1}>1 {mn}</option>)}</Select></Field>}
+            {Number(upliftPct) > 0 && <span style={{ fontSize: 11.5, color: "var(--muted)", paddingBottom: 9 }}>Planned visits after 1 {MONTH_NAMES[(Number(upliftMonth) || 4) - 1]} are budgeted at {gbp(Number(budgetPerVisit) * (1 + Number(upliftPct) / 100))}.</span>}
+          </div>
+        )}
         {Number(budgetPerVisit) > 0 && (() => {
-          const perYear = Number(interval) > 0 ? Math.round(12 / Number(interval) * 10) / 10 : 1; const annual = Number(budgetPerVisit) * perYear;
-          const row = budgetHeadByCat[serviceCategory]; const before = existing ? (Number(existing.budgetPerVisit) || 0) * (Number(existing.serviceIntervalMonths) > 0 ? 12 / Number(existing.serviceIntervalMonths) : 1) : 0;
+          const visitsFor = (iv, everyDays) => (Number(iv) > 0 ? Math.round((12 / Number(iv)) * 10) / 10 : Number(everyDays) > 0 ? Math.round(365 / Number(everyDays)) : 1);
+          const perYear = isEdit ? visitsFor(interval, existing?.repeatEveryDays)
+            : repeat === "weekly" ? 52 : repeat === "monthly" ? 12 : repeat === "quarterly" ? 4 : repeat === "custom" ? Math.max(1, Number(customCount) || 1) : repeat === "manual" ? Math.max(1, manualDates.filter(Boolean).length) : repeat === "interval" ? visitsFor(interval) : 1;
+          const annual = Number(budgetPerVisit) * perYear;
+          const row = budgetHeadByCat[serviceCategory]; const before = existing ? (Number(existing.budgetPerVisit) || 0) * visitsFor(existing.serviceIntervalMonths, existing.repeatEveryDays) : 0;
           const extra = annual - (existing && existing.serviceCategory === serviceCategory ? before : 0);
           return <div style={{ fontSize: 11.8, color: "var(--muted)", marginTop: -4, lineHeight: 1.45 }}>≈ <b>{gbp(annual)}</b> a year ({perYear} visit{perYear === 1 ? "" : "s"}){row && row.budget > 0 ? <> · {CATEGORY_META[serviceCategory]?.label} forecast <b style={{ color: row.forecast + Math.max(0, extra * (12 - new Date().getMonth()) / 12) > row.budget ? "var(--danger)" : "var(--ok)" }}>{gbp(row.forecast + Math.max(0, extra * (12 - new Date().getMonth()) / 12))}</b> of {gbp(row.budget)} budget{extra > 0 && row.forecast + extra * (12 - new Date().getMonth()) / 12 > row.budget ? " — this would take it over" : ""}</> : null}. Planned visits are added to the budget automatically.</div>;
         })()}
@@ -640,7 +668,10 @@ export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, on
 
         {isEdit ? (
           <div style={{ display: "flex", gap: 10 }}>
-            <Field label="Service interval (months)"><TextInput type="number" min="0" value={interval} onChange={(e) => setInterval(e.target.value)} /></Field>
+            <Field label="Repeats every … months"><TextInput type="number" min="0" value={interval} onChange={(e) => setInterval(e.target.value)} />
+              {(() => { const n = Number(interval); const txt = !n && Number(existing?.repeatEveryDays) > 0 ? (Number(existing.repeatEveryDays) === 7 ? "Weekly (every 7 days) — leave blank to keep it weekly" : `Every ${existing.repeatEveryDays} days — leave blank to keep this pattern`) : !n ? "No repeat — one visit only" : n === 1 ? "= monthly · 12 visits a year" : n === 3 ? "= quarterly · 4 visits a year" : n === 6 ? "= twice a year · 2 visits a year" : n === 12 ? "= once a year · 1 visit a year" : 12 % n === 0 ? `= ${12 / n} visits a year` : n > 12 ? `= once every ${n} months` : `= about ${Math.round((12 / n) * 10) / 10} visits a year`; return <span style={{ fontSize: 11.5, fontWeight: 650, color: n >= 12 ? "var(--warn)" : "var(--muted)" }}>{txt}{n >= 12 ? " — for monthly, enter 1" : ""}</span>; })()}
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 }}>{[[1, "Monthly"], [3, "Quarterly"], [6, "6-monthly"], [12, "Yearly"]].map(([m, l]) => <button key={m} type="button" onClick={() => setInterval(String(m))} style={{ background: Number(interval) === m ? "var(--accent)" : "var(--card-hi)", color: Number(interval) === m ? "var(--on-accent)" : "var(--text-2)", border: "none", borderRadius: 7, padding: "3px 8px", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{l}</button>)}</div>
+            </Field>
             <Field label="Next visit due"><TextInput type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />{nextDate && Number(interval) > 0 && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 3 }}>Then {[1, 2, 3].map((i) => fmtDate(addMonths(nextDate, i * Number(interval)))).join(", ")}…</div>}</Field>
           </div>
         ) : (
@@ -743,7 +774,7 @@ export function AddDeviceModal({ allTags = [], budgetHeadByCat = {}, onPause, on
 /* ---------------------------------------------------------
    Log Service Modal
 --------------------------------------------------------- */
-export function LogServiceModal({ onVerify, spares = [], lastVisit = null, locationName = "", openPermits = [], device, existing, suppliers, visitBudgets, onClose, onSave, onDelete }) {
+export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, spares = [], lastVisit = null, locationName = "", openPermits = [], device, existing, suppliers, visitBudgets, onClose, onSave, onDelete }) {
   const isEdit = !!existing;
   const defaultName = device ? `${(CATEGORY_META[device.serviceCategory] || CATEGORY_META.maintenance).label} visit` : "Visit";
   const [name, setName] = useState(existing?.name || defaultName);
@@ -782,6 +813,7 @@ export function LogServiceModal({ onVerify, spares = [], lastVisit = null, locat
   });
   function setCheck(i, patch) { setCheckResults((prev) => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
   const [cost, setCost] = useState(existing?.cost ? String(existing.cost) : "");
+  const [overspendBy, setOverspendBy] = useState(existing?.overspendApprovedBy || "");
   const [breakdown, setBreakdown] = useState(existing?.costBreakdown || null);
   const [nextOverride, setNextOverride] = useState("");
   const setPart = (k, v) => setBreakdown((p) => { const n = { ...(p || {}), [k]: v }; const total = ["labour", "parts", "callout", "other"].reduce((t, x) => t + (Number(n[x]) || 0), 0); setCost(total ? String(Math.round(total * 100) / 100) : ""); return n; });
@@ -815,11 +847,12 @@ export function LogServiceModal({ onVerify, spares = [], lastVisit = null, locat
   function submit() {
     { const miss = missingRequiredFields("visit", device?.serviceCategory, visitCustom); if (miss.length) { setVisitFieldErr(`Please fill in: ${miss.join(", ")}`); return; } }
     if (!device) return;
+    { const ref = Number(planLine?.amount) || Number(device?.budgetPerVisit) || 0; if (overspendPct > 0 && ref > 0 && Number(cost) > ref * (1 + overspendPct / 100) && !overspendBy.trim()) { setVisitFieldErr(`This visit is over budget by more than ${overspendPct}% — enter who approved it.`); return; } }
     onSave({
       id: existing?.id, deviceId: device.id, name: name.trim() || defaultName, date,
       technician: technician.trim(), supplierId: supplierId || null,
       notes: notes.trim(), cost: cost ? Number(cost) : 0, costBreakdown: breakdown && Object.values(breakdown).some((x) => Number(x)) ? Object.fromEntries(Object.entries(breakdown).map(([k, v]) => [k, Number(v) || 0])) : undefined, nextDueOverride: !isEdit && nextOverride ? nextOverride : undefined, certificatePhoto: photo, photos: visitPhotos.length ? visitPhotos : undefined, partsUsed: partsUsed.filter((p) => Number(p.qty) > 0).length ? partsUsed.filter((p) => Number(p.qty) > 0).map((p) => ({ ...p, qty: Number(p.qty) })) : undefined,
-      checklistResults: checkResults.length ? checkResults : undefined,
+      overspendApprovedBy: overspendBy.trim() || undefined, checklistResults: checkResults.length ? checkResults : undefined,
       poNumber: visitPo.trim(),
       custom: Object.keys(visitCustom).length ? visitCustom : undefined,
       signatures: signatures.technician || signatures.site ? signatures : undefined,
@@ -856,6 +889,7 @@ export function LogServiceModal({ onVerify, spares = [], lastVisit = null, locat
         <Field label="Visit name"><TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Quarterly PPM inspection" /></Field>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Service date"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+          {date > new Date().toISOString().slice(0, 10) && <div style={{ fontSize: 11.8, color: "var(--warn)", fontWeight: 650 }}>This date is in the future — the cost will count in {new Date(date + "T12:00:00").toLocaleDateString("en-GB", { month: "long", year: "numeric" })}. Use Book visit for a planned date.</div>}
           <Field label="Technician"><TextInput value={technician} onChange={(e) => setTechnician(e.target.value)} placeholder="Name" /></Field>
         </div>
         <Field label="Supplier">
@@ -865,6 +899,16 @@ export function LogServiceModal({ onVerify, spares = [], lastVisit = null, locat
           </Select>
         </Field>
         <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" /></Field>
+        {(() => { const ref = Number(planLine?.amount) || Number(device?.budgetPerVisit) || 0; const over = overspendPct > 0 && ref > 0 && Number(cost) > ref * (1 + overspendPct / 100); if (!over) return null; return (
+          <div style={{ background: "var(--warn-soft)", borderRadius: 9, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 12.3, fontWeight: 650 }}>{Math.round((Number(cost) / ref - 1) * 100)}% over this visit's budget ({gbp(ref)}) — your site needs sign-off above {overspendPct}%.</div>
+            <TextInput value={overspendBy} onChange={(e) => setOverspendBy(e.target.value)} placeholder="Approved by (name)" />
+          </div>
+        ); })()}
+        {planLine && <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--muted)", marginTop: -6 }}>
+          <span>Budget for this visit: <b>{gbp(planLine.amount)}</b> (planned {fmtDate(planLine.plannedFor || planLine.date)}{planLine.plannedFor ? `, booked ${fmtDate(planLine.date)}` : ""})</span>
+          {!cost && <button type="button" onClick={() => setCost(String(planLine.amount))} style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 7, padding: "3px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use {gbp(planLine.amount)}</button>}
+        </div>}
         {!existing && Number(cost) > 0 && Number(lastVisit?.cost) > 0 && Number(cost) > Number(lastVisit.cost) * 1.5 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--warn)", marginTop: -6 }}>That's {Math.round((Number(cost) / Number(lastVisit.cost) - 1) * 100)}% more than last visit ({gbp(lastVisit.cost)} on {fmtDate(lastVisit.date)}) — worth checking the invoice.</div>}
         {Number(cost) > 0 && Number(device?.budgetPerVisit) > 0 && Number(cost) > Number(device.budgetPerVisit) * 1.2 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--warn)", marginTop: -6 }}>That's {Math.round((Number(cost) / Number(device.budgetPerVisit) - 1) * 100)}% over the {gbp(device.budgetPerVisit)} budgeted per visit — add a note explaining why.</div>}
         {breakdown ? (

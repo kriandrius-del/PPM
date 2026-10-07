@@ -177,7 +177,7 @@ export function ScheduleCalendarTab({ onExportCalendar, onPrintLookahead, device
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Due this month ({monthDue.length})</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Due this month ({monthDue.length}){(() => { const all = monthDue.map((x) => x.device || x).filter((d) => d && d.budgetPerVisit); const tot = all.reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); const booked = all.filter((d) => d.booking?.date).reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); return tot ? <span style={{ fontWeight: 500 }}> · {gbp(tot)} planned{booked ? `, ${gbp(booked)} booked` : ""}</span> : null; })()}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {monthDue.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing due.</div>}
               {monthDue.map((d) => <DueRow key={d.id} device={d} onLogService={onLogService} onMove={ACTIVE_CAN_EDIT ? () => setMoving({ kind: "device", id: d.id, name: d.name, from: d.nextServiceDate }) : undefined} />)}
@@ -382,7 +382,7 @@ export function CapacityView({ devices, tasks, visitBudgets, suppliers, services
   devices.forEach((d) => {
     const dates = new Set(visitBudgets.filter((v) => v.deviceId === d.id && v.date >= thisWeek).map((v) => v.date));
     if (d.nextServiceDate) dates.add(d.nextServiceDate);
-    dates.forEach((date) => items.push({ date: date < thisWeek ? thisWeek : date, overdue: date < today, label: d.name, sup: d.supplierId || "__none" }));
+    dates.forEach((date) => items.push({ date: date < thisWeek ? thisWeek : date, overdue: date < today, label: d.name, sup: d.supplierId || "__none", amount: Number(visitBudgets.find((v) => v.deviceId === d.id && v.date === date)?.amount ?? d.budgetPerVisit) || 0 }));
   });
   tasks.forEach((t) => { if (t.nextDate) items.push({ date: t.nextDate < thisWeek ? thisWeek : t.nextDate, overdue: t.nextDate < today, label: `${t.name} (task)`, sup: devMap[t.deviceId]?.supplierId || "__none" }); });
   const grid = {};
@@ -411,7 +411,9 @@ export function CapacityView({ devices, tasks, visitBudgets, suppliers, services
                   <td style={{ fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", paddingRight: 6 }}>{r === "__none" ? "No supplier" : supMap[r]?.name || "Unknown"}</td>
                   {weeks.map((w) => { const k = `${r}|${w}`; const n = (grid[k] || []).length; return <td key={w}><button onClick={() => n && setOpenCell(openCell === k ? null : k)} style={{ ...cellStyle(n, n > limit), outline: openCell === k ? "2px solid #D97706" : "none" }}>{n || "·"}</button></td>; })}
                 </tr>
-              ))}</tbody>
+              ))}
+              {items.some((it) => it.amount > 0) && <tr><td style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", paddingTop: 6 }}>Planned £</td>{weeks.map((w) => { const v = items.filter((it) => weekStart(it.date) === w).reduce((a, it) => a + (it.amount || 0), 0); return <td key={w} style={{ fontSize: 10.5, textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", color: v ? "var(--text-2)" : "var(--faint)", paddingTop: 6 }}>{v ? gbp(v).replace(/\.00$/, "") : "—"}</td>; })}</tr>}
+</tbody>
             </table>
           </div>
         )}

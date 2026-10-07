@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Activity, AlertTriangle, Bell, Calendar, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock, CloudOff, FileCheck, FileText, Flame, Globe2, HardDrive, HardHat, HelpCircle, History, LayoutDashboard, Loader2, Package, Plus, PoundSterling, Receipt, Search, ShieldAlert, Siren, SlidersHorizontal, Timer, TrendingUp, Undo2, User, Users, Users as UsersIcon, Wrench, X } from "lucide-react";
 import { EmptyState, StatChip, ToggleButton } from "./components/ui.jsx";
-import { ACCENTS, BUILTIN_TEMPLATES, DEFAULT_AUDIT_TEMPLATES, EQUIPMENT_TYPES, INCIDENT_TYPES, LOG_TEMPLATES, MONTH_LABELS, ONBOARDING_ITEMS, PKEYS, SKEYS, SLA_DAYS, WASTE_STREAMS, WATER_LIMITS, alertGroup } from "./lib/constants.js";
+import { ACCENTS, BUILTIN_TEMPLATES, DEFAULT_AUDIT_TEMPLATES, EQUIPMENT_TYPES, INCIDENT_TYPES, LOG_TEMPLATES, MONTH_LABELS, MONTH_NAMES, ONBOARDING_ITEMS, PKEYS, SKEYS, SLA_DAYS, WASTE_STREAMS, WATER_LIMITS, alertGroup } from "./lib/constants.js";
 import { ACTIVE_CAN_EDIT, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_BRAND, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
 import { LAST_LOCAL_WRITE, loadPersonal, loadShared, savePersonal, saveShared, set_SAVE_STATUS_LISTENER } from "./lib/storage.js";
 import { addDays, addMonths, appBaseUrl, cachedWeather, computeCompliance, currentBooking, currentDowntime, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, inBlackout, isMirrored, meterStats, replacementYear, shiftDate, siteWeatherSource, uid, workSla } from "./lib/utils.js";
@@ -83,6 +83,8 @@ export function MainApp() {
   const [keyDates, setKeyDates] = useState([]);
   const [showTv, setShowTv] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
+  const [planQueue, setPlanQueue] = useState(null); const [planCheckReport, setPlanCheckReport] = useState(false); // service ids whose budget plan should be checked against their schedule
+  const queuePlanCheck = (ids) => setPlanQueue((q) => [...new Set([...(q || []), ...ids.filter(Boolean)])]);
   const [openJobOnLoad, setOpenJobOnLoad] = useState(null);
   const [recentIds, setRecentIds] = useState(() => { try { return JSON.parse(localStorage.getItem("ppm:recentServices") || "[]"); } catch (e) { return []; } });
   const [equipment, setEquipment] = useState([]);
@@ -283,6 +285,30 @@ export function MainApp() {
       setLoading(false);
     })();
   }, []);
+
+  useEffect(() => {
+    if (loading || !planQueue) return;
+    let lines = budgetLines, vbs = visitBudgets, added = 0, removed = 0;
+    planQueue.forEach((id) => { const dev = devices.find((d) => d.id === id); if (!dev) return; const r = alignPlan(dev, lines, vbs); lines = r.lines; vbs = r.vbs; added += r.added; removed += r.removed; });
+    setPlanQueue(null);
+    if (added || removed) { persist.budgetLines(lines); persist.visitBudgets(vbs); logActivity("Service plans updated", `${added} planned visit${added === 1 ? "" : "s"} added, ${removed} out-of-date removed`); }
+    if (planCheckReport) { setPlanCheckReport(false); showToast("Service plans checked", added || removed ? `${added} planned visit${added === 1 ? "" : "s"} added, ${removed} out-of-date removed` : "Everything already matches its schedule"); }
+  }, [planQueue, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (loading) return;
+    const today = new Date().toISOString().slice(0, 10);
+    try { if (localStorage.getItem("ppm:planCheckDay") === today) return; localStorage.setItem("ppm:planCheckDay", today); } catch (e) { /* ignore */ }
+    const risen = [];
+    const nextDevices = devices.map((d) => {
+      const p = Number(d.upliftPct) || 0, m = Number(d.upliftMonth) || 0; if (!(p > 0) || !m || d.archived || !(Number(d.budgetPerVisit) > 0)) return d;
+      const r = `${today.slice(0, 4)}-${String(m).padStart(2, "0")}-01`;
+      if (r > today || (d.lastUpliftOn && d.lastUpliftOn >= r)) return d;
+      const nb = Math.round(Number(d.budgetPerVisit) * (1 + p / 100) * 100) / 100; risen.push(`${d.name}: ${gbp(d.budgetPerVisit)} → ${gbp(nb)}`);
+      return { ...d, budgetPerVisit: nb, lastUpliftOn: r, changeLog: [...(d.changeLog || []), { at: new Date().toISOString(), by: "Annual price rise", changes: [`Budget per visit ${gbp(d.budgetPerVisit)} → ${gbp(nb)} (+${p}%)`] }].slice(-100) };
+    });
+    if (risen.length) { persist.devices(nextDevices); logActivity(`Annual price rise applied to ${risen.length} service${risen.length === 1 ? "" : "s"}`, risen.join("; ").slice(0, 300)); showToast(`Annual price rise applied to ${risen.length} service${risen.length === 1 ? "" : "s"}`, risen.slice(0, 3).join(" · ")); }
+    queuePlanCheck(devices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0).map((d) => d.id));
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live refresh when a shared database is connected: pull the latest data when the app
   // comes back into view and every minute, so everyone sees each other's changes.
@@ -617,6 +643,10 @@ export function MainApp() {
       const age = last ? -daysUntil(last.date) : null;
       if (!last || age > d.everyDays) extra.push({ key: `log-${d.id}-${last?.date || "none"}`, tone: d.id === "firealarm" || d.firealarm ? "warn" : "info", title: `${d.name} due`, detail: last ? `Last entry ${fmtDate(last.date)} (${age} days ago)` : "No entries yet", tab: "meters" });
     });
+    // Planned visits more than 2 weeks past that were never logged or released.
+    { const t0 = new Date().toISOString().slice(0, 10); const live = new Set(locDevices.filter((d) => !d.archived).map((d) => d.id)); const missed = locBudgetLines.filter((l) => l.deviceId && live.has(l.deviceId) && l.actualAmount == null && !l.actualServiceId && l.status !== "skipped" && l.date.slice(0, 4) === t0.slice(0, 4) && daysUntil(l.date) < -14); if (missed.length) extra.push({ key: `missed-${t0.slice(0, 7)}-${missed.length}`, tone: "warn", title: `${missed.length} planned visit${missed.length === 1 ? "" : "s"} not logged`, detail: `${gbp(missed.reduce((a, l) => a + (Number(l.amount) || 0), 0))} still in the forecast — log them or release them in Budget → Checks`, tab: "budget" }); }
+    // Visits over budget beyond the site's sign-off limit, with nobody named as approving them.
+    { const pct = Number(budgetSettingsFor().overspendApprovalPct) || 0; if (pct > 0) { const y = new Date().getFullYear().toString(); const un = locServices.filter((v) => String(v.date).startsWith(y) && Number(v.cost) > 0 && !v.overspendApprovedBy).filter((v) => { const ln = locBudgetLines.find((l) => l.actualServiceId === v.id); const ref = Number(ln?.amount) || Number(locDevices.find((d) => d.id === v.deviceId)?.budgetPerVisit) || 0; return ref > 0 && Number(v.cost) > ref * (1 + pct / 100); }); if (un.length) extra.push({ key: `osp-${un.length}-${y}`, tone: "warn", title: `${un.length} visit${un.length === 1 ? "" : "s"} over budget without sign-off`, detail: `Over the ${pct}% limit — see Budget → Checks`, tab: "budget" }); } }
     // Planned shutdowns this week / happening now.
     shutdowns.filter((s) => s.locationId === selectedLocationId && String(s.end || s.start).slice(0, 10) >= todayISO && String(s.start).slice(0, 10) <= addDays(todayISO, 7)).forEach((s) => extra.push({ key: `sd-${s.id}`, tone: String(s.start).slice(0, 10) <= todayISO ? "warn" : "info", title: `${String(s.start).slice(0, 10) <= todayISO ? "Shutdown today" : "Shutdown coming up"}: ${s.type}`, detail: `${new Date(s.start).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${s.areas ? ` · ${s.areas}` : ""}${s.notifiedAt ? "" : " · occupants not told yet"}`, tab: "meters" }));
     // Little-used water outlets not flushed for a week (Legionella control).
@@ -1011,13 +1041,14 @@ export function MainApp() {
     if (incSuppliers) newSups = suppliers.filter((s) => s.locationId === fromId).map((s) => { const id = uid(); supMap[s.id] = id; return { ...s, id, locationId: selectedLocationId, contactLog: [], renewal: {}, onboarding: s.onboarding || {} }; });
     const newDevs = devices.filter((d) => d.locationId === fromId && !d.archived).map((d) => ({ id: uid(), locationId: selectedLocationId, name: d.name, serviceCategory: d.serviceCategory, subCategory: d.subCategory, equipmentType: d.equipmentType, serviceIntervalMonths: d.serviceIntervalMonths, budgetPerVisit: d.budgetPerVisit, checklist: incChecklists ? (d.checklist || []) : [], supplierId: incSuppliers ? (supMap[d.supplierId] || null) : null, criticality: d.criticality, tags: d.tags, certRequired: d.certRequired, ramsRequired: d.ramsRequired, permits: d.permits, instructions: d.instructions, usageInterval: d.usageInterval, lastServiceDate: null, nextServiceDate: null, notesLog: [], copiedFrom: d.id }));
     if (newSups.length) persist.suppliers([...suppliers, ...newSups]);
-    persist.devices([...devices, ...newDevs]);
+    persist.devices([...devices, ...newDevs]); queuePlanCheck(newDevs.map((d) => d.id));
     setShowCopySite(false); setTab("devices");
     showToast(`${newDevs.length} services copied${newSups.length ? ` and ${newSups.length} suppliers` : ""}`, "Set the first due dates (bulk select → Reschedule)");
   }
   function bookMany(ids, booking) {
     const set = new Set(ids); const at = new Date().toISOString();
     persist.devices(devices.map((d) => set.has(d.id) ? { ...d, booking: { ...booking, forDue: d.nextServiceDate, by: currentUser?.name, at } } : d));
+    { let lines = budgetLines, changed = false; ids.forEach((id) => { const d = deviceById[id]; const nl = d && linesAfterBooking(lines, id, d.nextServiceDate, booking.date); if (nl) { lines = nl; changed = true; } }); if (changed) persist.budgetLines(lines); }
     showToast(`${ids.length} visits booked for ${fmtDate(booking.date)}${booking.time ? ` ${booking.time}` : ""}`);
   }
   function mergeDevices(fromId, toId) {
@@ -1201,7 +1232,7 @@ export function MainApp() {
         }
       }
     });
-    persist.devices([...baseDevices, ...newDevices]);
+    persist.devices([...baseDevices, ...newDevices]); queuePlanCheck(newDevices.map((d) => d.id));
     if (newVB.length) persist.visitBudgets([...visitBudgets, ...newVB]);
     if (newBL.length) persist.budgetLines([...budgetLines, ...newBL]);
     showToast(`${newDevices.length} services imported`, newBL.length ? `${newBL.length} planned visits added to the Budget Plan` : "");
@@ -1213,7 +1244,7 @@ export function MainApp() {
       const { id, lastServiceDate, chaseLog, rescheduleLog, booking, notesLog, photo, archived, archivedAt, archivedBy, sourceWorkId, ...rest } = d;
       return { ...rest, id: uid(), locationId, assetTag: "", serialNumber: "", supplierId: targetSupplierIds.has(d.supplierId) ? d.supplierId : null, lastServiceDate: null, copiedFrom: d.id };
     });
-    persist.devices([...devices, ...copies]);
+    persist.devices([...devices, ...copies]); queuePlanCheck(copies.map((d) => d.id));
     showToast(`${copies.length} services copied`, `to ${locationById[locationId]?.name || "another site"} — set suppliers and dates there`);
   }
   /* ---- spares ---- */
@@ -1268,13 +1299,20 @@ export function MainApp() {
       persist.visitBudgets(visitBudgets.map((v) => v.deviceId in moves && v.date === moves[v.deviceId] ? { ...v, date: value } : v));
       persist.budgetLines(budgetLines.map((l) => l.deviceId in moves && l.date === moves[l.deviceId] && l.actualAmount == null ? { ...l, date: value } : l));
       showToast(`${Object.keys(moves).length} services moved to ${fmtDate(value)}`, names.join(", ").slice(0, 200));
+    } else if (action === "uplift") {
+      const { pct, month } = value; const t0 = new Date().toISOString().slice(0, 10); const r = `${t0.slice(0, 4)}-${String(month).padStart(2, "0")}-01`; const last = r <= t0 ? r : `${Number(t0.slice(0, 4)) - 1}-${String(month).padStart(2, "0")}-01`;
+      let lines = budgetLines, vbs = visitBudgets;
+      const nextDevices = devices.map((d) => set.has(d.id) ? { ...d, upliftPct: pct > 0 ? pct : null, upliftMonth: pct > 0 ? month : null, lastUpliftOn: pct > 0 ? last : null } : d);
+      nextDevices.filter((d) => set.has(d.id) && Number(d.budgetPerVisit) > 0).forEach((d) => { const rr = rebuildPlan(d, lines, vbs); lines = rr.lines; vbs = rr.vbs; });
+      persist.devices(nextDevices); persist.budgetLines(lines); persist.visitBudgets(vbs);
+      showToast(pct > 0 ? `${ids.length} services: +${pct}% every 1 ${MONTH_NAMES[month - 1]}` : `Price rise removed from ${ids.length} services`, "Planned visits after that date are budgeted at the new price");
     } else if (action === "interval") {
       let lines = budgetLines, vbs = visitBudgets, added = 0;
       const nextDevices = devices.map((d) => set.has(d.id) ? { ...d, serviceIntervalMonths: value, repeatMode: "interval" } : d);
       nextDevices.filter((d) => set.has(d.id)).forEach((d) => { const r = rebuildPlan(d, lines, vbs); lines = r.lines; vbs = r.vbs; added += r.added; });
       persist.devices(nextDevices); persist.budgetLines(lines); persist.visitBudgets(vbs);
       logActivity(`Set ${ids.length} services to every ${value} month${value === 1 ? "" : "s"}`);
-      showToast(`${ids.length} services now every ${value} month${value === 1 ? "" : "s"}`, `${added} planned visits in the budget (next 12 months)`);
+      showToast(`${ids.length} services now every ${value} month${value === 1 ? "" : "s"}`, `${added} planned visits in the budget (through ${new Date().getFullYear() + 1})`);
     } else if (action === "budget") {
       let lines = budgetLines, vbs = visitBudgets, added = 0;
       const nextDevices = devices.map((d) => set.has(d.id) ? { ...d, budgetPerVisit: value } : d);
@@ -1303,7 +1341,7 @@ export function MainApp() {
       showToast(`${ids.length} service${ids.length === 1 ? "" : "s"} paused until ${fmtDate(until)}`, names.join(", ").slice(0, 200));
     } else if (action === "resume") {
       const today = new Date().toISOString().slice(0, 10);
-      persist.devices(devices.map((d) => set.has(d.id) ? { ...d, pausedUntil: null, nextServiceDate: d.nextServiceDate && d.nextServiceDate > today ? today : d.nextServiceDate } : d));
+      persist.devices(devices.map((d) => set.has(d.id) ? { ...d, pausedUntil: null, nextServiceDate: d.nextServiceDate && d.nextServiceDate > today ? today : d.nextServiceDate } : d)); queuePlanCheck(ids);
       showToast("Service resumed", names.join(", ").slice(0, 200));
     } else if (action === "area") {
       persist.devices(devices.map((d) => set.has(d.id) ? { ...d, area: value } : d));
@@ -1311,7 +1349,7 @@ export function MainApp() {
     } else if (action === "archive") {
       const today = new Date().toISOString().slice(0, 10);
       withUndo(() => {
-        persist.devices(devices.map((d) => set.has(d.id) ? { ...d, archived: true, archivedAt: new Date().toISOString(), archivedBy: currentUser?.name, nextServiceDate: null } : d));
+        persist.devices(devices.map((d) => set.has(d.id) ? { ...d, archived: true, archivedAt: new Date().toISOString(), archivedBy: currentUser?.name, archivedNextDue: d.nextServiceDate || d.archivedNextDue || null, nextServiceDate: null } : d));
         persist.visitBudgets(visitBudgets.filter((v) => !(set.has(v.deviceId) && v.date >= today)));
         persist.budgetLines(budgetLines.filter((l) => !(set.has(l.deviceId) && l.actualAmount == null && l.date >= today)));
         showToast(`${ids.length} services archived`, names.join(", ").slice(0, 200));
@@ -1381,7 +1419,7 @@ export function MainApp() {
     const dev = deviceById[id]; if (!dev) return;
     const today = new Date().toISOString().slice(0, 10);
     withUndo(() => {
-      persist.devices(devices.map((d) => d.id === id ? { ...d, archived: true, archivedAt: new Date().toISOString(), archivedBy: currentUser?.name, nextServiceDate: null } : d));
+      persist.devices(devices.map((d) => d.id === id ? { ...d, archived: true, archivedAt: new Date().toISOString(), archivedBy: currentUser?.name, archivedNextDue: d.nextServiceDate || d.archivedNextDue || null, nextServiceDate: null } : d));
       // Drop future planned visits and unrecorded budget lines — nothing more will be spent on it.
       persist.visitBudgets(visitBudgets.filter((v) => !(v.deviceId === id && v.date >= today)));
       persist.budgetLines(budgetLines.filter((l) => !(l.deviceId === id && l.actualAmount == null && l.date >= today)));
@@ -1390,11 +1428,28 @@ export function MainApp() {
     setDeviceModal(null);
   }
   function restoreDevice(id) {
-    persist.devices(devices.map((d) => d.id === id ? { ...d, archived: false, archivedAt: null, archivedBy: null } : d));
-    showToast("Service restored — edit it to set the next due date", deviceById[id]?.name);
+    const dev = deviceById[id]; const today = new Date().toISOString().slice(0, 10);
+    // Bring back the due date it had when archived; if that's passed, move on to its next occurrence.
+    let due = dev?.nextServiceDate || dev?.archivedNextDue || null;
+    if (due && due < today && dev) { const n = nextDueAfter({ ...dev, nextServiceDate: due }, addDays(today, -1), due); due = n || today; }
+    persist.devices(devices.map((d) => d.id === id ? { ...d, archived: false, archivedAt: null, archivedBy: null, nextServiceDate: due, archivedNextDue: null } : d)); queuePlanCheck([id]);
+    showToast(due ? `Service restored — next visit ${fmtDate(due)}` : "Service restored — edit it to set the next due date", dev?.name);
+  }
+  // A booked visit's budget sits in the month it's booked for. The planned line keeps its original date in
+  // plannedFor, so the schedule still recognises it, and it goes back there if the booking is cleared.
+  function linesAfterBooking(lines, deviceId, due, bookedDate) {
+    if (!due) return null;
+    const t = (x) => new Date(x + "T00:00:00").getTime();
+    const open = lines.filter((l) => l.deviceId === deviceId && l.actualAmount == null && !l.actualServiceId && l.status !== "skipped" && Math.abs(t(l.plannedFor || l.date) - t(due)) <= 45 * 864e5);
+    if (!open.length) return null;
+    const line = open.sort((a, b) => Math.abs(t(a.plannedFor || a.date) - t(due)) - Math.abs(t(b.plannedFor || b.date) - t(due)))[0];
+    if (bookedDate) { if (line.date === bookedDate) return null; return lines.map((l) => (l.id === line.id ? { ...l, date: bookedDate, plannedFor: l.plannedFor || l.date } : l)); }
+    if (!line.plannedFor) return null;
+    return lines.map((l) => { if (l.id !== line.id) return l; const { plannedFor, ...rest } = l; return { ...rest, date: plannedFor }; });
   }
   function saveBooking(id, booking) {
     const dev = deviceById[id]; if (!dev) return;
+    { const nl = linesAfterBooking(budgetLines, id, dev.booking?.forDue || dev.nextServiceDate, booking?.date || null); if (nl) persist.budgetLines(nl); }
     persist.devices(devices.map((d) => d.id === id ? { ...d, booking: booking ? { ...booking, forDue: d.nextServiceDate, by: currentUser?.name, at: new Date().toISOString() } : null } : d));
     showToast(booking ? (booking.status === "confirmed" ? "Visit confirmed" : "Visit booked") : "Booking cleared", `${dev.name}${booking?.date ? ` — ${fmtDate(booking.date)}${booking.time ? ` ${booking.time}` : ""}` : ""}`);
   }
@@ -1493,6 +1548,8 @@ export function MainApp() {
     setShowLocationPicker(false);
   }
   function saveDevice(device) {
+    if (Number(device.upliftPct) > 0 && Number(device.upliftMonth) > 0) { const prev = deviceById[device.id]; if (!prev || prev.upliftPct !== device.upliftPct || prev.upliftMonth !== device.upliftMonth || !prev.lastUpliftOn) { const t0 = new Date().toISOString().slice(0, 10); const r = `${t0.slice(0, 4)}-${String(device.upliftMonth).padStart(2, "0")}-01`; device = { ...device, lastUpliftOn: r <= t0 ? r : `${Number(t0.slice(0, 4)) - 1}-${String(device.upliftMonth).padStart(2, "0")}-01` }; } }
+    if (device.nextServiceDate && (!device.id || deviceById[device.id]?.nextServiceDate !== device.nextServiceDate)) device = { ...device, dueDay: Number(String(device.nextServiceDate).slice(8, 10)) || null };
     const isEdit = !!device.id;
     const { scheduleDates: rawDates, ...deviceFields } = device;
     // New schedules are moved out of blackout periods (and weekends, if that's switched on).
@@ -1505,21 +1562,22 @@ export function MainApp() {
       // Keep the Budget in step with the service: budget, schedule, name, category and supplier.
       const after = { ...before, ...deviceFields, id: device.id };
       const newAmt = Number(after.budgetPerVisit) || 0; const oldAmt = Number(before.budgetPerVisit) || 0;
-      const scheduleChanged = (Number(after.serviceIntervalMonths) || 0) !== (Number(before.serviceIntervalMonths) || 0) || (after.nextServiceDate || "") !== (before.nextServiceDate || "");
+      const scheduleChanged = (Number(after.serviceIntervalMonths) || 0) !== (Number(before.serviceIntervalMonths) || 0) || (after.nextServiceDate || "") !== (before.nextServiceDate || "") || (Number(after.upliftPct) || 0) !== (Number(before.upliftPct) || 0) || (Number(after.upliftMonth) || 0) !== (Number(before.upliftMonth) || 0);
       let note = "";
       if (newAmt !== oldAmt || (scheduleChanged && newAmt > 0)) {
         const r = rebuildPlan(after, budgetLines, visitBudgets);
         persist.budgetLines(r.lines); persist.visitBudgets(r.vbs);
-        note = newAmt === 0 ? `Budget removed — ${r.removed} planned visit${r.removed === 1 ? "" : "s"} taken out of the budget` : `${r.added} planned visit${r.added === 1 ? "" : "s"} at ${gbp(newAmt)} in the budget (next 12 months)`;
-      } else if (["name", "serviceCategory", "subCategory", "supplierId"].some((k) => (after[k] || "") !== (before[k] || ""))) {
+        note = newAmt === 0 ? `Budget removed — ${r.removed} planned visit${r.removed === 1 ? "" : "s"} taken out of the budget` : `${r.added} planned visit${r.added === 1 ? "" : "s"} at ${gbp(newAmt)} in the budget (through ${new Date().getFullYear() + 1})`;
+      } else if (["name", "serviceCategory", "subCategory", "supplierId", "locationId"].some((k) => (after[k] || "") !== (before[k] || ""))) {
         const today = new Date().toISOString().slice(0, 10);
-        persist.budgetLines(budgetLines.map((l) => (l.deviceId === device.id && l.date >= today && l.actualAmount == null ? { ...l, description: after.name, category: after.serviceCategory || l.category, subCategory: after.subCategory || "", supplierId: after.supplierId || null } : l)));
+        persist.budgetLines(budgetLines.map((l) => (l.deviceId === device.id && l.date >= today && l.actualAmount == null ? { ...l, description: after.name, category: after.serviceCategory || l.category, subCategory: after.subCategory || "", supplierId: after.supplierId || null, locationId: after.locationId || l.locationId } : l)));
       }
+      queuePlanCheck([device.id]);
       showToast("Service updated", note || device.name);
       return;
     }
     const newId = uid();
-    persist.devices([...devices, { ...deviceFields, id: newId }]);
+    persist.devices([...devices, { ...deviceFields, id: newId }]); queuePlanCheck([newId]);
     // A repeat schedule was chosen — create matching visit budgets and Budget
     // Plan lines for each date, so the service and Budget tab stay linked.
     if (scheduleDates && scheduleDates.length > 0 && deviceFields.budgetPerVisit) {
@@ -1570,12 +1628,25 @@ export function MainApp() {
     return [...new Set(visitBudgets.filter((v) => v.deviceId === deviceId).map((v) => v.date))].sort();
   }
   // The due date that comes after `anchor`: next planned date, else step the repeat interval, else none.
+  // Weekly / "N times a year" services repeat every N days. Older ones didn't store that, so work it out from their visit dates.
+  function stepDaysFor(dev) {
+    if (Number(dev.serviceIntervalMonths) > 0) return 0;
+    if (Number(dev.repeatEveryDays) > 0) return Number(dev.repeatEveryDays);
+    const ds = plannedDatesFor(dev.id); if (ds.length < 3) return 0;
+    const gaps = ds.slice(1).map((d, i) => Math.round((new Date(d + "T12:00:00") - new Date(ds[i] + "T12:00:00")) / 864e5)).sort((a, b) => a - b);
+    const med = gaps[Math.floor(gaps.length / 2)];
+    if (!(med >= 5 && med <= 120)) return 0;
+    return gaps.filter((g) => Math.abs(g - med) <= 3).length >= gaps.length * 0.8 ? med : 0;
+  }
+  // Plan far enough ahead that next year's budget is complete (Budget → Tools can change this).
+  const planHorizonEnd = () => { const h = settings.planHorizon || "nextYear"; const t0 = new Date().toISOString().slice(0, 10); return h === "12" ? addMonths(t0, 12) : h === "24" ? addMonths(t0, 24) : `${new Date().getFullYear() + 1}-12-31`; };
   function nextDueAfter(dev, anchor, fromDue) {
     const planned = plannedDatesFor(dev.id).filter((d) => d > anchor);
     if (planned.length) return planned[0];
+    { const sd = stepDaysFor(dev); if (sd && fromDue) { let d = fromDue; let g = 0; do { d = addDays(d, sd); } while (d <= anchor && g++ < 2000); return shiftFor(dev.locationId, d); } }
     if (dev.serviceIntervalMonths && fromDue) {
-      let d = fromDue;
-      do { d = addMonths(d, dev.serviceIntervalMonths); } while (d <= anchor);
+      const day = Number(dev.dueDay) || Number(String(fromDue).slice(8, 10)); let k = 0, d = fromDue;
+      do { k++; d = addMonths(fromDue, k * dev.serviceIntervalMonths, day); } while (d <= anchor && k < 600);
       return shiftFor(dev.locationId, d);
     }
     return null;
@@ -1586,7 +1657,7 @@ export function MainApp() {
     const dev = deviceById[deviceId];
     if (!dev) return null;
     const due = dev.nextServiceDate || visitDate;
-    const twoWeeksBefore = (() => { const x = new Date(visitDate + "T00:00:00"); x.setDate(x.getDate() - 14); return x.toISOString().slice(0, 10); })();
+    const twoWeeksBefore = addDays(visitDate, -14);
     const anchor = due > twoWeeksBefore ? due : twoWeeksBefore; // a very late visit also covers occurrences it overlapped
     const next = override || nextDueAfter(dev, anchor, due);
     const lastDate = updatedServices.filter((s) => s.deviceId === deviceId && s.date).reduce((m, s) => (s.date > m ? s.date : m), visitDate);
@@ -1606,7 +1677,7 @@ export function MainApp() {
     const lastDate = forDevice.reduce((max, s) => (s.date > max ? s.date : max), forDevice[0].date);
     const planned = plannedDatesFor(deviceId);
     let covered = null; // the planned occurrence the latest visit most plausibly fulfilled: the last one on or before visit+14d
-    const plus14 = (() => { const x = new Date(lastDate + "T00:00:00"); x.setDate(x.getDate() + 14); return x.toISOString().slice(0, 10); })();
+    const plus14 = addDays(lastDate, 14);
     planned.forEach((d) => { if (d <= plus14) covered = d; });
     const next = covered ? nextDueAfter(dev, covered, covered) : (dev.serviceIntervalMonths ? addMonths(lastDate, dev.serviceIntervalMonths) : null);
     persist.devices(devices.map((d) => d.id === deviceId ? { ...d, lastServiceDate: lastDate, nextServiceDate: next } : d));
@@ -1618,22 +1689,64 @@ export function MainApp() {
   // Planned visit dates for a service between two dates: from its interval, or from its own schedule if it has no interval.
   function scheduleDatesFor(dev, from, to) {
     const step = Number(dev.serviceIntervalMonths) || 0;
+    if (!step && stepDaysFor(dev)) {
+      const sd = stepDaysFor(dev); const known = plannedDatesFor(dev.id).concat(dev.nextServiceDate ? [dev.nextServiceDate] : []).sort();
+      const out = known.filter((d) => d >= from && d <= to); let dt = known[known.length - 1]; let g = 0;
+      while (dt && (dt = addDays(dt, sd)) <= to && g++ < 400) if (dt >= from) out.push(shiftFor(dev.locationId, dt));
+      return [...new Set(out)].sort();
+    }
     if (!step) return [...new Set(visitBudgets.filter((v) => v.deviceId === dev.id && v.date >= from && v.date <= to).map((v) => v.date).concat(dev.nextServiceDate && dev.nextServiceDate >= from && dev.nextServiceDate <= to ? [dev.nextServiceDate] : []))].sort();
-    let dt = dev.nextServiceDate; if (!dt) return [];
-    let guard = 0; while (dt < from && guard++ < 400) dt = addMonths(dt, step);
-    const out = []; while (dt <= to && out.length < 60) { out.push(shiftFor(dev.locationId, dt)); dt = addMonths(dt, step); }
+    const base = dev.nextServiceDate; if (!base) return [];
+    const day = Number(dev.dueDay) || Number(base.slice(8, 10)); let k = 0, dt = base;
+    while (dt < from && k < 600) { k++; dt = addMonths(base, k * step, day); }
+    const out = []; while (dt <= to && out.length < 60) { out.push(shiftFor(dev.locationId, dt)); k++; dt = addMonths(base, k * step, day); }
     return [...new Set(out)];
   }
-  const planLineFor = (dev, date, amount) => ({ id: uid(), locationId: dev.locationId, deviceId: dev.id, category: dev.serviceCategory || "maintenance", subCategory: dev.subCategory || "", supplierId: dev.supplierId || null, description: dev.name, date, amount, status: "planned", addedBy: currentUser?.name, auto: true });
+  // Annual price rise: count the rise dates (1st of the chosen month) after today and up to the visit date.
+  const upliftedAmount = (dev, date, amount) => {
+    const p = Number(dev.upliftPct) || 0, m = Number(dev.upliftMonth) || 0; if (!(p > 0) || !m || !date) return amount;
+    const today = new Date().toISOString().slice(0, 10); let n = 0;
+    for (let y = Number(today.slice(0, 4)); y <= Number(String(date).slice(0, 4)); y++) { const r = `${y}-${String(m).padStart(2, "0")}-01`; if (r > today && r <= date) n++; }
+    return n ? Math.round(amount * Math.pow(1 + p / 100, n) * 100) / 100 : amount;
+  };
+  const planLineFor = (dev, date, amount) => ({ id: uid(), locationId: dev.locationId, deviceId: dev.id, category: dev.serviceCategory || "maintenance", subCategory: dev.subCategory || "", supplierId: dev.supplierId || null, description: dev.name, date, amount: upliftedAmount(dev, date, amount), status: "planned", addedBy: currentUser?.name, auto: true });
   // Replace a service's future, not-yet-spent planned visits with ones that match its current schedule and budget.
   function rebuildPlan(dev, lines, vbs, horizonMonths = 12) {
     const today = new Date().toISOString().slice(0, 10); const amount = Number(dev.budgetPerVisit) || 0;
     const keep = lines.filter((l) => !(l.deviceId === dev.id && l.date >= today && l.actualAmount == null && l.status !== "skipped"));
     const removed = lines.length - keep.length;
-    const dates = amount > 0 && !dev.archived ? scheduleDatesFor(dev, today, addMonths(today, horizonMonths)) : [];
-    const manual = !(Number(dev.serviceIntervalMonths) || 0);
+    const dates = amount > 0 && !dev.archived ? scheduleDatesFor(dev, today, horizonMonths === 12 ? planHorizonEnd() : addMonths(today, horizonMonths)) : [];
+    const manual = !(Number(dev.serviceIntervalMonths) || 0) && !stepDaysFor(dev);
     const nextVbs = manual ? vbs.map((v) => (v.deviceId === dev.id && v.date >= today ? { ...v, amount } : v)) : [...vbs.filter((v) => !(v.deviceId === dev.id && v.date >= today)), ...dates.map((date) => ({ id: uid(), deviceId: dev.id, date, amount }))];
-    return { lines: [...keep, ...dates.map((d) => planLineFor(dev, d, amount))], vbs: nextVbs, added: dates.length, removed };
+    let out = [...keep, ...dates.map((d) => planLineFor(dev, d, amount))];
+    // keep a current booking's month: move the rebuilt visit for that due date to the booked date again
+    if (dev.booking?.date && (dev.booking.forDue || dev.nextServiceDate)) { const moved = linesAfterBooking(out, dev.id, dev.booking.forDue || dev.nextServiceDate, dev.booking.date); if (moved) out = moved; }
+    return { lines: out, vbs: nextVbs, added: dates.length, removed };
+  }
+  // Keep a service's planned visits following its schedule: drop future planned visits the schedule has moved past,
+  // and add every scheduled visit up to the end of next year. Spent, skipped and visit-linked lines are never touched.
+  function alignPlan(dev, lines, vbs) {
+    const today = new Date().toISOString().slice(0, 10); const amount = Number(dev.budgetPerVisit) || 0;
+    const none = { lines, vbs, added: 0, removed: 0 };
+    if (!(amount > 0) || dev.archived || (dev.pausedUntil && dev.pausedUntil > today) || !dev.nextServiceDate) return none;
+    const interval = Number(dev.serviceIntervalMonths) || 0; const sd = stepDaysFor(dev);
+    if (!interval && !sd) { // one-off or hand-picked dates: only make sure the next visit has a planned line
+      const t0 = (x) => new Date(x + "T00:00:00").getTime();
+      if (dev.nextServiceDate < today || lines.some((l) => l.deviceId === dev.id && Math.abs(t0(l.date) - t0(dev.nextServiceDate)) <= 14 * 864e5)) return none;
+      return { lines: [...lines, planLineFor(dev, dev.nextServiceDate, amount)], vbs: vbs.some((v) => v.deviceId === dev.id && v.date === dev.nextServiceDate) ? vbs : [...vbs, { id: uid(), deviceId: dev.id, date: dev.nextServiceDate, amount }], added: 1, removed: 0 };
+    }
+    const tol = (sd ? Math.max(2, Math.floor(sd / 2)) : 14) * 864e5; const t = (x) => new Date(x + "T00:00:00").getTime();
+    const cutoff = t(dev.nextServiceDate) - tol; let removed = 0;
+    const stale = (l) => l.deviceId === dev.id && l.actualAmount == null && !l.actualServiceId && l.status !== "skipped" && !l.plannedFor && l.date >= today && t(l.date) < cutoff;
+    let nextLines = lines.filter((l) => { if (stale(l)) { removed++; return false; } return true; });
+    let nextVbs = vbs.filter((v) => !(v.deviceId === dev.id && v.date >= today && t(v.date) < cutoff));
+    const mine = nextLines.filter((l) => l.deviceId === dev.id);
+    const fresh = scheduleDatesFor(dev, today, planHorizonEnd()).filter((d) => t(d) >= cutoff && !mine.some((l) => Math.abs(t(l.plannedFor || l.date) - t(d)) <= tol));
+    nextLines = [...nextLines, ...fresh.map((d) => planLineFor(dev, d, amount))];
+    // Weekly / every-N-days services keep their dates as visit records, so add those too. Interval services follow
+    // their interval — adding records there would make the next-due date skip ahead.
+    if (!interval) nextVbs = [...nextVbs, ...fresh.filter((d) => !nextVbs.some((v) => v.deviceId === dev.id && v.date === d)).map((date) => ({ id: uid(), deviceId: dev.id, date, amount }))];
+    return { lines: nextLines, vbs: nextVbs, added: fresh.length, removed };
   }
   // Add planned visits only where none exist (within 2 weeks) — never removes anything.
   function topUpPlan(dev, lines, horizonMonths = 12) {
@@ -1641,7 +1754,8 @@ export function MainApp() {
     if (!(amount > 0) || dev.archived) return { lines, added: 0 };
     const t = (x) => new Date(x + "T00:00:00").getTime();
     const mine = lines.filter((l) => l.deviceId === dev.id);
-    const fresh = scheduleDatesFor(dev, today, addMonths(today, horizonMonths)).filter((d) => !mine.some((l) => Math.abs(t(l.date) - t(d)) <= 14 * 86400000)).map((d) => planLineFor(dev, d, amount));
+    const tol = stepDaysFor(dev) ? Math.max(2, Math.floor(stepDaysFor(dev) / 2)) : 14;
+    const fresh = scheduleDatesFor(dev, today, horizonMonths === 12 ? planHorizonEnd() : addMonths(today, horizonMonths)).filter((d) => !mine.some((l) => Math.abs(t(l.plannedFor || l.date) - t(d)) <= tol * 86400000)).map((d) => planLineFor(dev, d, amount));
     return { lines: [...lines, ...fresh], added: fresh.length };
   }
   function planVisitsForServices(ids, horizonMonths = 12) {
@@ -1676,6 +1790,7 @@ export function MainApp() {
     persist.budgetLines(budgetLines.map((l) => l.id === target.id ? { ...l, actualAmount: Number(visitCost), actualDate: visitDate, status: "completed", actualSource: "visit", actualServiceId: visitId || null } : l));
   }
   function saveService(record) {
+    queuePlanCheck([record.deviceId]);
     const isEdit = !!record.id;
     const visitId = isEdit ? record.id : uid();
     let next;
@@ -1738,6 +1853,7 @@ export function MainApp() {
   }
   function deleteService(id, deviceId) { withUndo(() => deleteServiceInner(id, deviceId)); }
   function deleteServiceInner(id, deviceId) {
+    queuePlanCheck([deviceId]);
     const next = services.filter((s) => s.id !== id);
     persist.services(next);
     recomputeSchedule(deviceId, next);
@@ -1776,6 +1892,7 @@ export function MainApp() {
       checklist: [], serviceIntervalMonths: null, nextServiceDate: new Date().toISOString().slice(0, 10), lastServiceDate: null,
       budgetPerVisit: Number(work.quoteAmount) || 0, sourceWorkId: work.id,
     }]);
+    queuePlanCheck([newId]);
     persist.works(works.map((w) => w.id === work.id ? { ...w, convertedTo: [...(w.convertedTo || []), { type: "service", id: newId, at: new Date().toISOString(), by: currentUser?.name }] } : w));
     showToast("New service created — edit it to set its schedule");
   }
@@ -2353,6 +2470,7 @@ export function MainApp() {
                 expectedToday={todayItems.bookings} onSignOutAll={signOutAll} locationId={selectedLocationId}
                 complianceMonthAgo={complianceMonthAgo}
                 onTvMode={() => setShowTv(true)} onEmergencySheet={printEmergencySheet} onTodaySheet={printTodaySheet} onSnoozeReminder={snoozeReminder}
+                monthBudget={(() => { const ym = new Date().toISOString().slice(0, 7); const planned = locBudgetLines.filter((l) => String(l.date).startsWith(ym) && l.status !== "skipped").reduce((a, l) => a + (Number(l.amount) || 0), 0); const spent = locServices.filter((v) => String(v.date).startsWith(ym)).reduce((a, v) => a + (Number(v.cost) || 0), 0) + locWorks.filter((w) => w.status === "completed" && !w.warranty && String(w.completedAt || "").startsWith(ym)).reduce((a, w) => a + (Number(w.finalCost ?? w.quoteAmount) || 0), 0); return { planned, spent, label: new Date().toLocaleDateString("en-GB", { month: "long" }) + " budget", go: () => setTab("budget") }; })()}
                 handover={(settings.handover || []).filter((h) => h.locationId === selectedLocationId)} onAddHandover={ACTIVE_CAN_EDIT ? addHandover : null}
                 waitingOnMe={[
                   [locPOs.filter((p) => p.status === "awaiting").length, "POs to approve", () => { setTab("budget"); saveNav({ budgetView: "finance" }); }],
@@ -2401,7 +2519,7 @@ export function MainApp() {
                 onGo={(t) => t === "alerts" ? setShowAlerts(true) : setTab(t)} onOpenDevice={setHistoryFor} />
             )}
             {tab === "devices" && (
-              <DevicesTab lastVisitByDevice={(() => { const m = {}; locServices.forEach((v) => { if (v.skipped || v.aborted) return; if (!m[v.deviceId] || String(v.date) > String(m[v.deviceId].date)) m[v.deviceId] = v; }); return m; })()} onCopySite={locations.length > 1 ? () => setShowCopySite(true) : null} spares={locSpares} onBookTogether={() => setBookTogether(true)} history={locServices} onRemindAll={recordChase} onChaseAll={recordChase} allSupplierList={locSuppliers} locationName={locationLabel({ locationId: selectedLocationId })} pinned={pinnedIds} onTogglePin={togglePin} onDataHealth={() => setShowHealth(true)} onLibrary={() => setShowLibrary(true)} faultsByDevice={faultsByDevice} onImport={() => setShowImport(true)} allLocations={locations.filter((l) => l.id !== selectedLocationId).map((l) => ({ id: l.id, label: `${countryById[l.countryId]?.name || ""} · ${l.name}` }))} onCopyTo={copyDevicesToLocation} onBulkUpdate={bulkUpdateDevices} allSuppliers={locSuppliers} archivedDevices={locArchivedDevices} onRestore={restoreDevice} onBulkLog={bulkLogVisits} onBook={saveBooking} prefs={listPrefs} onPrefs={(patch) => setListPrefs((p) => ({ ...p, ...patch }))} devices={searchAllLocations ? globalFilteredDevices : filteredDevices} search={search} setSearch={setSearch}
+              <DevicesTab plannedLines={locBudgetLines.filter((l) => l.deviceId && l.actualAmount == null && !l.actualServiceId && l.status !== "skipped" && l.date >= new Date().toISOString().slice(0, 10))} yearByDevice={(() => { const y = String(new Date().getFullYear()); const t0 = new Date().toISOString().slice(0, 10); const m = {}; locServices.forEach((v) => { if (String(v.date).startsWith(y) && Number(v.cost) > 0) { const e = (m[v.deviceId] = m[v.deviceId] || { spent: 0, planned: 0, spentPlanned: 0 }); e.spent += Number(v.cost); } }); budgetLines.forEach((l) => { if (!l.deviceId || !String(l.date).startsWith(y) || l.status === "skipped") return; const e = (m[l.deviceId] = m[l.deviceId] || { spent: 0, planned: 0, spentPlanned: 0 }); if (l.actualAmount == null && !l.actualServiceId) { if (l.date >= t0) e.planned += Number(l.amount) || 0; } else e.spentPlanned += Number(l.amount) || 0; }); return m; })()} lastVisitByDevice={(() => { const m = {}; locServices.forEach((v) => { if (v.skipped || v.aborted) return; if (!m[v.deviceId] || String(v.date) > String(m[v.deviceId].date)) m[v.deviceId] = v; }); return m; })()} onCopySite={locations.length > 1 ? () => setShowCopySite(true) : null} spares={locSpares} onBookTogether={() => setBookTogether(true)} history={locServices} onRemindAll={recordChase} onChaseAll={recordChase} allSupplierList={locSuppliers} locationName={locationLabel({ locationId: selectedLocationId })} pinned={pinnedIds} onTogglePin={togglePin} onDataHealth={() => setShowHealth(true)} onLibrary={() => setShowLibrary(true)} faultsByDevice={faultsByDevice} onImport={() => setShowImport(true)} allLocations={locations.filter((l) => l.id !== selectedLocationId).map((l) => ({ id: l.id, label: `${countryById[l.countryId]?.name || ""} · ${l.name}` }))} onCopyTo={copyDevicesToLocation} onBulkUpdate={bulkUpdateDevices} allSuppliers={locSuppliers} archivedDevices={locArchivedDevices} onRestore={restoreDevice} onBulkLog={bulkLogVisits} onBook={saveBooking} prefs={listPrefs} onPrefs={(patch) => setListPrefs((p) => ({ ...p, ...patch }))} devices={searchAllLocations ? globalFilteredDevices : filteredDevices} search={search} setSearch={setSearch}
                 onAdd={() => setDeviceModal({})} onEdit={(record) => setDeviceModal({ record })}
                 onLogService={(id) => setServiceModal({ deviceId: id })} onAddWork={setAddWorkFor}
                 onDelete={deleteDevice} onHistory={setHistoryFor}
@@ -2434,14 +2552,14 @@ export function MainApp() {
               <ProjectsView projects={locProjects} devices={locDevices} suppliers={locSuppliers} onSave={saveProject} onDelete={deleteProject} />
             )}
             {tab === "works" && worksView === "reactive" && (
-              <WorksTab initialOpenId={openJobOnLoad} onDuplicateWork={duplicateWork} onInvoiceFromWork={invoiceFromWork} onPoFromWork={poFromWork} onImportWorks={importWorks} spares={locSpares} onUseSpare={useSpareOnWork} onLogChase={logWorkChase} onRepeat={(w) => { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }} invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={convertWorkToProject} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
+              <WorksTab budgetByCat={Object.fromEntries(budgetModel({ year: new Date().getFullYear(), budgets: locBudgets, services: locServices, works: locWorks, suppliers: locSuppliers, devices: locDevices, budgetLines: locBudgetLines, costLines: costLines.filter((l) => l.locationId === selectedLocationId), bs: budgetSettingsFor() }).rows.map((r) => [r.cat, { budget: r.budget, forecast: r.forecast, label: CATEGORY_META[r.cat]?.label || r.cat }]))} initialOpenId={openJobOnLoad} onDuplicateWork={duplicateWork} onInvoiceFromWork={invoiceFromWork} onPoFromWork={poFromWork} onImportWorks={importWorks} spares={locSpares} onUseSpare={useSpareOnWork} onLogChase={logWorkChase} onRepeat={(w) => { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }} invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={convertWorkToProject} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
                 onUpdate={updateWork} onDelete={deleteWork} currentUserName={currentUser?.name}
                 approvalThreshold={Number(settings.approvalThreshold) || 0} onSetThreshold={(v) => { persist.settings({ ...settings, approvalThreshold: v }); showToast("Approval rule saved"); }}
                 onConvertToPlan={convertWorkToPlanLine} onConvertToService={convertWorkToService}
                 onAdd={() => startJob()} hasDevices />
             )}
             {tab === "suppliers" && (
-              <SuppliersTab onPortal={supplierPortal} onBulkEmail={() => setShowBulkEmail(true)} onImport={importSuppliers} packData={{ devices: locDevices, services: locServices, works: locWorks, invoices: locInvoices }} locationName={locationLabel({ locationId: selectedLocationId })} onFollowUpDone={setContactFollowUpDone} invoices={locInvoices} userName={currentUser?.name} onAddContact={addSupplierContact} onMerge={mergeSuppliers} suppliers={locSuppliers} onAdd={() => setSupplierModal({})} onEdit={(record) => setSupplierModal({ record })} onDelete={deleteSupplier}
+              <SuppliersTab onApplyUplift={ACTIVE_CAN_EDIT ? (s) => { const ids = locDevices.filter((d) => d.supplierId === s.id && !d.archived && Number(d.budgetPerVisit) > 0).map((d) => d.id); const month = s.contractEnd ? Number(String(addDays(s.contractEnd, 1)).slice(5, 7)) : 4; bulkUpdateDevices(ids, "uplift", { pct: Number(s.upliftPct), month }); } : null} onPortal={supplierPortal} onBulkEmail={() => setShowBulkEmail(true)} onImport={importSuppliers} packData={{ devices: locDevices, services: locServices, works: locWorks, invoices: locInvoices }} locationName={locationLabel({ locationId: selectedLocationId })} onFollowUpDone={setContactFollowUpDone} invoices={locInvoices} userName={currentUser?.name} onAddContact={addSupplierContact} onMerge={mergeSuppliers} suppliers={locSuppliers} onAdd={() => setSupplierModal({})} onEdit={(record) => setSupplierModal({ record })} onDelete={deleteSupplier}
                 devices={locDevices} services={locServices} works={locWorks} budgetLines={locBudgetLines} visitBudgets={locVisitBudgets} />
             )}
             {tab === "budget" && (
@@ -2461,7 +2579,11 @@ export function MainApp() {
                   thin: locDevices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0 && Number(d.serviceIntervalMonths) > 0 && d.nextServiceDate && locBudgetLines.some((l) => l.deviceId === d.id && l.date >= today) && !locBudgetLines.some((l) => l.deviceId === d.id && l.date >= addMonths(today, 9))),
                   yearly: locDevices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0 && Number(d.serviceIntervalMonths) >= 12),
                   noBudget: locDevices.filter((d) => !d.archived && !Number(d.budgetPerVisit) && services.some((v) => v.deviceId === d.id && Number(v.cost) > 0)),
-                  onPlan: (ids, months) => planVisitsForServices(ids, months), onRemoveOrphans: removeOrphanLines, onOpen: (id) => setHistoryFor(id) }; })()}
+                  onPlan: (ids, months) => planVisitsForServices(ids, months), onRemoveOrphans: removeOrphanLines, onOpen: (id) => setHistoryFor(id),
+                  onSkipLines: (ids) => { const set = new Set(ids); persist.budgetLines(budgetLines.map((l) => set.has(l.id) ? { ...l, status: "skipped", actualAmount: 0, skippedReason: "Didn't happen (released from Budget → Checks)" } : l)); showToast(`${ids.length} planned visit${ids.length === 1 ? "" : "s"} released`, "Their budget no longer counts towards the forecast"); },
+                  onRemoveLines: (ids) => { const set = new Set(ids); persist.budgetLines(budgetLines.filter((l) => !set.has(l.id))); showToast(`${ids.length} duplicate planned visit${ids.length === 1 ? "" : "s"} removed`); },
+                  planHorizon: settings.planHorizon || "nextYear", onSavePlanHorizon: (v) => { persist.settings({ ...settings, planHorizon: v }); queuePlanCheck(devices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0).map((d) => d.id)); showToast("Plan horizon saved", "Service plans are being updated"); },
+                  onCheckPlans: () => { queuePlanCheck(devices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0).map((d) => d.id)); setPlanCheckReport(true); } }; })()}
                 key={CATEGORY_KEYS.join("|")} onOpenService={(id) => setHistoryFor(id)} costLines={costLines.filter((l) => l.locationId === selectedLocationId)} onSaveCostLines={saveCostLines} onDeleteCostLine={deleteCostLine} onRecordInvoice={recordCostInvoice} invoices={locInvoices} pos={locPOs} savings={savings.filter((x) => x.locationId === selectedLocationId)}
                 floorArea={spaces.filter((s) => s.locationId === selectedLocationId).reduce((t, s) => t + (Number(s.areaM2) || 0), 0) || Number(((settings.siteInfo || {})[selectedLocationId] || {}).floorArea) || 0}
                 budgetSettings={(settings.budgetSettings || {})[selectedLocationId] || {}} onSaveBs={saveBudgetSettings} onMoveBudget={moveBudget} onSetBudgetsBulk={setBudgetsBulk}
@@ -2508,7 +2630,7 @@ export function MainApp() {
       {editLocation && <AddLocationModal existing={editLocation} countryId={editLocation.countryId} countries={countries} onClose={() => setEditLocation(null)} onSave={addLocation} onDelete={deleteLocation}
         canDelete={!devices.some((d) => d.locationId === editLocation.id) && !suppliers.some((s) => s.locationId === editLocation.id)} />}
       {deviceModal && (
-        <AddDeviceModal allTags={devices.map((d) => d.assetTag).filter(Boolean)} budgetHeadByCat={Object.fromEntries(budgetModel({ year: new Date().getFullYear(), budgets: locBudgets, services: locServices, works: locWorks, suppliers: locSuppliers, devices: locDevices, budgetLines: locBudgetLines, costLines: costLines.filter((l) => l.locationId === selectedLocationId), bs: (settings.budgetSettings || {})[selectedLocationId] || {} }).rows.map((r) => [r.cat, r]))} key={deviceModal.record?.id || (deviceModal.prefill ? `copy-${deviceModal.prefill.name}` : "new-device")}
+        <AddDeviceModal plannedCount={deviceModal?.record ? budgetLines.filter((l) => l.deviceId === deviceModal.record.id && l.actualAmount == null && !l.actualServiceId && l.status !== "skipped" && l.date >= new Date().toISOString().slice(0, 10)).length : 0} siblingNames={devices.filter((d) => !d.archived && d.locationId === selectedLocationId && d.id !== deviceModal?.record?.id).map((d) => d.name)} allTags={devices.map((d) => d.assetTag).filter(Boolean)} budgetHeadByCat={Object.fromEntries(budgetModel({ year: new Date().getFullYear(), budgets: locBudgets, services: locServices, works: locWorks, suppliers: locSuppliers, devices: locDevices, budgetLines: locBudgetLines, costLines: costLines.filter((l) => l.locationId === selectedLocationId), bs: (settings.budgetSettings || {})[selectedLocationId] || {} }).rows.map((r) => [r.cat, r]))} key={deviceModal.record?.id || (deviceModal.prefill ? `copy-${deviceModal.prefill.name}` : "new-device")}
           onPause={(id, until, drop) => { bulkUpdateDevices([id], "pause", { until, drop }); setDeviceModal(null); }}
           onResume={(id) => { bulkUpdateDevices([id], "resume"); setDeviceModal(null); }}
           onArchive={archiveDevice} prefill={deviceModal.prefill} onDuplicate={(dev) => { setDeviceModal(null); setTimeout(() => duplicateDevice(dev), 0); }} countries={countries} locations={locations} defaultLocationId={selectedLocationId}
@@ -2517,6 +2639,8 @@ export function MainApp() {
       )}
       {serviceModal && (
         <LogServiceModal key={serviceModal.record?.id || `new-${serviceModal.deviceId}`}
+          overspendPct={Number(budgetSettingsFor().overspendApprovalPct) || 0}
+          planLine={(() => { const rec = serviceModal.record; const mine = budgetLines.filter((l) => l.deviceId === serviceModal.deviceId && l.status !== "skipped"); if (rec?.id) return mine.find((l) => l.actualServiceId === rec.id) || null; const due = deviceById[serviceModal.deviceId]?.nextServiceDate; if (!due) return null; const t = (x) => new Date(x + "T00:00:00").getTime(); return mine.filter((l) => l.actualAmount == null && !l.actualServiceId && Math.abs(t(l.plannedFor || l.date) - t(due)) <= 45 * 864e5).sort((a, b) => Math.abs(t(a.plannedFor || a.date) - t(due)) - Math.abs(t(b.plannedFor || b.date) - t(due)))[0] || null; })()}
           spares={locSpares}
           onVerify={verifyVisit}
           lastVisit={locServices.filter((v) => v.deviceId === serviceModal.deviceId && !v.aborted && !v.skipped && v.id !== serviceModal.record?.id).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || null}
@@ -2526,7 +2650,7 @@ export function MainApp() {
           onClose={() => setServiceModal(null)} onSave={saveService} onDelete={deleteService} />
       )}
       {historyFor && (
-        <DeviceHistoryModal budgetInfo={(() => { const d = deviceById[historyFor]; if (!d) return null; const yr = String(new Date().getFullYear()); const today = new Date().toISOString().slice(0, 10); const ls = budgetLines.filter((l) => l.deviceId === d.id && String(l.date).startsWith(yr)); const spent = services.filter((v) => v.deviceId === d.id && String(v.date).startsWith(yr) && Number(v.cost)).reduce((t, v) => t + Number(v.cost), 0); const next = budgetLines.filter((l) => l.deviceId === d.id && l.date >= today && l.actualAmount == null && l.status !== "skipped").sort((a, b) => a.date.localeCompare(b.date)); return { planned: ls.filter((l) => l.status !== "skipped").reduce((t, l) => t + (Number(l.amount) || 0), 0), spent, skipped: ls.filter((l) => l.status === "skipped").length, future: next.length, next: next[0], perVisit: Number(d.budgetPerVisit) || 0 }; })()} onRebuildPlan={ACTIVE_CAN_EDIT ? () => rebuildServicePlan(historyFor) : null} changeLog={activity.filter((a) => deviceById[historyFor] && String(a.text).includes(deviceById[historyFor].name)).slice(0, 30)} spares={locSpares.filter((sp) => (sp.deviceIds || []).includes(historyFor))} onMerge={ACTIVE_CAN_EDIT ? () => setMergeFor(historyFor) : null} onRecordUsage={(h) => recordUsage(historyFor, h)} allDevices={locAllDevices} onOutOfService={(down, reason) => setOutOfService(historyFor, down, reason)} works={locWorks.filter((w) => w.deviceId === historyFor)} onAddNote={(text) => addDeviceNote(historyFor, text)} onDeleteNote={(nid) => deleteDeviceNote(historyFor, nid)} supplierById={supplierById} locationName={locationLabel({ locationId: deviceById[historyFor]?.locationId })} device={deviceById[historyFor]} services={services.filter((s) => s.deviceId === historyFor)}
+        <DeviceHistoryModal plannedLines={budgetLines.filter((l) => l.deviceId === historyFor && l.actualAmount == null && !l.actualServiceId && l.status !== "skipped" && l.date >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.date.localeCompare(b.date))} budgetInfo={(() => { const d = deviceById[historyFor]; if (!d) return null; const yr = String(new Date().getFullYear()); const today = new Date().toISOString().slice(0, 10); const ls = budgetLines.filter((l) => l.deviceId === d.id && String(l.date).startsWith(yr)); const spent = services.filter((v) => v.deviceId === d.id && String(v.date).startsWith(yr) && Number(v.cost)).reduce((t, v) => t + Number(v.cost), 0); const next = budgetLines.filter((l) => l.deviceId === d.id && l.date >= today && l.actualAmount == null && l.status !== "skipped").sort((a, b) => a.date.localeCompare(b.date)); return { planned: ls.filter((l) => l.status !== "skipped").reduce((t, l) => t + (Number(l.amount) || 0), 0), spent, skipped: ls.filter((l) => l.status === "skipped").length, future: next.length, next: next[0], perVisit: Number(d.budgetPerVisit) || 0 }; })()} onRebuildPlan={ACTIVE_CAN_EDIT ? () => rebuildServicePlan(historyFor) : null} changeLog={activity.filter((a) => deviceById[historyFor] && String(a.text).includes(deviceById[historyFor].name)).slice(0, 30)} spares={locSpares.filter((sp) => (sp.deviceIds || []).includes(historyFor))} onMerge={ACTIVE_CAN_EDIT ? () => setMergeFor(historyFor) : null} onRecordUsage={(h) => recordUsage(historyFor, h)} allDevices={locAllDevices} onOutOfService={(down, reason) => setOutOfService(historyFor, down, reason)} works={locWorks.filter((w) => w.deviceId === historyFor)} onAddNote={(text) => addDeviceNote(historyFor, text)} onDeleteNote={(nid) => deleteDeviceNote(historyFor, nid)} supplierById={supplierById} locationName={locationLabel({ locationId: deviceById[historyFor]?.locationId })} device={deviceById[historyFor]} services={services.filter((s) => s.deviceId === historyFor)}
           tasks={deviceTasks.filter((t) => t.deviceId === historyFor)}
           visitBudgets={visitBudgets.filter((v) => v.deviceId === historyFor)}
           onClose={() => setHistoryFor(null)}
@@ -2585,7 +2709,7 @@ export function MainApp() {
       )}
       {showAlerts && <AlertsModal onSnoozeAll={(keys) => snoozeMany(keys, 1)} snoozedCount={snoozedCount} onSnooze={snoozeAlert} onClearSnoozes={clearSnoozes} locationName={locationLabel({ locationId: selectedLocationId })} senderName={currentUser?.name} alerts={visibleAlerts} onClose={() => setShowAlerts(false)} onGo={(t) => { setTab(t); setShowAlerts(false); }} />}
       {showReports && <ReportsModal onClose={() => setShowReports(false)} locationName={locationLabel({ locationId: selectedLocationId })}
-        data={{ outlets: locOutlets, spaces: spaces.filter((x) => x.locationId === selectedLocationId), tenants: (locations.find((l) => l.id === selectedLocationId) || {}).tenants || [], feedback: feedback.filter((f) => f.locationId === selectedLocationId), meters: locMeters, readings: locReadings, invoices: locInvoices, savings: savings.filter((x) => x.locationId === selectedLocationId), waste: locWaste, portfolio: { locations, countries, devices, services, works, budgets, visitBudgets }, settingsFields: settings, incidents: locIncidents, audits: locAudits, signins: locSignins, faultsByDevice, deviceTasks: locDeviceTasks, devices: locDevices, services: locServices, works: locWorks, suppliers: locSuppliers, budgets: locBudgets, budgetLines: locBudgetLines, visitBudgets: locVisitBudgets, deviceById, supplierById }} />}
+        data={{ overspendPct: Number(budgetSettingsFor().overspendApprovalPct) || 0, outlets: locOutlets, spaces: spaces.filter((x) => x.locationId === selectedLocationId), tenants: (locations.find((l) => l.id === selectedLocationId) || {}).tenants || [], feedback: feedback.filter((f) => f.locationId === selectedLocationId), meters: locMeters, readings: locReadings, invoices: locInvoices, savings: savings.filter((x) => x.locationId === selectedLocationId), waste: locWaste, portfolio: { locations, countries, devices, services, works, budgets, visitBudgets }, settingsFields: settings, incidents: locIncidents, audits: locAudits, signins: locSignins, faultsByDevice, deviceTasks: locDeviceTasks, devices: locDevices, services: locServices, works: locWorks, suppliers: locSuppliers, budgets: locBudgets, budgetLines: locBudgetLines, visitBudgets: locVisitBudgets, deviceById, supplierById }} />}
       {supplierModal && (
         <AddSupplierModal key={supplierModal.record?.id || "new-supplier"} existing={supplierModal.record}
           subcategoriesByCategory={subcategoriesByCategory} onClose={() => setSupplierModal(null)}
