@@ -3,7 +3,7 @@ import { useState } from "react";
 import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, FileSpreadsheet, FolderKanban, Mail, Printer, Receipt, Repeat, Send, Siren, Square, Timer, Trash2, Upload, X } from "lucide-react";
 import { BudgetTypeTag, CategoryBadge, ConfirmTextDelete, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, PriorityTag, Select, TextArea, TextInput, ToggleButton, WorkStatusTag, inputStyle } from "../components/ui.jsx";
 import { PRIORITY_RANK, PROJECT_STATUSES, SLA_DAYS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
-import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_SLA, ACTIVE_USERS, siteInfoText } from "../lib/globals.js";
+import { ACTIVE_CAN_APPROVE, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_SLA, ACTIVE_USERS, siteInfoText } from "../lib/globals.js";
 import { addDays, appBaseUrl, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, parseDelimited, replacementYear, toISO, uid, workSla } from "../lib/utils.js";
 import { buildWorkOrderSheet, openPrintReport, tableHtml } from "../lib/reports.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
@@ -54,8 +54,8 @@ export function WorksTab({ budgetByCat = null, initialOpenId = null, onDuplicate
             <button onClick={() => { onSetThreshold?.(Number(thresholdDraft) || 0); setEditingThreshold(false); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 7, padding: "6px 10px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Save</button>
           </div>
         ) : (
-          <button onClick={() => ACTIVE_CAN_EDIT && setEditingThreshold(true)} style={{ background: "none", border: "none", padding: 0, fontSize: 11.5, color: "var(--muted)", cursor: ACTIVE_CAN_EDIT ? "pointer" : "default", fontFamily: "inherit", textAlign: "left" }}>
-            {approvalThreshold > 0 ? <>Quotes over <b>{gbp(approvalThreshold)}</b> need approval{ACTIVE_CAN_EDIT ? " · edit" : ""}</> : <>No approval rule{ACTIVE_CAN_EDIT ? " · set one" : ""}</>}
+          <button onClick={() => ACTIVE_CAN_EDIT && onSetThreshold && setEditingThreshold(true)} style={{ background: "none", border: "none", padding: 0, fontSize: 11.5, color: "var(--muted)", cursor: ACTIVE_CAN_EDIT && onSetThreshold ? "pointer" : "default", fontFamily: "inherit", textAlign: "left" }}>
+            {approvalThreshold > 0 ? <>Quotes over <b>{gbp(approvalThreshold)}</b> need approval{ACTIVE_CAN_EDIT && onSetThreshold ? " · edit" : ""}</> : <>No approval rule{ACTIVE_CAN_EDIT && onSetThreshold ? " · set one" : ""}</>}
           </button>
         )}
         <button onClick={async () => { const rows = works.map((w) => [w.dateRaised ? new Date(w.dateRaised + "T00:00:00") : null, deviceById[w.deviceId]?.name || "", w.description, w.category || "", w.priority || "medium", WORK_STATUSES.find((s) => s.key === w.status)?.label || w.status, supplierById[w.supplierId]?.name || "", Number(w.quoteAmount) || null, w.finalCost != null ? Number(w.finalCost) : null, workSla(w) ? new Date(workSla(w).deadline + "T00:00:00") : null, workSla(w)?.breached ? "Late" : "", w.poNumber || "", w.requestedBy || ""]);
@@ -239,7 +239,7 @@ export function WorksTab({ budgetByCat = null, initialOpenId = null, onDuplicate
         <WorkDetailModal catBudget={budgetByCat?.[deviceById?.[works.find((x) => x.id === openWorkId)?.deviceId]?.serviceCategory || "maintenance"] || null} allWorks={works} onDuplicate={onDuplicateWork ? () => { onDuplicateWork(openWork); setOpenWorkId(null); } : null} onInvoice={onInvoiceFromWork ? () => onInvoiceFromWork(openWork) : null} onRaisePO={onPoFromWork ? () => onPoFromWork(openWork) : null} spares={spares} onUseSpare={onUseSpare ? (sid, q) => onUseSpare(openWork.id, sid, q) : null} onRepeat={onRepeat ? () => { const w = openWork; setOpenWorkId(null); onRepeat(w); } : null} locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
           approvalThreshold={approvalThreshold} needsApproval={needsApproval(openWork)}
           onConvertToProject={onConvertToProject ? () => { onConvertToProject(openWork); setOpenWorkId(null); } : null}
-          onConvertToPlan={() => onConvertToPlan?.(openWork)} onConvertToService={() => onConvertToService?.(openWork)}
+          onConvertToPlan={() => onConvertToPlan?.(openWork)} onConvertToService={onConvertToService ? () => onConvertToService(openWork) : null}
           onClose={() => setOpenWorkId(null)} onUpdate={(patch) => onUpdate(openWork.id, patch)}
           onDelete={() => { onDelete(openWork.id); setOpenWorkId(null); }} />
       )}
@@ -288,9 +288,10 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
           <div style={{ background: "var(--warn-soft)", border: "1px solid #E6D9BC", borderRadius: 10, padding: 10 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--warn)" }}>Needs approval — quote is {gbp(work.quoteAmount)}, over the {gbp(approvalThreshold)} limit</div>
             {(work.loggedBy || work.requestedBy) === currentUserName && <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 2 }}>You raised this job — ideally someone else approves it.</div>}
-            {ACTIVE_CAN_EDIT && (
+            {!ACTIVE_CAN_APPROVE && <div style={{ fontSize: 11.5, color: "var(--warn)", marginTop: 4 }}>Waiting for someone with quote approval permission (finance, or a person an admin has allowed to approve quotes). Editing the job doesn't approve it.</div>}
+            {ACTIVE_CAN_EDIT && ACTIVE_CAN_APPROVE && (
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button onClick={() => { setStatusMsg(""); onUpdate({ approvedBy: currentUserName || "Unknown", approvedAt: new Date().toISOString(), status: "approved", comments: [...(work.comments || []), { text: `Approved ${gbp(work.quoteAmount)}`, by: currentUserName || "Unknown", at: new Date().toISOString() }] }); }} style={{ flex: 1, background: "#2F855A", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Approve</button>
+                <button onClick={() => { setStatusMsg(""); onUpdate({ approvedBy: currentUserName || "Unknown", approvedAt: new Date().toISOString(), approvedAmount: Number(work.quoteAmount) || 0, status: "approved", comments: [...(work.comments || []), { text: `Approved ${gbp(work.quoteAmount)}`, by: currentUserName || "Unknown", at: new Date().toISOString() }] }); }} style={{ flex: 1, background: "#2F855A", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Approve</button>
                 <button onClick={() => onUpdate({ status: "rejected", comments: [...(work.comments || []), { text: "Quote rejected", by: currentUserName || "Unknown", at: new Date().toISOString() }] })} style={{ flex: 1, background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Reject</button>
               </div>
             )}
@@ -467,7 +468,7 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>Turn this into…</div>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={onConvertToPlan} style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Budget Plan line</button>
-              <button onClick={onConvertToService} style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>New service</button>
+              {onConvertToService && <button onClick={onConvertToService} style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>New service</button>}
             </div>
             {(work.convertedTo || []).length > 0 && <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 6 }}>Already converted: {work.convertedTo.map((c) => c.type === "plan" ? "Plan line" : "Service").join(", ")}</div>}
           </div>

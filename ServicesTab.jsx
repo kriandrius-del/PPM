@@ -2,17 +2,17 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, Copy, FileSpreadsheet, HardHat, LayoutGrid, List, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, Send, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
 import { Badge, CategoryBadge, ConfirmDeleteButton, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SignOffSection, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
-import { ACTIVE_CAN_EDIT, ACTIVE_CAN_MANAGE_ASSETS, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
+import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
 import { buildChaseEmail, printBulkStickers, printStickers } from "../lib/reports.js";
-import { addDays, addMonths, appBaseUrl, orgParam, compressImage, currentBooking, daysUntil, downloadBlob, dueStatus, fmtDate, gbp, loadJsQR, missingRequiredFields, qrImageUrl, relativeDays, replacementYear, uid } from "../lib/utils.js";
-import { CONDITION_GRADES, CRITICALITY, MONTH_NAMES } from "../lib/constants.js";
+import { addMonths, appBaseUrl, compressImage, currentBooking, daysUntil, downloadBlob, dueStatus, fmtDate, gbp, loadJsQR, missingRequiredFields, qrImageUrl, relativeDays, replacementYear, uid } from "../lib/utils.js";
+import { CONDITION_GRADES, CRITICALITY } from "../lib/constants.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
 /* ---------------------------------------------------------
    Devices Tab
 --------------------------------------------------------- */
-const annualCost = (d) => (Number(d.budgetPerVisit) || 0) * (Number(d.serviceIntervalMonths) > 0 ? 12 / Number(d.serviceIntervalMonths) : Number(d.repeatEveryDays) > 0 ? Math.round(365 / Number(d.repeatEveryDays)) : 1);
-export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDevice = {}, onCopySite, spares = [], onBookTogether, history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
+const annualCost = (d) => (Number(d.budgetPerVisit) || 0) * (Number(d.serviceIntervalMonths) > 0 ? 12 / Number(d.serviceIntervalMonths) : 1);
+export function DevicesTab({ lastVisitByDevice = {}, onCopySite, spares = [], onBookTogether, history = [], onRemindAll, onChaseAll, allSupplierList = [], locationName = "", pinned = [], onTogglePin, onDataHealth, onLibrary, faultsByDevice = {}, onImport, allLocations = [], onCopyTo, onBulkUpdate, allSuppliers = [], archivedDevices = [], onRestore, onBulkLog, onBook, prefs = { dueFilter: "todo", sortBy: "due", cat: "all" }, onPrefs = () => {}, devices, search, setSearch, onAdd, onEdit, onLogService, onAddWork, onDelete, onHistory, searchAllLocations, onToggleSearchAll, locationLabel, chaseDevices = [], supplierById = {}, onChased, currentUserName, onQuickLog, onScan }) {
   const [chaseFocus, setChaseFocus] = useState(null); // null = closed, "all" or a deviceId
   const overdueList = chaseDevices.filter((d) => { const n = daysUntil(d.nextServiceDate); return n !== null && n < 0; });
   const [qrFor, setQrFor] = useState(null);
@@ -47,7 +47,6 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
     supplier: (a, b) => (supplierById[a.supplierId]?.name || "~").localeCompare(supplierById[b.supplierId]?.name || "~") || byDue(a, b),
     area: (a, b) => (a.area || "~").localeCompare(b.area || "~") || a.name.localeCompare(b.name),
     cost: (a, b) => annualCost(b) - annualCost(a) || byDue(a, b),
-    spent: (a, b) => (yearByDevice[b.id]?.spent || 0) - (yearByDevice[a.id]?.spent || 0) || byDue(a, b),
     criticality: (a, b) => ((CRITICALITY[a.criticality || "normal"]?.rank ?? 2) - (CRITICALITY[b.criticality || "normal"]?.rank ?? 2)) || byDue(a, b),
     condition: (a, b) => (b.condition || "").localeCompare(a.condition || "") || byDue(a, b),
   };
@@ -58,7 +57,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
   const groupOf = (d) => groupBy === "area" ? (d.area || "No area") : groupBy === "category" ? (CATEGORY_META[d.serviceCategory]?.label || "Other") : groupBy === "supplier" ? (supplierById[d.supplierId]?.name || "No supplier") : "";
   const tagFilter = prefs.tag || "";
   const allTags = [...new Set(devices.flatMap((d) => d.tags || []))].sort();
-  const filteredDevices = (dueFilter === "archived" ? archivedDevices : devices).filter((d) => !mineOnly || d.assignee === currentUserName).filter((d) => !tagFilter || (d.tags || []).includes(tagFilter)).filter((d) => catFilter === "all" || (catFilter === "__nobudget" ? !(Number(d.budgetPerVisit) > 0) : (d.serviceCategory || "maintenance") === catFilter)).filter((d) => {
+  const filteredDevices = (dueFilter === "archived" ? archivedDevices : devices).filter((d) => !mineOnly || d.assignee === currentUserName).filter((d) => !tagFilter || (d.tags || []).includes(tagFilter)).filter((d) => catFilter === "all" || (d.serviceCategory || "maintenance") === catFilter).filter((d) => {
     if (dueFilter === "all" || dueFilter === "archived") return true;
     if (dueFilter === "done") return isDone(d);
     if (dueFilter === "todo") return !isDone(d);
@@ -119,7 +118,6 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
           <ToggleButton active={selecting} onClick={() => { setSelecting((v) => !v); setSelected([]); }}>{selecting ? "Cancel select" : "Select…"}</ToggleButton>
         )}
       </div>
-      {dueFilter !== "archived" && (() => { const b = devices.filter((d) => annualCost(d) > 0); if (b.length < 2) return null; const tot = b.reduce((a, d) => a + annualCost(d), 0); return <div style={{ fontSize: 12, color: "var(--muted)", margin: "-4px 0 8px" }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(tot).replace(/\.00$/, "")}</b> a year across {b.length} budgeted service{b.length === 1 ? "" : "s"}{devices.length > b.length ? ` · ${devices.length - b.length} with no budget` : ""}</div>; })()}
       {ACTIVE_CAN_EDIT && onBookTogether && dueFilter !== "archived" && (() => { const g = {}; devices.forEach((d) => { const n = daysUntil(d.nextServiceDate); if (d.supplierId && n !== null && n <= 45 && !currentBooking(d)) g[d.supplierId] = (g[d.supplierId] || 0) + 1; }); return Object.values(g).some((n) => n >= 2) ? (
         <button onClick={onBookTogether} style={{ width: "100%", marginTop: -6, marginBottom: 10, background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <CalendarCheck size={14} /> Book a supplier's due visits together on one day
@@ -148,7 +146,6 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
             <option value="area">Sort: area / room</option>
             <option value="criticality">Sort: most critical first</option>
             <option value="cost">Sort: highest yearly budget first</option>
-            <option value="spent">Sort: most spent this year</option>
             <option value="condition">Sort: worst condition first</option>
           </select>
         </label>
@@ -165,13 +162,12 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
         {catsPresent.length > 1 && (
           <select value={catFilter} onChange={(e) => onPrefs({ cat: e.target.value })} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, background: catFilter === "all" ? "var(--card)" : "var(--accent-soft)", fontSize: 12.5, padding: "7px 8px", fontFamily: "inherit", color: "var(--text)", outline: "none" }}>
             <option value="all">All categories</option>
-            <option value="__nobudget">No budget set ({devices.filter((d) => !(Number(d.budgetPerVisit) > 0)).length})</option>
             {catsPresent.map((k) => <option key={k} value={k}>{CATEGORY_META[k].label}</option>)}
           </select>
         )}
       </div>
       {devices.length === 0 ? (
-        <EmptyState icon={Wrench} title="No services yet" body="Add the equipment or service you maintain at this location to start its history." actionLabel={ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && onAdd ? "Add a service" : undefined} onAction={onAdd || undefined} />
+        <EmptyState icon={Wrench} title="No services yet" body="Add the equipment or service you maintain at this location to start its history." actionLabel={ACTIVE_CAN_EDIT ? "Add a service" : undefined} onAction={onAdd} />
       ) : filteredDevices.length === 0 ? (
         <EmptyState icon={Wrench} title={dueFilter === "done" ? "Nothing done this month yet" : dueFilter === "todo" ? "All done for this month" : "Nothing matches this filter"} body={dueFilter === "done" ? "Services show here once this month's visit is logged, plus finished one-off jobs." : dueFilter === "todo" ? "Every service has had its visit logged this month. Tap Done or All to see them." : "Try a different filter or clear it to see everything."} />
       ) : (
@@ -215,8 +211,6 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
                     <div style={{ fontSize: 12.5, color: "var(--faint)", display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
                       {d.assetTag && <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>#{d.assetTag}</span>}
                       {(() => { const lv = (lastVisitByDevice || {})[d.id]; const f = (lv?.checklistResults || []).filter((x) => x.result === "fail").length; return f ? <span style={{ color: "var(--danger)", fontWeight: 700 }}>{f} failed check{f === 1 ? "" : "s"} last visit</span> : null; })()}
-                      {(() => { const y = yearByDevice[d.id]; if (!y || !(y.planned + y.spent > 0)) return null; const over = y.spent > y.planned + y.spentPlanned && y.planned > 0; return <span title={`This year: ${gbp(y.spent)} spent, ${gbp(y.planned)} still planned`} style={{ fontFamily: "'IBM Plex Mono', monospace", color: over ? "var(--danger)" : "var(--muted)" }}>{gbp(y.spent).replace(/\.00$/, "")} spent · {gbp(y.planned).replace(/\.00$/, "")} to come</span>; })()}
-                      {Number(d.upliftPct) > 0 && Number(d.upliftMonth) > 0 && (() => { const t0 = new Date().toISOString().slice(0, 10); let r = `${t0.slice(0, 4)}-${String(d.upliftMonth).padStart(2, "0")}-01`; if (r <= t0) r = `${Number(t0.slice(0, 4)) + 1}-${String(d.upliftMonth).padStart(2, "0")}-01`; const n = daysUntil(r); return n <= 60 ? <span style={{ color: "var(--warn)", fontWeight: 650 }}>+{d.upliftPct}% from {fmtDate(r)}</span> : null; })()}
                       {annualCost(d) > 0 && <span title="Budget per year (budget per visit × visits a year)" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(annualCost(d)).replace(/\.00$/, "")}/yr</span>}
                       {d.category && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Tag size={11} />{d.category}</span>}
                       {d.budgetPerVisit ? <span>{gbp(d.budgetPerVisit)}/visit budget</span> : null}
@@ -244,12 +238,12 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
                       <QrCode size={15} color="#8A94A0" />
                     </button>
                     {onTogglePin && <button onClick={() => onTogglePin(d.id)} title={pinned.includes(d.id) ? "Unpin from Home" : "Pin to Home"} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pin size={14} color={pinned.includes(d.id) ? "#D97706" : "#C0C6CC"} fill={pinned.includes(d.id) ? "#D97706" : "none"} /></button>}
-                    {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && (
-                      <button onClick={() => onEdit(d)} aria-label={`Edit ${d.name}`} title="Edit" style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                    {ACTIVE_CAN_EDIT && (
+                      <button onClick={() => onEdit(d)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
                         <Pencil size={15} color="#8A94A0" />
                       </button>
                     )}
-                    {ACTIVE_CAN_MANAGE_ASSETS && onDelete && <ConfirmDeleteButton onConfirm={() => onDelete(d.id)} />}
+                    <ConfirmDeleteButton onConfirm={() => onDelete(d.id)} />
                   </div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, flexWrap: "wrap", gap: 6 }}>
@@ -284,7 +278,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
                 )}
                 {d.archived ? (
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && onRestore && <button onClick={() => onRestore(d.id)} style={{ flex: 1, background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><ArchiveRestore size={13} /> Restore</button>}
+                  {ACTIVE_CAN_EDIT && <button onClick={() => onRestore?.(d.id)} style={{ flex: 1, background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><ArchiveRestore size={13} /> Restore</button>}
                   <button onClick={() => onHistory(d.id)} style={{ flex: 1, background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>History</button>
                 </div>
                 ) : selecting ? null : (
@@ -317,13 +311,13 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
         <BulkLogModal devices={[...devices, ...archivedDevices].filter((d) => selected.includes(d.id))} defaultTech={currentUserName || ""} onClose={() => setBulkOpen(false)}
           onSave={(opts) => { onBulkLog(selected, opts); setBulkOpen(false); setSelecting(false); setSelected([]); }} />
       )}
-      {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && onImport && dueFilter !== "archived" && (<>
+      {ACTIVE_CAN_EDIT && onImport && dueFilter !== "archived" && (<>
         {onCopySite && ACTIVE_CAN_EDIT && <button onClick={onCopySite} style={{ background: "none", border: "1px dashed #C7D0DA", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", marginBottom: 6 }}><Copy size={14} /> Copy services from another site</button>}
           <button onClick={onImport} style={{ width: "100%", marginTop: 14, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <FileSpreadsheet size={14} /> Import services from a spreadsheet
         </button>
       </>)}
-      {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && onLibrary && dueFilter !== "archived" && (
+      {ACTIVE_CAN_EDIT && onLibrary && dueFilter !== "archived" && (
         <button onClick={onLibrary} style={{ width: "100%", marginTop: 8, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <BookOpen size={14} /> Add several from the service library
         </button>
@@ -343,7 +337,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
         </button>
       )}
       {bulkMore && (
-        <BulkActionsModal plannedLines={plannedLines.filter((l) => selected.includes(l.deviceId))} locations={allLocations} count={selected.length} suppliers={allSuppliers} areas={[...new Set(devices.map((d) => d.area).filter(Boolean))].sort()} onClose={() => setBulkMore(false)}
+        <BulkActionsModal locations={allLocations} count={selected.length} suppliers={allSuppliers} areas={[...new Set(devices.map((d) => d.area).filter(Boolean))].sort()} onClose={() => setBulkMore(false)}
           onApply={(action, value) => {
             if (action === "qr") printBulkStickers([...devices, ...archivedDevices].filter((d) => selected.includes(d.id)), locationLabel);
             else if (action === "copy") onCopyTo?.(selected, value);
@@ -360,7 +354,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
 export function ServiceQrModal({ device, locationLabel, onClose }) {
   const base = appBaseUrl();
   const stickers = [
-    { key: "request", title: "Report a problem", url: `${base}?request=${device.id}${orgParam()}`, hint: "Scan with your phone camera — no login needed" },
+    { key: "request", title: "Report a problem", url: `${base}?request=${device.id}`, hint: "Scan with your phone camera — no login needed" },
     { key: "service", title: "Staff: service record", url: `${base}?service=${device.id}`, hint: "Opens history & Log visit" },
   ];
   const [printBlocked, setPrintBlocked] = useState(false);
@@ -447,7 +441,7 @@ export function BookingModal({ supplier = null, locationName = "", device, onClo
             <button type="button" onClick={() => {
               const dt = (d, t) => d.replace(/-/g, "") + (t ? `T${t.replace(":", "")}00` : "");
               const endT = time ? (() => { const [h, m] = time.split(":").map(Number); return `${String(Math.min(23, h + 2)).padStart(2, "0")}:${String(m).padStart(2, "0")}`; })() : "";
-              const nextDay = addDays(date, 1);
+              const nextDay = (() => { const x = new Date(date + "T00:00:00"); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); })();
               const esc = (t) => String(t || "").replace(/[,;\\]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
               const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//PPM Service Book//EN", "BEGIN:VEVENT", `UID:booking-${device.id}-${date}@ppm`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`, time ? `DTSTART:${dt(date, time)}` : `DTSTART;VALUE=DATE:${dt(date)}`, time ? `DTEND:${dt(date, endT)}` : `DTEND;VALUE=DATE:${dt(nextDay)}`, `SUMMARY:${esc(`${device.name} — ${supplier?.name || "supplier"} visit`)}`, `LOCATION:${esc(locationName)}`, `DESCRIPTION:${esc([ref && `Ref ${ref}`, device.accessNotes].filter(Boolean).join(" · "))}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
               downloadBlob(new Blob([ics], { type: "text/calendar" }), `visit-${device.name.replace(/[^a-z0-9]+/gi, "-")}-${date}.ics`);
@@ -464,21 +458,21 @@ export function BookingModal({ supplier = null, locationName = "", device, onClo
 /* ---------------------------------------------------------
    Bulk changes for selected services
 --------------------------------------------------------- */
-export function BulkActionsModal({ plannedLines = [], locations = [], count, suppliers, areas, onClose, onApply }) {
+export function BulkActionsModal({ locations = [], count, suppliers, areas, onClose, onApply }) {
   const [copyTo, setCopyTo] = useState(locations[0]?.id || "");
   const [pauseUntil, setPauseUntil] = useState(addMonths(new Date().toISOString().slice(0, 10), 1));
   const [assignTo, setAssignTo] = useState(ACTIVE_USERS[0]?.name || "");
   const [action, setAction] = useState("reschedule");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [supplierId, setSupplierId] = useState("");
-  const [area, setArea] = useState(""); const [upPct, setUpPct] = useState(""); const [upMonth, setUpMonth] = useState("4");
+  const [area, setArea] = useState("");
   const [confirmArchive, setConfirmArchive] = useState(false);
   const listId = useMemo(() => `bulkarea-${uid()}`, []);
   return (
     <Modal title={`Change ${count} service${count === 1 ? "" : "s"}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[["reschedule", "Move due date"], ["supplier", "Set supplier"], ["interval", "Set how often"], ["budget", "Set budget per visit"], ["uplift", "Set annual price rise"], ["checklist", "Add checklist items"], ...(ACTIVE_USERS.length ? [["assign", "Assign to"]] : []), ["area", "Set area"], ["pause", "Pause"], ["qr", "Print QR stickers"], ...(locations.length ? [["copy", "Copy to site"]] : []), ["archive", "Archive"]].map(([k, l]) => <ToggleButton key={k} active={action === k} onClick={() => { setAction(k); setConfirmArchive(false); }}>{l}</ToggleButton>)}
+          {[["reschedule", "Move due date"], ["supplier", "Set supplier"], ["interval", "Set how often"], ["budget", "Set budget per visit"], ["checklist", "Add checklist items"], ...(ACTIVE_USERS.length ? [["assign", "Assign to"]] : []), ["area", "Set area"], ["pause", "Pause"], ["qr", "Print QR stickers"], ...(locations.length ? [["copy", "Copy to site"]] : []), ["archive", "Archive"]].map(([k, l]) => <ToggleButton key={k} active={action === k} onClick={() => { setAction(k); setConfirmArchive(false); }}>{l}</ToggleButton>)}
         </div>
         {action === "reschedule" && (
           <>
@@ -496,16 +490,6 @@ export function BulkActionsModal({ plannedLines = [], locations = [], count, sup
               </Select>
             </Field>
             <PrimaryButton onClick={() => onApply("supplier", supplierId)}><UsersIcon size={15} /> Apply to {count}</PrimaryButton>
-          </>
-        )}
-        {action === "uplift" && (
-          <>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Field label="Price rise % each year (0 to remove)"><TextInput type="number" min="0" step="0.1" value={upPct} onChange={(e) => setUpPct(e.target.value)} placeholder="e.g. 4" /></Field>
-              <Field label="From"><Select value={upMonth} onChange={(e) => setUpMonth(e.target.value)}>{MONTH_NAMES.map((mn, i) => <option key={i} value={i + 1}>1 {mn}</option>)}</Select></Field>
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Planned visits after the rise date are budgeted at the higher price, and on that date each year the budget per visit goes up by this %.</div>
-            <PrimaryButton onClick={() => upPct !== "" && onApply("uplift", { pct: Number(upPct) || 0, month: Number(upMonth) || 4 })}><CheckCircle2 size={15} /> Apply to {count}</PrimaryButton>
           </>
         )}
         {action === "interval" && (
@@ -572,7 +556,6 @@ export function BulkActionsModal({ plannedLines = [], locations = [], count, sup
             <PrimaryButton onClick={() => copyTo && onApply("copy", copyTo)}><MapPinned size={15} /> Copy {count} service{count === 1 ? "" : "s"}</PrimaryButton>
           </>
         )}
-        {(action === "archive" || action === "pause") && (() => { const lim = action === "pause" ? pauseUntil : "9999-12-31"; const ls = plannedLines.filter((l) => l.date < lim); const amt = ls.reduce((a, l) => a + (Number(l.amount) || 0), 0); return ls.length ? <div style={{ fontSize: 12.3, background: "var(--card-hi)", borderRadius: 9, padding: "7px 10px" }}>{action === "pause" ? "Pausing" : "Archiving"} removes <b>{ls.length} planned visit{ls.length === 1 ? "" : "s"}</b> worth <b>{gbp(amt)}</b> from the budget{action === "pause" ? " (only those before the restart date)" : ""}.</div> : null; })()}
         {action === "archive" && (
           confirmArchive ? (
             <button onClick={() => onApply("archive")} style={{ background: "#9B2C2C", color: "#fff", border: "none", borderRadius: 9, padding: "10px 12px", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Yes, archive {count} service{count === 1 ? "" : "s"}</button>

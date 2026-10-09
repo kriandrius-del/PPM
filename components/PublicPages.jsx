@@ -5,9 +5,12 @@
 import { useState, useEffect } from "react";
 import { CheckCircle2, Camera, Loader2, Send, Wrench, Gauge, Star, Building2 } from "lucide-react";
 import { Field, PrimaryButton, SignaturePad, TextArea, TextInput } from "./ui.jsx";
-import { SKEYS } from "../lib/constants.js";
-import { loadShared, saveShared } from "../lib/storage.js";
-import { compressImage, daysUntil, fmtDate, uid, workSla } from "../lib/utils.js";
+import { SLA_DAYS } from "../lib/constants.js";
+import { set_ACTIVE_SLA } from "../lib/globals.js";
+import { publicRead, publicWrite } from "../lib/publicApi.js";
+import { compressImage, daysUntil, fmtDate, workSla } from "../lib/utils.js";
+// These pages read and save only through lib/publicApi.js (narrow database functions when logins are on).
+const OFFLINE_MSG = "Can't connect right now — check your signal and try again.";
 
 function Shell({ title, sub, icon: I = Building2, children }) {
   return (
@@ -30,19 +33,22 @@ export function SupplierPortal({ token }) {
   const [state, setState] = useState({ loading: true });
   const [openId, setOpenId] = useState(null);
   async function refresh() {
-    const [sups, works, devices, locations] = await Promise.all([loadShared(SKEYS.suppliers), loadShared(SKEYS.works), loadShared(SKEYS.devices), loadShared(SKEYS.locations)]);
-    const sup = (sups || []).find((s) => s.portalToken && s.portalToken === token);
+    let r;
+    try { r = await publicRead("supplier", token); } catch (e) { setState({ loading: false, sup: null, error: OFFLINE_MSG }); return; }
+    const sup = r?.supplier;
     if (!sup) { setState({ loading: false, sup: null }); return; }
-    const mine = (works || []).filter((w) => w.supplierId === sup.id && !["completed", "rejected"].includes(w.status)).sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.priority || "medium"] - { high: 0, medium: 1, low: 2 }[b.priority || "medium"]) || String(a.dateRaised).localeCompare(String(b.dateRaised)));
-    setState({ loading: false, sup, works: mine, devices: devices || [], locations: locations || [] });
+    if (r.sla) set_ACTIVE_SLA({ ...SLA_DAYS, ...(r.sla.days || {}), workingDays: !!r.sla.workingDays });
+    const devices = r.devices || []; const locations = r.locations || [];
+    const mine = (r.works || []).filter((w) => !["completed", "rejected"].includes(w.status)).sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.priority || "medium"] - { high: 0, medium: 1, low: 2 }[b.priority || "medium"]) || String(a.dateRaised).localeCompare(String(b.dateRaised)));
+    setState({ loading: false, sup, works: mine, devices, locations });
   }
   useEffect(() => { refresh(); }, [token]);
-  async function update(id, patch, comment) {
-    const latest = await loadShared(SKEYS.works);
-    await saveShared(SKEYS.works, (latest || []).map((w) => w.id === id ? { ...w, ...patch, comments: comment ? [...(w.comments || []), { text: comment, by: `${state.sup.name} (supplier portal)`, at: new Date().toISOString() }] : w.comments } : w));
+  async function update(id, name, patch, comment) {
+    await publicWrite("supplier", token, { workId: id, name, patch, comment });
     await refresh();
   }
   if (state.loading) return <Shell title="Your jobs"><div style={{ textAlign: "center", padding: 30 }}><Loader2 size={20} /></div></Shell>;
+  if (state.error) return <Shell title="Your jobs"><div style={card}>{state.error}</div></Shell>;
   if (!state.sup) return <Shell title="Link not recognised"><div style={card}>This job link has expired or been replaced. Please ask the facilities team for a new one.</div></Shell>;
   const { sup, works, devices, locations } = state;
   const dev = (id) => devices.find((d) => d.id === id); const loc = (d) => locations.find((l) => l.id === d?.locationId);
@@ -64,7 +70,7 @@ export function SupplierPortal({ token }) {
                 {w.supplierDone && <span style={{ color: "var(--ok)", fontWeight: 700 }}>Marked done — awaiting sign-off</span>}
               </div>
             </button>
-            {openId === w.id && <SupplierJobEditor w={w} device={d} supplierName={sup.name} onUpdate={(patch, c) => update(w.id, patch, c)} />}
+            {openId === w.id && <SupplierJobEditor w={w} device={d} supplierName={sup.name} onUpdate={(name, patch, c) => update(w.id, name, patch, c)} />}
           </div>
         );
       })}
@@ -75,7 +81,12 @@ function SupplierJobEditor({ w, device, supplierName, onUpdate }) {
   const [name, setName] = useState(w.supplierAck?.name || ""); const [eta, setEta] = useState(w.eta || "");
   const [notes, setNotes] = useState(""); const [photos, setPhotos] = useState([]); const [sig, setSig] = useState(null); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
   async function addPhotos(e) { const fs = [...(e.target.files || [])].slice(0, 3 - photos.length); e.target.value = ""; setBusy(true); try { const out = await Promise.all(fs.map((f) => compressImage(f, 720, 0.6))); setPhotos((p) => [...p, ...out].slice(0, 3)); } catch (x) { /* ignore */ } setBusy(false); }
-  const go = async (patch, comment, okMsg) => { if (!name.trim()) { setMsg("Please enter your name first."); return; } setBusy(true); setMsg(""); await onUpdate(patch, comment); setBusy(false); setMsg(okMsg); };
+  const go = async (patch, comment, okMsg) => {
+    if (!name.trim()) { setMsg("Please enter your name first."); return; }
+    setBusy(true); setMsg("");
+    try { await onUpdate(name.trim(), patch, comment); setMsg(okMsg); } catch (e) { setMsg(`Please try again — ${e.message || "couldn't save"}`); }
+    setBusy(false);
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
       {device?.accessNotes && <div style={{ fontSize: 12.5, background: "var(--warn-soft)", borderRadius: 8, padding: "7px 9px" }}><b>Access:</b> {device.accessNotes}</div>}
@@ -116,21 +127,20 @@ export function MeterPortal({ meterId }) {
   const [value, setValue] = useState(""); const [name, setName] = useState(""); const [photo, setPhoto] = useState(null);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(""); const [done, setDone] = useState(false);
   useEffect(() => { (async () => {
-    const [meters, readings, locations] = await Promise.all([loadShared(SKEYS.meters), loadShared(SKEYS.meterReadings), loadShared(SKEYS.locations)]);
-    const m = (meters || []).find((x) => x.id === meterId);
-    const last = (readings || []).filter((r) => r.meterId === meterId).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-    setState({ loading: false, m, last, loc: m ? (locations || []).find((l) => l.id === m.locationId) : null });
+    try { const r = await publicRead("meter", meterId); setState({ loading: false, m: r?.meter || null, last: r?.last || null, loc: r?.location || null }); }
+    catch (e) { setState({ loading: false, m: null, error: OFFLINE_MSG }); }
   })(); }, [meterId]);
   async function save() {
     const v = Number(String(value).replace(/,/g, ""));
     if (!name.trim() || value === "" || isNaN(v)) { setMsg("Please enter your name and the reading."); return; }
     if (state.last && v < Number(state.last.value) && !window.confirm(`That's lower than the last reading (${state.last.value}). Has the meter been replaced or reset?`)) return;
-    setBusy(true);
-    const latest = await loadShared(SKEYS.meterReadings);
-    await saveShared(SKEYS.meterReadings, [{ id: uid(), meterId, date: new Date().toISOString().slice(0, 10), value: v, by: `${name.trim()} (QR)`, at: new Date().toISOString(), viaQR: true, photo: photo || undefined, reset: state.last && v < Number(state.last.value) ? true : undefined }, ...(latest || [])]);
-    setBusy(false); setDone(true);
+    setBusy(true); setMsg("");
+    try { await publicWrite("meter", meterId, { name: name.trim(), value: v, photo: photo || undefined, reset: !!(state.last && v < Number(state.last.value)) }); setDone(true); }
+    catch (e) { setMsg(e.message || "Couldn't save — please try again."); }
+    setBusy(false);
   }
   if (state.loading) return <Shell title="Meter reading" icon={Gauge}><div style={{ textAlign: "center", padding: 30 }}><Loader2 size={20} /></div></Shell>;
+  if (state.error) return <Shell title="Meter reading" icon={Gauge}><div style={card}>{state.error}</div></Shell>;
   if (!state.m) return <Shell title="Meter not found" icon={Gauge}><div style={card}>This QR code doesn't match a meter any more.</div></Shell>;
   if (done) return <Shell title={state.m.name} sub={state.loc?.name} icon={Gauge}><div style={{ ...card, alignItems: "center", textAlign: "center" }}><CheckCircle2 size={44} color="var(--ok)" /><div style={{ fontSize: 18, fontWeight: 750 }}>Reading saved</div><div style={{ color: "var(--muted)", fontSize: 13 }}>Thank you.</div></div></Shell>;
   return (
@@ -141,7 +151,7 @@ export function MeterPortal({ meterId }) {
         <Field label="Your name"><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--accent)", fontWeight: 650, cursor: "pointer" }}><Camera size={16} /> {photo ? "Photo added ✓" : "Add a photo of the meter (optional)"}<input type="file" accept="image/*" capture="environment" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) { try { setPhoto(await compressImage(f, 720, 0.6)); } catch (x) { /* ignore */ } } }} style={{ display: "none" }} /></label>
         {msg && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{msg}</div>}
-        <PrimaryButton onClick={save}><Send size={15} /> {busy ? "Saving…" : "Save reading"}</PrimaryButton>
+        <PrimaryButton onClick={() => !busy && save()}><Send size={15} /> {busy ? "Saving…" : "Save reading"}</PrimaryButton>
       </div>
     </Shell>
   );
@@ -151,16 +161,18 @@ export function MeterPortal({ meterId }) {
 export const FEEDBACK_TOPICS = ["Cleanliness", "Temperature", "Toilets & washrooms", "Lighting", "Kitchen / tea points", "Overall"];
 export function FeedbackPortal({ locationId, area }) {
   const [loc, setLoc] = useState(undefined); const [ratings, setRatings] = useState({}); const [comment, setComment] = useState(""); const [done, setDone] = useState(false); const [busy, setBusy] = useState(false);
-  useEffect(() => { loadShared(SKEYS.locations).then((ls) => setLoc((ls || []).find((l) => l.id === locationId) || null)); }, [locationId]);
+  const [err, setErr] = useState("");
+  useEffect(() => { publicRead("feedback", locationId).then((r) => setLoc(r?.location || null)).catch(() => { setErr(OFFLINE_MSG); setLoc(null); }); }, [locationId]);
   async function send() {
     if (!Object.keys(ratings).length && !comment.trim()) return;
-    setBusy(true);
-    const latest = await loadShared(SKEYS.feedback);
-    await saveShared(SKEYS.feedback, [{ id: uid(), locationId, area: area || "", ratings, comment: comment.trim(), at: new Date().toISOString() }, ...(Array.isArray(latest) ? latest : [])].slice(0, 5000));
-    setBusy(false); setDone(true);
+    setBusy(true); setErr("");
+    const clean = Object.fromEntries(Object.entries(ratings).filter(([, n]) => n));
+    try { await publicWrite("feedback", locationId, { area: area || "", ratings: clean, comment: comment.trim() }); setDone(true); }
+    catch (e) { setErr(e.message || "Couldn't send — please try again."); }
+    setBusy(false);
   }
   if (loc === undefined) return <Shell title="Feedback"><div style={{ textAlign: "center", padding: 30 }}><Loader2 size={20} /></div></Shell>;
-  if (!loc) return <Shell title="Feedback"><div style={card}>This feedback code isn't linked to a site any more.</div></Shell>;
+  if (!loc) return <Shell title="Feedback"><div style={card}>{err || "This feedback code isn't linked to a site any more."}</div></Shell>;
   if (done) return <Shell title="Thank you!" sub={loc.name} icon={Star}><div style={{ ...card, alignItems: "center", textAlign: "center" }}><CheckCircle2 size={44} color="var(--ok)" /><div style={{ fontSize: 16, fontWeight: 700 }}>Your feedback helps us look after the building.</div><div style={{ fontSize: 13, color: "var(--muted)" }}>Need something fixed? Scan the QR sticker on the equipment to report it.</div></div></Shell>;
   return (
     <Shell title="How are we doing?" sub={`${loc.name}${area ? ` · ${area}` : ""} · takes 20 seconds, anonymous`} icon={Star}>
@@ -172,7 +184,8 @@ export function FeedbackPortal({ locationId, area }) {
           </div>
         ))}
         <Field label="Anything else? (optional)"><TextArea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="e.g. Meeting room 3 is always cold in the mornings" /></Field>
-        <PrimaryButton onClick={send}><Send size={15} /> {busy ? "Sending…" : "Send feedback"}</PrimaryButton>
+        {err && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{err}</div>}
+        <PrimaryButton onClick={() => !busy && send()}><Send size={15} /> {busy ? "Sending…" : "Send feedback"}</PrimaryButton>
       </div>
     </Shell>
   );
@@ -182,19 +195,18 @@ export function FeedbackPortal({ locationId, area }) {
 export function CheckPortal({ logId, locationId, area }) {
   const [state, setState] = useState({ loading: true }); const [values, setValues] = useState(area ? { area } : {}); const [name, setName] = useState(""); const [done, setDone] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   useEffect(() => { (async () => {
-    const [st, locs, entries] = await Promise.all([loadShared(SKEYS.settings), loadShared(SKEYS.locations), loadShared(SKEYS.logEntries)]);
-    const def = (st && !Array.isArray(st) ? st.logDefs || [] : []).find((d) => d.id === logId);
-    const last = (entries || []).filter((e) => e.logId === logId && e.locationId === locationId).sort((a, b) => String(b.at || b.date).localeCompare(String(a.at || a.date)))[0];
-    setState({ loading: false, def, loc: (locs || []).find((l) => l.id === locationId), last });
+    try { const r = await publicRead("check", logId, locationId); setState({ loading: false, def: r?.def || null, loc: r?.location || null, last: r?.last || null }); }
+    catch (e) { setState({ loading: false, error: OFFLINE_MSG }); }
   })(); }, [logId, locationId]);
   async function save() {
     if (!name.trim()) { setErr("Please enter your name."); return; }
     setBusy(true); setErr("");
-    const latest = await loadShared(SKEYS.logEntries);
-    await saveShared(SKEYS.logEntries, [{ id: uid(), logId, locationId, date: new Date().toISOString().slice(0, 10), values, by: `${name.trim()} (QR)`, at: new Date().toISOString(), viaQR: true }, ...(Array.isArray(latest) ? latest : [])].slice(0, 20000));
-    setBusy(false); setDone(true);
+    try { await publicWrite("check", logId, { locationId, values, name: name.trim() }); setDone(true); }
+    catch (e) { setErr(e.message || "Couldn't save — please try again."); }
+    setBusy(false);
   }
   if (state.loading) return <Shell title="Check sheet"><div style={{ textAlign: "center", padding: 30 }}><Loader2 size={20} /></div></Shell>;
+  if (state.error) return <Shell title="Check sheet"><div style={card}>{state.error}</div></Shell>;
   if (!state.def || !state.loc) return <Shell title="Check sheet"><div style={card}>This QR code isn't linked to a check sheet any more. Please tell the facilities team.</div></Shell>;
   if (done) return <Shell title={state.def.name} sub={state.loc.name}><div style={{ ...card, alignItems: "center", textAlign: "center" }}><CheckCircle2 size={44} color="var(--ok)" /><div style={{ fontSize: 18, fontWeight: 750 }}>Check recorded</div><div style={{ fontSize: 13, color: "var(--muted)" }}>{new Date().toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" })} — thank you, {name.split(" ")[0]}.</div></div></Shell>;
   const { def, loc, last } = state;
@@ -213,7 +225,7 @@ export function CheckPortal({ logId, locationId, area }) {
         ))}
         <Field label="Your name"><TextInput value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></Field>
         {err && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{err}</div>}
-        <PrimaryButton onClick={save}><Send size={15} /> {busy ? "Saving…" : "Record check"}</PrimaryButton>
+        <PrimaryButton onClick={() => !busy && save()}><Send size={15} /> {busy ? "Saving…" : "Record check"}</PrimaryButton>
       </div>
     </Shell>
   );

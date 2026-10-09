@@ -3,12 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, Ban, BookOpen, Camera, CheckCircle2, CheckSquare, ChevronDown, ClipboardList, Copy, Download, FileSpreadsheet, HardHat, ImagePlus, KeyRound, Link2, Loader2, Mail, MapPin, PauseCircle, Pencil, Plus, Printer, RefreshCw, ShieldCheck, SkipForward, Square, Star, StickyNote, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, SignOffSection, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, FREQ_HINTS, IMPORT_FIELDS, JOB_TEMPLATES, LATE_REASONS, MONTH_NAMES, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
-import { ACTIVE_BRAND, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
+import { ACTIVE_BRAND, ACTIVE_CAN_APPROVE, ACTIVE_CAN_EDIT, ACTIVE_CAN_MANAGE_ASSETS, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
 import { buildAssetRecord, buildBlankChecklist, openPrintReport, tableHtml } from "../lib/reports.js";
 import { addDays, addMonths, appBaseUrl, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, formatCustomValues, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
 import { TEMPLATE_EXAMPLE_PREFIX, buildServicesTemplate, readSpreadsheetRows } from "../lib/excelTemplate.js";
 
-export function DeviceHistoryModal({ plannedLines = [], budgetInfo = null, onRebuildPlan, changeLog = [], spares = [], onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
+export function DeviceHistoryModal({ summary = null, plannedLines = [], budgetInfo = null, onRebuildPlan, changeLog = [], spares = [], onMerge, onRecordUsage, allDevices = [], onOutOfService, works = [], onAddNote, onDeleteNote, device, services, tasks, visitBudgets, supplierById = {}, locationName = "", onClose, onEdit, onAddTask, onUpdateTask, onMarkTaskDone, onDeleteTask, onAddVisitBudget, onUpdateVisitBudget, onDeleteVisitBudget, onSyncBudget }) {
   const sorted = [...services].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const sortedVisitBudgets = [...visitBudgets].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const [addingTask, setAddingTask] = useState(false);
@@ -16,7 +16,8 @@ export function DeviceHistoryModal({ plannedLines = [], budgetInfo = null, onReb
   const [addingVisitBudget, setAddingVisitBudget] = useState(false);
   const [editingVisitBudget, setEditingVisitBudget] = useState(null);
   return (
-    <Modal title={`${device ? device.name : ""}`} onClose={onClose}>
+    <Modal title={`${device ? device.name : ""}`} onClose={onClose} width={640}>
+      {summary}
       {device && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
           {(device.photo || device.area || device.links?.length > 0) && (
@@ -175,7 +176,7 @@ export function DeviceHistoryModal({ plannedLines = [], budgetInfo = null, onReb
       <div style={{ marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)" }}>Visit budgets</span>
-          {ACTIVE_CAN_EDIT && (
+          {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && (
             <button onClick={() => setAddingVisitBudget(true)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
               <Plus size={12} /> Add visit budget
             </button>
@@ -186,7 +187,7 @@ export function DeviceHistoryModal({ plannedLines = [], budgetInfo = null, onReb
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {sortedVisitBudgets.map((v) => (
-              <button key={v.id} onClick={() => setEditingVisitBudget(v)} style={{
+              <button key={v.id} onClick={() => ACTIVE_CAN_MANAGE_ASSETS && setEditingVisitBudget(v)} style={{
                 background: "var(--card-hi)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 11px",
                 display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, cursor: "pointer", textAlign: "left", fontFamily: "inherit", width: "100%",
               }}>
@@ -199,7 +200,7 @@ export function DeviceHistoryModal({ plannedLines = [], budgetInfo = null, onReb
             ))}
           </div>
         )}
-        {ACTIVE_CAN_EDIT && device?.budgetPerVisit > 0 && (
+        {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && device?.budgetPerVisit > 0 && (
           <button onClick={onSyncBudget} style={{
             width: "100%", marginTop: 8, background: "#F1F4F7", border: "1px dashed var(--border-strong)", borderRadius: 8, padding: "8px 10px",
             fontSize: 11.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,

@@ -2,7 +2,10 @@
 import { useState, useMemo, useRef } from "react";
 import { AlertTriangle, Bell, BellOff, Building2, CheckCircle2, ChevronDown, ChevronRight, Cloud, CloudOff, CloudSun, Download, FileText, Globe2, HardDrive, LayoutDashboard, Lock, Mail, MapPin, Moon, Palette, Pencil, Plus, Printer, Search, Smartphone, Sparkles, Trash2, Type, Upload, X } from "lucide-react";
 import { Badge, ConfirmTextDelete, EmptyState, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { ACCENTS, ALERT_GROUPS, APP_VERSION, AUTH_SQL, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SETUP_SQL, SITE_TYPES, STAFF_ROLES, START_TABS, STATUTORY_ITEMS, WHATS_NEW, authSql } from "../lib/constants.js";
+import { ROLES, INVITE_ROLES, normaliseRole } from "../app/permissions.js";
+import { ACCENTS, ALERT_GROUPS, APP_VERSION, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SITE_TYPES, STAFF_ROLES, START_TABS, STATUTORY_ITEMS, WHATS_NEW } from "../lib/constants.js";
+import SETUP_SQL from "../supabase-setup.sql?raw";
+import { TeamPanel } from "../components/CloudGate.jsx";
 import { ACTIVE_CAN_EDIT, BUILTIN_CATEGORY_META, CATEGORY_ICONS, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
 import { buildAssetAge, buildAssetRegister, buildCarbonReport, buildChecklistFailures, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractCalendar, buildContractorHours, buildFlushingRecord, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMissedVisits, buildMonthCalendar, buildNextYearProposal, buildOverspendSignoffs, buildPlannedVsActual, buildPortfolioReport, buildPriceRiseSchedule, buildReactiveVsPlanned, buildRecharges, buildRepeatFaults, buildRequestsByPerson, buildResponseTimes, buildSlaReport, buildSpaceCondition, buildSpendReport, buildStatutoryCalendar, buildSupplierCategoryMatrix, buildSupplierCompliance, buildSupplierKpis, buildSupplierLeague, buildSupplierReport, buildSupplierSpend, buildSupplierYoY, buildTco, buildVatSummary, buildVisitsBySupplierMonth, buildWaitingOn, buildWallPlanner, buildWorksAgeing, buildWorstAssets, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
 import { addDays, compressImage, countryCodeFor, daysUntil, downloadBlob, findPostcode, fmtDate, gbp, placeFromCoords, placeFromPostcode, relativeDays, replacementYear, searchPlaces, uid } from "../lib/utils.js";
@@ -13,16 +16,28 @@ import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js
 /* ---------------------------------------------------------
    User & Location setup modals
 --------------------------------------------------------- */
-export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreate, locations = [], onSaveSites }) {
+export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreate, locations = [], onSaveSites, onSetApprover, cloud = null, onOpenTeam }) {
   const [name, setName] = useState("");
   const [sitesFor, setSitesFor] = useState("");
   const [role, setRole] = useState("admin");
+  const myLogin = cloud?.user?.id;
+  const ROLE = Object.fromEntries(Object.entries(ROLES).map(([k, v]) => [k, v.label])); ROLE.editor = ROLES.manager.label;
   return (
     <Modal title="Profile" onClose={onClose}>
+      {cloud && (
+        <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, marginBottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 12.5 }}>Signed in as <b>{cloud.user?.email}</b> · {ROLE[cloud.org.role]} at <b>{cloud.org.name}</b></div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{currentUser && !currentUser.virtual ? <>Your profile below is <b>{currentUser.name}</b> — it's linked to your login, so it's picked automatically on any device.</> : "Pick your name below (or add it) — it's linked to your login from then on."}</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={onOpenTeam} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Team &amp; access</button>
+            <button onClick={() => window.ppmCloud?.signOut()} style={{ background: "var(--card)", color: "var(--danger)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
+          </div>
+        </div>
+      )}
       {users.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-          {users.map((u) => (
-            <button key={u.id} onClick={() => onChoose(u.id)} style={{
+          {users.map((u) => { const taken = !!(cloud && u.loginId && u.loginId !== myLogin); return (
+            <button key={u.id} disabled={taken} title={taken ? `Linked to ${u.loginEmail || "another login"}` : undefined} onClick={() => onChoose(u.id)} style={{ opacity: taken ? 0.55 : 1,
               display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9,
               border: "1px solid " + (currentUser?.id === u.id ? "#2B4562" : "#E1E4E8"),
               background: currentUser?.id === u.id ? "#F1F4F7" : "var(--card)", cursor: "pointer", fontFamily: "inherit", textAlign: "left",
@@ -31,9 +46,9 @@ export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreat
                 {u.name.slice(0, 1).toUpperCase()}
               </div>
               <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{u.name}{u.lastActive && <span style={{ display: "block", fontSize: 11, fontWeight: 500, color: "var(--faint)" }}>Last active {u.lastActive === new Date().toISOString().slice(0, 10) ? "today" : relativeDays(u.lastActive)}</span>}</span>
-              {u.role === "viewer" && <Badge tone="muted">Viewer</Badge>}
+              {cloud ? (u.loginEmail ? <span style={{ fontSize: 10.5, color: "var(--faint)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.loginId === myLogin ? "you" : u.loginEmail}</span> : null) : u.role && u.role !== "admin" && <Badge tone="muted">{ROLES[normaliseRole(u.role)]?.short}</Badge> || null}
             </button>
-          ))}
+          ); })}
         </div>
       )}
       {onSaveSites && locations.length > 1 && users.length > 0 && currentUser?.role !== "viewer" && (
@@ -48,18 +63,33 @@ export function UserSwitchModal({ users, currentUser, onClose, onChoose, onCreat
           ); })()}
         </div>
       )}
+      {!cloud && onSetApprover && users.length > 0 && (
+        <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, marginBottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700 }}>Who approves quotes over the approval limit?</div>
+          {users.map((u) => { const r = u.role || "admin"; const fin = r === "finance"; const ro = ["director", "viewer"].includes(r); return (
+            <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.8, cursor: fin || ro ? "default" : "pointer" }}>
+              <input type="checkbox" aria-label={`Approves quotes: ${u.name}`} disabled={fin || ro} checked={fin || (!ro && !!u.canApprove)} onChange={(e) => onSetApprover(u.id, e.target.checked)} />
+              {u.name}{fin ? " (finance — always)" : ro ? " (read-only — never)" : ""}
+            </label>
+          ); })}
+          <span style={{ fontSize: 10.5, color: "var(--faint)" }}>A separate permission from editing jobs: someone who can edit a job can't approve its quote unless they're ticked here.</span>
+        </div>
+      )}
       <Field label="Add a new profile">
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" style={{ flex: 1 }} />
           <PrimaryButton onClick={() => { if (name.trim()) { onCreate(name, role); setName(""); } }} style={{ padding: "9px 14px" }}>Add</PrimaryButton>
         </div>
-        <Select value={role} onChange={(e) => setRole(e.target.value)}>
-          <option value="admin">Admin — can add/edit/delete</option>
-          <option value="viewer">Viewer — read-only in this app's UI</option>
+        {cloud ? (
+          <span style={{ fontSize: 10.5, color: "var(--faint)", display: "block" }}>What each person can do is set by their role in Team &amp; access (FM manager, coordinator, engineer, finance, senior management or viewer) and enforced by the database.</span>
+        ) : (<>
+        <Select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role">
+          {["admin", ...INVITE_ROLES.filter((r) => r !== "admin")].map((r) => <option key={r} value={r}>{ROLES[r].label} — {ROLES[r].desc}</option>)}
         </Select>
         <span style={{ fontSize: 10.5, color: "var(--faint)", display: "block", marginTop: 4 }}>
-          Viewer just hides the add/edit/delete buttons for this profile — it isn't a security restriction, since anyone with access to this app can still switch profiles.
+          Without logins, a role only changes what this app shows — it isn't a security restriction, since anyone using this device can switch profiles. Go live with logins (More → Go live with your team) for real access control.
         </span>
+        </>)}
       </Field>
     </Modal>
   );
@@ -327,8 +357,8 @@ export function GlobalSearchModal({ extra = {}, onGoTab, devices, services, work
 /* ---------------------------------------------------------
    Activity log, backup & restore, storage usage
 --------------------------------------------------------- */
-export function DataModal({ customFields = [], onSaveCustomFields, branding = {}, onSaveBranding, trash = [], onRestoreDeleted, alertCount = 0, pendingCount = 0, remote = false, display = { scale: 1 }, onDisplay, activity, storageInfo, saveErrors, lastBackupAt, canEdit, onBackup, onRestore, onClose }) {
-  const [view, setView] = useState("activity");
+export function DataModal({ customFields = [], onSaveCustomFields, branding = {}, onSaveBranding, trash = [], onRestoreDeleted, alertCount = 0, pendingCount = 0, remote = false, display = { scale: 1 }, onDisplay, activity, storageInfo, saveErrors, lastBackupAt, canEdit, onBackup, onRestore, onClose, initialView = "activity" }) {
+  const [view, setView] = useState(initialView);
   const [filter, setFilter] = useState("");
   const [who, setWho] = useState("");
   const [range, setRange] = useState("all");
@@ -347,7 +377,7 @@ export function DataModal({ customFields = [], onSaveCustomFields, branding = {}
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result);
-        if (!parsed?.data?.devices) { setErr("That file isn't a PPM Service Book backup."); return; }
+        if (!parsed?.data?.devices) { setErr("That file isn't a backup from this app."); return; }
         setPending(parsed);
       } catch (x) { setErr("Couldn't read that file — is it a .json backup?"); }
     };
@@ -365,7 +395,7 @@ export function DataModal({ customFields = [], onSaveCustomFields, branding = {}
   return (
     <Modal title="Activity, backup & display" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", gap: 6 }}>{tabBtn("activity", "Activity log")}{tabBtn("backup", "Backup & storage")}{tabBtn("display", "Display")}{tabBtn("sharing", "Sharing")}{tabBtn("deleted", `Deleted${trash.length ? ` (${trash.length})` : ""}`)}</div>
+        <div style={{ display: "flex", gap: 6 }}>{tabBtn("activity", "Activity log")}{tabBtn("backup", "Backup & storage")}{tabBtn("display", "Display")}{tabBtn("sharing", typeof window !== "undefined" && window.ppmCloud ? "Team & access" : "Go online")}{tabBtn("deleted", `Deleted${trash.length ? ` (${trash.length})` : ""}`)}</div>
         {view === "deleted" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>Services, works and suppliers deleted in the last 30 days. Restoring a service brings back its visits, works and plan too.</div>
@@ -381,7 +411,7 @@ export function DataModal({ customFields = [], onSaveCustomFields, branding = {}
             ))}
           </div>
         )}
-        {view === "sharing" && <SharingPanel remote={remote} />}
+        {view === "sharing" && (typeof window !== "undefined" && window.ppmCloud ? <TeamPanel /> : <SharingPanel />)}
         {view === "display" && (
           <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Type size={14} /> Text size</div>
@@ -497,7 +527,7 @@ export function DataModal({ customFields = [], onSaveCustomFields, branding = {}
             )}
             <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Smartphone size={14} /> Install as an app</div>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>Put PPM Service Book on your phone's home screen or desktop so it opens full-screen like a normal app. On iPhone: Share → Add to Home Screen. On Android / Chrome: menu → Install app.</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>Put the app on your phone's home screen or desktop so it opens full-screen like a normal app. On iPhone: Share → Add to Home Screen. On Android / Chrome: menu → Install app.</div>
               {typeof window !== "undefined" && window.__ppmInstallPrompt && (
                 <PrimaryButton onClick={() => { window.__ppmInstallPrompt.prompt(); window.__ppmInstallPrompt = null; }}><Smartphone size={15} /> Install app</PrimaryButton>
               )}
@@ -520,130 +550,61 @@ export function DataModal({ customFields = [], onSaveCustomFields, branding = {}
   );
 }
 
-export function SharingPanel({ remote }) {
+export function SharingPanel() {
+  // Local mode: data is only in this browser. Shows how to put it online with logins (Supabase).
   const helper = typeof window !== "undefined" ? window.ppmRemote : null;
-  const cfg = helper?.config || null;
-  const envMode = !!helper?.envMode;
-  const AUTH_SQL = authSql(envMode ? "kv_store" : "ppm_store");
-  const [url, setUrl] = useState(cfg?.url || "");
-  const [key, setKey] = useState(cfg?.key || "");
-  const [space, setSpace] = useState(cfg?.space || "default");
-  const [code, setCode] = useState("");
+  const [url, setUrl] = useState("");
+  const [key, setKey] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState("");
-  if (!helper) {
-    return <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 12, fontSize: 12.5, color: "var(--muted)" }}>Sharing is set up on your deployed site (e.g. on Vercel). Inside Claude's preview, data is already stored by Claude.</div>;
-  }
-  const current = { url: url.trim(), key: key.trim(), space: space.trim() || "default" };
-  const setupCode = cfg ? btoa(unescape(encodeURIComponent(JSON.stringify(cfg)))) : "";
-  function applyCode() {
-    try { const c = JSON.parse(decodeURIComponent(escape(atob(code.trim())))); setUrl(c.url || ""); setKey(c.key || ""); setSpace(c.space || "default"); setStatus("Code read — now tap Test, then Use shared data."); }
-    catch (e) { setStatus("That code isn't valid."); }
-  }
+  const [copied, setCopied] = useState(false);
+  if (!helper) return <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 12, fontSize: 12.5, color: "var(--muted)" }}>Logins and sharing are set up on your deployed site (e.g. on Vercel).</div>;
+  const current = { url: url.trim(), key: key.trim() };
+  const box = { background: "var(--card-hi)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 };
+  async function copySql() { try { await navigator.clipboard.writeText(SETUP_SQL); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) { downloadBlob(new Blob([SETUP_SQL], { type: "text/plain" }), "supabase-setup.sql"); } }
   async function test() {
     setBusy(true); setStatus("Testing…");
-    try { await helper.test(current); setStatus("✓ Connected — the table is ready."); } catch (e) { setStatus(`✗ ${e.message}`); }
+    try { await helper.test(current); setStatus("✓ Connected — the database is set up."); } catch (e) { setStatus(`✗ ${e.message}`); }
     setBusy(false);
   }
-  async function connect(upload) {
+  async function connect() {
     setBusy(true);
-    try {
-      await helper.test(current);
-      if (upload) { setStatus("Uploading this device's data…"); const n = await helper.pushLocal(current); setStatus(`Uploaded ${n} data sets.`); }
-      helper.connect(current); setStatus("Connected — reloading…");
-      setTimeout(() => window.location.reload(), 700);
-    } catch (e) { setStatus(`✗ ${e.message}`); setBusy(false); }
-  }
-  async function disconnect() {
-    setBusy(true); setStatus("Saving a copy on this device…");
-    try { await helper.pullToLocal(cfg); } catch (e) { /* keep going */ }
-    helper.disconnect(); setStatus("Disconnected — reloading…");
-    setTimeout(() => window.location.reload(), 700);
-  }
-  const copy = async (text, what) => { try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(""), 1500); } catch (e) { /* ignore */ } };
-  const box = { background: "var(--card-hi)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 };
-  if (remote) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ ...box, background: "var(--ok-soft)" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ok)", display: "flex", alignItems: "center", gap: 6 }}><Cloud size={15} /> Shared database connected</div>
-          <div style={{ fontSize: 12, color: "var(--text-2)" }}>{envMode ? <>Connected through your Vercel settings to <b>{cfg?.url?.replace(/^https?:\/\//, "")}</b> (table kv_store). Everyone who opens the site sees the same data — nothing to set up on other devices.</> : <>Everyone connected to <b>{cfg?.url?.replace(/^https?:\/\//, "")}</b> (space "{cfg?.space || "default"}") sees the same services, visits, suppliers and budgets.</>} Changes from others appear within a minute, or when you come back to the app.</div>
-        </div>
-        {!envMode && (<>
-        <div style={box}>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>Connect another phone or computer</div>
-          <div style={{ fontSize: 12, color: "var(--muted)" }}>Open the app on the other device → 🕘 → Sharing → paste this setup code. Only share it with your team — anyone with it can see and change the data.</div>
-          <TextArea readOnly value={setupCode} style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", minHeight: 60 }} />
-          <button onClick={() => copy(setupCode, "code")} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{copied === "code" ? "Copied ✓" : "Copy setup code"}</button>
-        </div>
-        </>)}
-        {window.ppmAuth?.required ? (
-          <div style={box}>
-            <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Lock size={14} /> Personal logins are on</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Signed in as <b>{window.ppmAuth.email || "—"}</b>. Everyone needs their own account; access without signing in is blocked once the SQL below has been run.</div>
-            <TextArea readOnly value={AUTH_SQL} style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", minHeight: 60 }} />
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => copy(AUTH_SQL, "auth")} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{copied === "auth" ? "Copied ✓" : "Copy SQL"}</button>
-              <button onClick={() => window.ppmAuth.signOut()} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, color: "var(--danger)", cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
-            </div>
-          </div>
-        ) : (
-          <div style={box}>
-            <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Lock size={14} /> Personal logins (recommended)</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Instead of one shared code, each person signs in with their own email and password.</div>
-            <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 3 }}>
-              <li>Tap <b>Turn on logins</b> below and create your account (Supabase may email you a confirmation link).</li>
-              <li>{envMode ? "Ask each colleague to open the site and create their own account." : "Copy the new setup code and share it; each colleague creates their own account."}</li>
-              <li>When everyone is in, run this SQL in Supabase so nobody can get in without signing in. Afterwards, turn off "Allow new users to sign up" under Authentication → Settings.</li>
-            </ol>
-            <TextArea readOnly value={AUTH_SQL} style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", minHeight: 60 }} />
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => copy(AUTH_SQL, "auth")} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{copied === "auth" ? "Copied ✓" : "Copy SQL"}</button>
-              <button onClick={() => { helper.setAuthRequired(true); window.location.reload(); }} style={{ flex: 1, background: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 700, color: "var(--on-accent)", cursor: "pointer", fontFamily: "inherit" }}>Turn on logins</button>
-            </div>
-          </div>
-        )}
-        {!envMode && <button disabled={busy} onClick={disconnect} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><CloudOff size={13} /> Disconnect this device (keeps a copy here)</button>}
-        {status && <div style={{ fontSize: 12, color: "var(--muted)" }}>{status}</div>}
-      </div>
-    );
+    try { await helper.test(current); helper.connect(current); setStatus("Connected — reloading…"); setTimeout(() => window.location.reload(), 700); }
+    catch (e) { setStatus(`✗ ${e.message}`); setBusy(false); }
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Right now your data is saved only in this browser. Connect a free <b>Supabase</b> database so your whole team — and all your devices — share the same data.</div>
+      <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Right now your data is saved <b>only in this browser</b>. Put it online with a free <b>Supabase</b> database: everyone signs in with their own email, your company's data is only visible to the people you invite, photos go to private file storage, and the database is backed up.</div>
       <div style={box}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>Joining an existing setup?</div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <TextInput value={code} onChange={(e) => setCode(e.target.value)} placeholder="Paste setup code from a colleague" style={{ flex: 1, fontSize: 12 }} />
-          <button onClick={applyCode} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use</button>
-        </div>
-      </div>
-      <div style={box}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>First-time setup (about 5 minutes)</div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>1 · Create the database (about 10 minutes)</div>
         <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
-          <li>Create a free project at supabase.com.</li>
-          <li>Open <b>SQL Editor</b>, paste the SQL below and press Run.</li>
-          <li>Go to <b>Project Settings → API</b> and copy the Project URL and the <b>anon public</b> key into the boxes below.</li>
+          <li>Create a project at supabase.com (choose the London region).</li>
+          <li>Open <b>SQL Editor</b> → New query, paste the setup SQL and press <b>Run</b>.</li>
+          <li>Under <b>Authentication → URL Configuration</b>, set the Site URL to this app's address: <b>{window.location.origin}</b></li>
         </ol>
-        <TextArea readOnly value={SETUP_SQL} style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", minHeight: 120 }} />
-        <button onClick={() => copy(SETUP_SQL, "sql")} style={{ alignSelf: "flex-start", background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{copied === "sql" ? "Copied ✓" : "Copy SQL"}</button>
+        <button onClick={copySql} style={{ alignSelf: "flex-start", background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{copied ? "Copied ✓" : "Copy setup SQL"}</button>
       </div>
-      <Field label="Project URL"><TextInput value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" /></Field>
-      <Field label="Anon public key"><TextInput value={key} onChange={(e) => setKey(e.target.value)} placeholder="eyJhbGciOi…" /></Field>
-      <Field label="Space name (optional — lets several teams share one database)"><TextInput value={space} onChange={(e) => setSpace(e.target.value)} /></Field>
-      <button disabled={busy || !current.url || !current.key} onClick={test} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Test connection</button>
-      {status && <div style={{ fontSize: 12, color: status.startsWith("✗") ? "var(--danger)" : "var(--ok)", fontWeight: 600 }}>{status}</div>}
-      <PrimaryButton onClick={() => !busy && current.url && current.key && connect(true)}><Cloud size={15} /> Upload this device's data &amp; connect</PrimaryButton>
-      <button disabled={busy || !current.url || !current.key} onClick={() => connect(false)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Use shared data already in the database</button>
-      <div style={{ fontSize: 11, color: "var(--faint)" }}>Use "Upload" on the first device (the one with your data). On every other device, use "Use shared data". Take a backup first. Anyone with the setup code can read and change the data, so keep it within your team.</div>
+      <div style={box}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>2 · Connect the app</div>
+        <div style={{ fontSize: 12, color: "var(--text-2)" }}><b>Best:</b> in Vercel → your project → Settings → Environment Variables, add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> (from Supabase → Project Settings → API), then redeploy. Every device then uses the database automatically.</div>
+        <div style={{ fontSize: 12, color: "var(--text-2)" }}><b>Or just this device:</b> paste them here.</div>
+        <Field label="Project URL"><TextInput value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" /></Field>
+        <Field label="Anon public key"><TextInput value={key} onChange={(e) => setKey(e.target.value)} placeholder="eyJhbGciOi…" /></Field>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button disabled={busy || !current.url || !current.key} onClick={test} style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Test</button>
+          <button disabled={busy || !current.url || !current.key} onClick={connect} style={{ flex: 2, background: "var(--accent)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, color: "var(--on-accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Cloud size={14} /> Connect &amp; sign in</button>
+        </div>
+        {status && <div style={{ fontSize: 12, color: status.startsWith("✗") ? "var(--danger)" : "var(--ok)", fontWeight: 600 }}>{status}</div>}
+      </div>
+      <div style={box}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>3 · Sign up and create your company</div>
+        <div style={{ fontSize: 12, color: "var(--text-2)" }}>Create your account, confirm your email, then create your company. You'll be offered to copy the data saved in this browser into it. Then invite your team from More → Team &amp; access.</div>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--faint)" }}>Take a backup first (Backup &amp; storage tab). Nothing is deleted from this browser.</div>
     </div>
   );
 }
 
-/* ---------------------------------------------------------
-   Notification centre
---------------------------------------------------------- */
 export function AlertsModal({ onSnoozeAll, alerts, onClose, onGo, locationName = "", senderName = "", onSnooze, snoozedCount = 0, onClearSnoozes }) {
   function emailSummary() {
     const lines = alerts.map((a) => `- ${a.tone === "danger" ? "[URGENT] " : ""}${a.title}${a.detail ? ` (${a.detail})` : ""}`);

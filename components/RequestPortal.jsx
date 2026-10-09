@@ -1,10 +1,10 @@
-// Public 'report a problem' page (from QR stickers) and the personal sign-in screen.
+// Public 'report a problem' page (from QR stickers) — no login. Reads and saves only through lib/publicApi.js.
 import { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, Camera, Send, Lock, Wrench } from "lucide-react";
+import { Loader2, CheckCircle2, Camera, Send, Wrench } from "lucide-react";
 import { Field, PrimaryButton, Select, TextArea, TextInput, WorkStatusTag } from "./ui.jsx";
-import { SKEYS, REQUEST_CATEGORIES } from "../lib/constants.js";
-import { loadShared, saveShared } from "../lib/storage.js";
-import { checklistLabel, compressImage, fmtDate, uid } from "../lib/utils.js";
+import { PRODUCT_NAME, REQUEST_CATEGORIES } from "../lib/constants.js";
+import { publicRead, publicWrite } from "../lib/publicApi.js";
+import { checklistLabel, compressImage, fmtDate } from "../lib/utils.js";
 
 export function RequestPortal({ deviceId }) {
   const [loading, setLoading] = useState(true);
@@ -23,13 +23,12 @@ export function RequestPortal({ deviceId }) {
   const [category, setCategory] = useState("");
   const [onCall, setOnCall] = useState(null);
 
+  const [loadError, setLoadError] = useState("");
   async function refresh() {
-    const [devices, locations, works, st] = await Promise.all([loadShared(SKEYS.devices), loadShared(SKEYS.locations), loadShared(SKEYS.works), loadShared(SKEYS.settings)]);
-    const dev = devices.find((d) => d.id === deviceId) || null;
-    setDevice(dev);
-    setLocation(dev ? locations.find((l) => l.id === dev.locationId) || null : null);
-    setRecent(works.filter((w) => w.deviceId === deviceId && w.status !== "completed" && w.status !== "rejected").slice(0, 8));
-    if (dev && st && !Array.isArray(st)) { const today = new Date().toISOString().slice(0, 10); setOnCall(((st.onCall || {})[dev.locationId] || []).find((r) => r.from <= today && (!r.to || r.to >= today)) || null); }
+    try {
+      const r = await publicRead("request", deviceId);
+      setDevice(r?.device || null); setLocation(r?.location || null); setRecent(r?.recent || []); setOnCall(r?.onCall || null); setLoadError("");
+    } catch (e) { setLoadError("Can't connect right now — check your signal and try again."); }
     setLoading(false);
   }
   useEffect(() => { refresh(); }, [deviceId]);
@@ -44,17 +43,14 @@ export function RequestPortal({ deviceId }) {
   async function submit() {
     if (!name.trim() || !description.trim()) { setError("Please add your name and describe the problem."); return; }
     setError(""); setBusy(true);
-    const latest = await loadShared(SKEYS.works); // re-read so we don't overwrite someone else's change
-    const record = {
-      id: uid(), deviceId, description: `${category && !description.toLowerCase().includes(category.toLowerCase()) ? `${category}: ` : ""}${description.trim()}`, quoteAmount: 0,
-      dateRaised: new Date().toISOString().slice(0, 10), status: "requested", budgetType: "budgeted",
-      photos: photo ? [photo] : [], priority, supplierId: device?.supplierId || null, comments: [],
-      source: "request", requestedBy: name.trim(), requesterEmail: email.trim() || undefined, loggedAt: new Date().toISOString(),
-    };
-    await saveShared(SKEYS.works, [record, ...latest]);
-    setSubmitted(record); setBusy(false);
-    setDescription(""); setPhoto(null); setPriority("medium");
-    refresh();
+    const text = `${category && !description.toLowerCase().includes(category.toLowerCase()) ? `${category}: ` : ""}${description.trim()}`;
+    try {
+      const r = await publicWrite("request", deviceId, { name: name.trim(), email: email.trim(), description: text, priority, photo });
+      setSubmitted({ id: r.id });
+      setDescription(""); setPhoto(null); setPriority("medium");
+      refresh();
+    } catch (e) { setError(e.message || "Couldn't send — please try again."); }
+    setBusy(false);
   }
 
   const shell = (children) => (
@@ -62,7 +58,7 @@ export function RequestPortal({ deviceId }) {
       <div style={{ maxWidth: 460, margin: "0 auto" }}>
         <div style={{ background: "var(--head)", color: "var(--on-accent)", borderRadius: 14, padding: "16px 18px", marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: "#9AA5B1", fontWeight: 600 }}>Report a problem</div>
-          <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{device ? device.name : "PPM Service Book"}</div>
+          <div style={{ fontSize: 19, fontWeight: 800, marginTop: 2 }}>{device ? device.name : PRODUCT_NAME}</div>
           {location && <div style={{ fontSize: 12.5, color: "#C7D0DA", marginTop: 2 }}>{location.name}</div>}
         </div>
         {children}
@@ -70,6 +66,7 @@ export function RequestPortal({ deviceId }) {
     </div>
   );
   if (loading) return shell(<div style={{ textAlign: "center", padding: 30, color: "var(--faint)" }}><Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} /></div>);
+  if (loadError) return shell(<div style={{ background: "var(--card)", borderRadius: 12, padding: 18, fontSize: 13.5 }}>{loadError} <button onClick={() => { setLoading(true); refresh(); }} style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Try again</button></div>);
   if (!device) return shell(<div style={{ background: "var(--card)", borderRadius: 12, padding: 18, fontSize: 13.5 }}>This QR code doesn't match a service anymore — it may have been removed. Please let the facilities team know directly.</div>);
   if (mode === "engineer") return shell(<EngineerReport device={device} onBack={() => setMode("report")} />);
   return shell(
@@ -89,7 +86,7 @@ export function RequestPortal({ deviceId }) {
         <Field label="Your email (optional — for updates)"><TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
         <Field label="What kind of problem?">
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-            {(location?.requestCategories?.length ? [...location.requestCategories.map((c) => [c, "", "medium"]), ["Other", "", "medium"]] : REQUEST_CATEGORIES).map(([label, text, pr]) => (
+            {(location?.requestCategories?.length ? [...location.requestCategories.filter((c) => c !== "Other").map((c) => [c, "", "medium"]), ["Other", "", "medium"]] : REQUEST_CATEGORIES).map(([label, text, pr]) => (
               <button key={label} type="button" onClick={() => { setCategory(label === "Other" ? "" : label); if (text && !description.trim()) setDescription(text); setPriority(pr); }} style={{ background: category === label ? "var(--accent)" : "var(--card-hi)", color: category === label ? "var(--on-accent)" : "var(--text-2)", border: "1px solid var(--border)", borderRadius: 16, padding: "7px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{label}</button>
             ))}
           </div>
@@ -116,7 +113,7 @@ export function RequestPortal({ deviceId }) {
           </div>
         )}
         {error && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{error}</div>}
-        <PrimaryButton onClick={submit}><Send size={15} /> Send request</PrimaryButton>
+        <PrimaryButton onClick={() => !busy && submit()}><Send size={15} /> {busy ? "Sending…" : "Send request"}</PrimaryButton>
       </div>
       <div style={{ marginTop: 14 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>Open issues for this {device.name.length > 24 ? "service" : device.name} ({recent.length})</div>
@@ -151,9 +148,11 @@ function EngineerReport({ device, onBack }) {
     if (!name.trim()) { setErr("Please enter your name."); return; }
     if (!notes.trim() && !checks.some((c) => c.result)) { setErr("Please describe the work done or complete the checklist."); return; }
     setBusy(true); setErr("");
-    const latest = await loadShared(SKEYS.visitSubmissions);
-    await saveShared(SKEYS.visitSubmissions, [{ id: uid(), deviceId: device.id, locationId: device.locationId, name: name.trim(), company: company.trim(), date, arrived, left, notes: notes.trim(), checks: checks.filter((c) => c.result), photos, submittedAt: new Date().toISOString() }, ...(Array.isArray(latest) ? latest : [])].slice(0, 500));
-    setBusy(false); setDone(true);
+    try {
+      await publicWrite("engineer", device.id, { name: name.trim(), company: company.trim(), date, arrived, left, notes: notes.trim(), checks: checks.filter((c) => c.result), photos });
+      setDone(true);
+    } catch (e) { setErr(e.message || "Couldn't send — please try again."); }
+    setBusy(false);
   }
   if (done) return (
     <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, textAlign: "center" }}>
@@ -198,47 +197,8 @@ function EngineerReport({ device, onBack }) {
         </div>
       </Field>
       {err && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{err}</div>}
-      <PrimaryButton onClick={send}><Send size={15} /> {busy ? "Sending…" : "Send visit report"}</PrimaryButton>
+      <PrimaryButton onClick={() => !busy && send()}><Send size={15} /> {busy ? "Sending…" : "Send visit report"}</PrimaryButton>
       <button onClick={onBack} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 12.5, cursor: "pointer", fontFamily: "inherit" }}>Back to reporting a problem</button>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------
-   Personal sign-in (when the shared database requires it)
---------------------------------------------------------- */
-export function LoginScreen() {
-  const [mode, setMode] = useState("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [msg, setMsg] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function go() {
-    if (!email.trim()) return;
-    setBusy(true); setMsg("");
-    try {
-      if (mode === "reset") { await window.ppmAuth.reset(email.trim()); setMsg("If that email has an account, a reset link is on its way."); }
-      else if (mode === "signup") { const r = await window.ppmAuth.signUp(email.trim(), password); if (r.session) window.location.reload(); else setMsg("Account created — check your email to confirm it, then sign in."); }
-      else { await window.ppmAuth.signIn(email.trim(), password); window.location.reload(); }
-    } catch (e) { setMsg(e.message || "Something went wrong"); }
-    setBusy(false);
-  }
-  return (
-    <div style={{ minHeight: "100vh", background: "var(--head)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
-      <div style={{ background: "var(--card)", borderRadius: 16, padding: 24, width: "min(380px, 100%)", display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: "#D97706", display: "flex", alignItems: "center", justifyContent: "center" }}><Lock size={20} color="#fff" /></div>
-          <div><div style={{ fontSize: 17, fontWeight: 750 }}>PPM Service Book</div><div style={{ fontSize: 12, color: "var(--faint)" }}>{mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Sign in to continue"}</div></div>
-        </div>
-        <Field label="Email"><TextInput type="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></Field>
-        {mode !== "reset" && <Field label="Password"><TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); }} autoComplete={mode === "signup" ? "new-password" : "current-password"} /></Field>}
-        {msg && <div style={{ fontSize: 12.5, color: /created|on its way/.test(msg) ? "var(--ok)" : "var(--danger)" }}>{msg}</div>}
-        <PrimaryButton onClick={() => !busy && go()}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "reset" ? "Send reset link" : "Sign in"}</PrimaryButton>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-          <button onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setMsg(""); }} style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{mode === "signup" ? "I have an account" : "Create an account"}</button>
-          <button onClick={() => { setMode(mode === "reset" ? "signin" : "reset"); setMsg(""); }} style={{ background: "none", border: "none", color: "var(--faint)", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{mode === "reset" ? "Back to sign in" : "Forgot password?"}</button>
-        </div>
-      </div>
     </div>
   );
 }

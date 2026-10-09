@@ -5,7 +5,7 @@ import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select,
 import { DEFAULT_EMERGENCY, REPEAT_OPTIONS, STATUTORY_ITEMS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
 import { openPrintReport, tableHtml } from "../lib/reports.js";
-import { appBaseUrl, cachedWeather, computeCompliance, currentBooking, daysUntil, escapeHtml, fmtDate, gbp, matchStatutory, qrImageUrl, relativeDays, searchPlaces, uid, workSla } from "../lib/utils.js";
+import { appBaseUrl, orgParam, cachedWeather, computeCompliance, currentBooking, daysUntil, escapeHtml, fmtDate, gbp, matchStatutory, qrImageUrl, relativeDays, searchPlaces, uid, workSla } from "../lib/utils.js";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { OnCallCard, printBadge } from "./MoreViews.jsx";
 
@@ -261,7 +261,7 @@ export function HomeTab({ monthBudget = null, onSnoozeReminder, waitingOnMe = []
             ); })}
           </section>
         )}
-        {show("oncall") && (onCall.length > 0 || ACTIVE_CAN_EDIT) && <div className="wrap c2"><OnCallCard rota={onCall} onSave={onSaveOnCall} /></div>}
+        {show("oncall") && (onCall.length > 0 || (ACTIVE_CAN_EDIT && onSaveOnCall)) && <div className="wrap c2"><OnCallCard rota={onCall} onSave={onSaveOnCall} /></div>}
         {show("emergency") && <div className="wrap c2"><EmergencyContacts suppliers={suppliers} contacts={emergency} onSave={onSaveEmergency} /></div>}
         {show("statutory") && <div className="wrap c2"><StatutoryRegister custom={customStatutory} onSaveCustom={onSaveCustomStatutory} devices={devices} na={statutoryNA} onNA={onStatutoryNA} onAdd={onAddStatutory} onOpenDevice={onOpenDevice} locationName={locationName} /></div>}
         {(() => { const h = new Date().getHours(); const on = (signins || []).filter((x) => !x.outAt && x.locationId === (site?.id || x.locationId)); return h >= 18 && on.length > 0 ? (
@@ -391,10 +391,10 @@ export function StatutoryRegister({ custom = [], onSaveCustom, devices, na = [],
                     ))}
                   </div>
                 )}
-                {ACTIVE_CAN_EDIT && (r.status === "missing" || r.status === "na") && (
+                {ACTIVE_CAN_EDIT && (onAdd || onNA) && (r.status === "missing" || r.status === "na") && (
                   <div style={{ display: "flex", gap: 12, marginTop: 5 }}>
-                    {r.status === "missing" && <button onClick={() => onAdd(r.item)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Set up this service</button>}
-                    <button onClick={() => onNA(r.status === "na" ? na.filter((k) => k !== r.item.key) : [...na, r.item.key])} style={{ background: "none", border: "none", padding: 0, color: "var(--faint)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{r.status === "na" ? "Mark as applicable" : "Not applicable here"}</button>
+                    {r.status === "missing" && onAdd && <button onClick={() => onAdd(r.item)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Set up this service</button>}
+                    {onNA && <button onClick={() => onNA(r.status === "na" ? na.filter((k) => k !== r.item.key) : [...na, r.item.key])} style={{ background: "none", border: "none", padding: 0, color: "var(--faint)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{r.status === "na" ? "Mark as applicable" : "Not applicable here"}</button>}
                   </div>
                 )}
               </div>
@@ -465,7 +465,7 @@ export function SiteRegister({ onRollCall, locationId = null, expected = [], onS
       )}
       <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
         {onSite.length > 1 && ACTIVE_CAN_EDIT && onSignOutAll && <button onClick={() => { if (window.confirm(`Sign out all ${onSite.length} contractors now?`)) onSignOutAll(); }} style={{ background: "none", border: "none", padding: 0, color: "var(--muted)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Sign everyone out</button>}
-        {locationId && ACTIVE_CAN_EDIT && <button onClick={() => { const url = `${appBaseUrl()}?signin=${locationId}`; openPrintReport("Sign in here", locationName, `<div style="text-align:center;margin-top:30px"><div style="font-size:28px;font-weight:800;margin-bottom:6px">Contractors & visitors</div><div style="font-size:18px;margin-bottom:24px">Scan with your phone camera to sign in and out</div><img src="${qrImageUrl(url, 420)}" style="width:300px;height:300px"><div class="muted" style="margin-top:16px">${escapeHtml(url)}</div><div style="margin-top:28px;font-size:14px">No app needed · please sign out when you leave</div></div>`); }} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Print self sign-in QR</button>}
+        {locationId && ACTIVE_CAN_EDIT && <button onClick={() => { const url = `${appBaseUrl()}?signin=${locationId}${orgParam()}`; openPrintReport("Sign in here", locationName, `<div style="text-align:center;margin-top:30px"><div style="font-size:28px;font-weight:800;margin-bottom:6px">Contractors & visitors</div><div style="font-size:18px;margin-bottom:24px">Scan with your phone camera to sign in and out</div><img src="${qrImageUrl(url, 420)}" style="width:300px;height:300px"><div class="muted" style="margin-top:16px">${escapeHtml(url)}</div><div style="margin-top:28px;font-size:14px">No app needed · please sign out when you leave</div></div>`); }} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Print self sign-in QR</button>}
         {onSite.length > 0 && onRollCall && <button onClick={onRollCall} style={{ background: "var(--danger)", color: "#fff", border: "none", borderRadius: 7, padding: "4px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>🔥 Live roll call</button>}
         {onSite.length > 0 && <button onClick={rollCall} style={{ background: "none", border: "none", padding: 0, color: "var(--danger)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Print fire roll call</button>}
         {signins.length > 0 && <button onClick={() => setShowLog(true)} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Full register ({signins.length})</button>}
@@ -652,7 +652,7 @@ export function EmergencyContacts({ suppliers = [], contacts, onSave }) {
             </a>
           ))}
           <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
-            {ACTIVE_CAN_EDIT && <button onClick={() => { setDraft(list); setEditing(true); }} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Edit</button>}
+            {ACTIVE_CAN_EDIT && onSave && <button onClick={() => { setDraft(list); setEditing(true); }} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Edit</button>}
             {filled.length > 0 && <button onClick={print} style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Print</button>}
           </div>
         </div>
@@ -760,7 +760,7 @@ export function SiteInfoCard({ info, onSave }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
           {filled.map(([k, l]) => <div key={k} style={{ fontSize: 12.5 }}><span style={{ color: "var(--faint)", fontWeight: 600 }}>{l}: </span>{k === "contactPhone" ? <a href={`tel:${String(info[k]).replace(/[^+0-9]/g, "")}`}>{info[k]}</a> : info[k]}{k === "address" && <> · <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info.address)}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 650 }}>Open in Maps</a></>}</div>)}
           {!filled.length && <div style={{ fontSize: 12, color: "var(--faint)" }}>Add the address, hours, access arrangements and site contact. They're added to work orders and booking emails automatically.</div>}
-          {ACTIVE_CAN_EDIT && <button onClick={() => { setD(info || {}); setEditing(true); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>Edit</button>}
+          {ACTIVE_CAN_EDIT && onSave && <button onClick={() => { setD(info || {}); setEditing(true); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>Edit</button>}
         </div>
       )}
       {open && editing && (
@@ -924,7 +924,7 @@ export function SiteProfileCard({ site, onEdit, onDirectory }) {
   );
 }
 
-function ExpectedVisitors({ list, onAdd, onRemove, onArrive }) {
+export function ExpectedVisitors({ list, onAdd, onRemove, onArrive }) {
   const [adding, setAdding] = useState(false); const [d, setD] = useState({ name: "", company: "", host: "", date: new Date().toISOString().slice(0, 10), kind: "visitor" });
   const today = new Date().toISOString().slice(0, 10);
   return (

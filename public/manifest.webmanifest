@@ -1,7 +1,7 @@
 {
-  "name": "PPM Service Book",
-  "short_name": "PPM Book",
-  "description": "Planned maintenance, suppliers and budget tracker",
+  "name": "Service Book — Facilities management OS",
+  "short_name": "Service Book",
+  "description": "Run your entire facility from one place: maintenance, compliance, contractors, assets, finance and safety.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

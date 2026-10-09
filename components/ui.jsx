@@ -1,5 +1,6 @@
 // Shared building blocks: pop-up window, form fields, buttons, badges, signature pad.
-import { useMemo, useEffect, useState, useRef } from "react";
+import { useMemo, useEffect, useState, useRef, useContext } from "react";
+import { InlineModalContext } from "./ds.jsx";
 import { Download, ImagePlus, Loader2, MapPin, Plus, ShieldAlert, Trash2, X } from "lucide-react";
 import { WORK_PRIORITIES, WORK_STATUSES, toneStyles } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
@@ -36,7 +37,7 @@ export function CategoryBadge({ category, subCategory }) {
 
 export function Field({ label, children }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13.5 }}>
+    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13.5, minWidth: 0 }}>
       <span style={{ fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
       {children}
     </label>
@@ -69,11 +70,20 @@ export function SubCategoryField({ value, onChange, suggestions }) {
 }
 
 export function Modal({ title, onClose, children, width = 480 }) {
+  const inline = useContext(InlineModalContext);
   useEffect(() => {
+    if (inline) return undefined;
     const onKey = (e) => { if (e.key === "Escape" && onClose) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, inline]);
+  // Shown inside a page (Reports, Settings…) instead of as a pop-up; anything it opens is a normal pop-up again.
+  if (inline) return (
+    <div className="fm-inline-modal">
+      {title && <h3 style={{ margin: "0 0 14px", fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{title}</h3>}
+      <InlineModalContext.Provider value={false}>{children}</InlineModalContext.Provider>
+    </div>
+  );
   return (
     <div data-modal-open="1" style={{ position: "fixed", inset: 0, background: "rgba(20,26,33,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{
@@ -138,7 +148,7 @@ export function ConfirmDeleteButton({ onConfirm, size = 15 }) {
     );
   }
   return (
-    <button onClick={() => setConfirming(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, flexShrink: 0 }}>
+    <button onClick={() => setConfirming(true)} aria-label="Delete" title="Delete" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, flexShrink: 0 }}>
       <Trash2 size={size} color="#C0C6CC" />
     </button>
   );

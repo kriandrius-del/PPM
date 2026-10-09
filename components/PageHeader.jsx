@@ -2,11 +2,11 @@
 export function PageHeader({ title, subtitle, kpis = [] }) {
   const tone = (t) => (t === "danger" ? "var(--danger)" : t === "warn" ? "var(--warn)" : t === "ok" ? "var(--ok)" : "var(--text)");
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+    <div style={{ marginBottom: title ? 16 : 12 }}>
+{title && (<div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text)" }}>{title}</h1>
         {subtitle && <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{subtitle}</span>}
-      </div>
+      </div>)}
       {kpis.length > 0 && (
         <div className="bento kpis">
           {kpis.map((k) => {

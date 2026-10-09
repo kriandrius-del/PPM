@@ -1,6 +1,6 @@
 // Excel template for adding services in bulk, styled like the app, with dropdowns.
 // ExcelJS is loaded only when someone downloads or uploads a sheet, so the app stays fast.
-import { CONDITION_GRADES, CRITICALITY, PRODUCT_NAME } from "./constants.js";
+import { CONDITION_GRADES, CRITICALITY } from "./constants.js";
 import { CATEGORY_KEYS, CATEGORY_META } from "./globals.js";
 
 async function loadExcel() {
@@ -44,7 +44,7 @@ const colLetter = (i) => String.fromCharCode(65 + i);
 export async function buildServicesTemplate({ suppliers = [], areas = [], locationName = "", companyName = "" } = {}) {
   const ExcelJS = await loadExcel();
   const wb = new ExcelJS.Workbook();
-  wb.creator = PRODUCT_NAME;
+  wb.creator = "PPM Service Book";
   wb.created = new Date();
   const font = { name: "Arial", size: 10, color: { argb: "FF16202C" } };
   const thin = { style: "thin", color: { argb: BORDER } };
@@ -72,7 +72,7 @@ export async function buildServicesTemplate({ suppliers = [], areas = [], locati
   // Title band (row 1–2), legend (row 3), headers (row 4)
   ws.mergeCells(`A1:${lastCol}1`);
   const title = ws.getCell("A1");
-  title.value = `${companyName ? `${companyName} · ` : ""}${PRODUCT_NAME} — add services in bulk`;
+  title.value = `${companyName ? `${companyName} · ` : ""}PPM Service Book — add services in bulk`;
   title.font = { name: "Arial", size: 15, bold: true, color: { argb: "FFFFFFFF" } };
   title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
   title.alignment = { vertical: "middle", indent: 1 };
@@ -272,7 +272,7 @@ export const TEMPLATE_EXAMPLE_PREFIX = EXAMPLE_PREFIX;
 // A styled, app-coloured Excel export of any table.
 export async function buildStyledSheet({ title, subtitle = "", sheetName = "Sheet1", headers, rows, widths = [], numFmts = {}, cellStyle = null }) {
   const ExcelJS = await loadExcel();
-  const wb = new ExcelJS.Workbook(); wb.creator = PRODUCT_NAME;
+  const wb = new ExcelJS.Workbook(); wb.creator = "PPM Service Book";
   const ws = wb.addWorksheet(sheetName, { views: [{ state: "frozen", ySplit: 3, showGridLines: false }] });
   const lastCol = colLetter(Math.min(25, headers.length - 1));
   ws.mergeCells(`A1:${lastCol}1`); const t = ws.getCell("A1");
@@ -310,7 +310,7 @@ export async function xlsxToText(file) { const rows = await readSpreadsheetRows(
 // Several styled sheets in one workbook (used for the budget pack).
 export async function buildWorkbook(sheets) {
   const ExcelJS = await loadExcel();
-  const wb = new ExcelJS.Workbook(); wb.creator = PRODUCT_NAME;
+  const wb = new ExcelJS.Workbook(); wb.creator = "PPM Service Book";
   const thin = { style: "thin", color: { argb: BORDER } };
   sheets.forEach((sh) => {
     const ws = wb.addWorksheet(sh.name.slice(0, 31), { views: [{ state: "frozen", ySplit: 3, showGridLines: false }] });

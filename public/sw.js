@@ -1,6 +1,6 @@
 // Network-first service worker: always tries for the latest version,
 // falls back to the last copy when offline so the app still opens.
-const CACHE = "ppm-v2"; // bump to clear older cached copies
+const CACHE = "ppm-v3"; // bump to clear older cached copies
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {

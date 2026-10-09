@@ -1,11 +1,13 @@
 // Public contractor/visitor self sign-in page, opened from a QR code at reception (?signin=<locationId>).
 import { useEffect, useState } from "react";
-import { loadShared, saveShared } from "../lib/storage.js";
-import { SKEYS } from "../lib/constants.js";
-import { uid } from "../lib/utils.js";
+import { publicRead, publicWrite } from "../lib/publicApi.js";
 import { CheckCircle2, HardHat } from "lucide-react";
 import { Field, TextInput, ToggleButton } from "./ui.jsx";
-// Works like the "report a problem" page: no login needed, saves straight to the shared register.
+// Works like the "report a problem" page: no login needed. Reads and saves only through lib/publicApi.js.
+// Signing out: the phone that signed in keeps a key; from another phone you're asked for the mobile number you gave.
+const KEYS = "ppm:signinKeys";
+const readKeys = () => { try { return JSON.parse(localStorage.getItem(KEYS) || "{}"); } catch (e) { return {}; } };
+const keepKey = (id, k) => { try { const m = readKeys(); m[id] = k; const ids = Object.keys(m).slice(-50); localStorage.setItem(KEYS, JSON.stringify(Object.fromEntries(ids.map((i) => [i, m[i]])))); } catch (e) { /* ignore */ } };
 
 export function SignInPortal({ locationId }) {
   const [loading, setLoading] = useState(true);
@@ -19,13 +21,15 @@ export function SignInPortal({ locationId }) {
   const [name, setName] = useState(""); const [company, setCompany] = useState(""); const [phone, setPhone] = useState("");
   const [purpose, setPurpose] = useState(""); const [host, setHost] = useState(""); const [agree, setAgree] = useState(false);
   const [done, setDone] = useState(null); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState("");
   async function refresh() {
-    const [locs, sups, sis, st] = await Promise.all([loadShared(SKEYS.locations), loadShared(SKEYS.suppliers), loadShared(SKEYS.signins), loadShared(SKEYS.settings)]);
-    const loc = (locs || []).find((l) => l.id === locationId) || null;
+    let r;
+    try { r = await publicRead("signin", locationId); setLoadError(""); }
+    catch (e) { setLoadError("Can't connect right now — check your signal and try again."); setLoading(false); return; }
+    const loc = r?.location || null; const info = r?.info || {};
     setLocation(loc);
-    setSuppliers((sups || []).filter((x) => x.locationId === locationId));
-    setOnSite((sis || []).filter((x) => x.locationId === locationId && !x.outAt));
-    const info = st && !Array.isArray(st) ? (st.siteInfo || {})[locationId] || {} : {};
+    setSuppliers(r?.suppliers || []);
+    setOnSite(r?.onSite || []);
     setRules(loc?.induction || [info.access, info.notes].filter(Boolean).join("\n"));
     setVideo(loc?.inductionUrl || "");
     setLoading(false);
@@ -35,21 +39,34 @@ export function SignInPortal({ locationId }) {
     if (!name.trim()) { setError("Please enter your name."); return; }
     if (!agree) { setError("Please confirm you've read the site safety information."); return; }
     setBusy(true); setError("");
-    const latest = await loadShared(SKEYS.signins);
-    const entry = { id: uid(), locationId, kind, name: name.trim(), company: company.trim(), phone: phone.trim(), purpose: purpose.trim(), host: host.trim(), inducted: kind === "contractor" ? true : undefined, inductedAt: new Date().toISOString(), ramsChecked: false, inAt: new Date().toISOString(), outAt: null, by: "Self sign-in", selfService: true };
-    await saveShared(SKEYS.signins, [entry, ...(latest || [])].slice(0, 2000));
-    setDone({ type: "in", name: entry.name }); setBusy(false);
+    try {
+      const r = await publicWrite("signin", locationId, { kind, name: name.trim(), company: company.trim(), phone: phone.trim(), purpose: purpose.trim(), host: host.trim() });
+      if (r?.id && r.outKey) keepKey(r.id, r.outKey);
+      setDone({ type: "in", name: name.trim() });
+    } catch (e) { setError(e.message || "Couldn't sign you in — please try again."); }
+    setBusy(false);
   }
   async function signOut(id) {
-    setBusy(true);
-    const latest = await loadShared(SKEYS.signins);
-    const e = (latest || []).find((x) => x.id === id);
-    await saveShared(SKEYS.signins, (latest || []).map((x) => x.id === id ? { ...x, outAt: new Date().toISOString(), outBy: "Self sign-out" } : x));
-    setDone({ type: "out", name: e?.name || "" }); setBusy(false);
+    setBusy(true); setError("");
+    const send = (extra) => publicWrite("signout", locationId, { id, outKey: readKeys()[id] || "", ...extra });
+    try {
+      let r = await send({});
+      if (r?.error === "NEEDPHONE") {
+        const ph = window.prompt("To sign out from this phone, enter the mobile number you gave when you signed in:", "");
+        if (ph === null) { setBusy(false); return; }
+        r = await send({ phone: ph });
+        if (r?.error === "NEEDPHONE") throw new Error("That number doesn't match the one given at sign-in. Please ask reception to sign you out.");
+      }
+      if (r?.error === "WAIT") throw new Error("Too many tries — please wait a minute, or ask reception to sign you out.");
+      if (r?.error) throw new Error("Please sign out on the phone you signed in with, or ask reception.");
+      setDone({ type: "out", name: r?.name || "" });
+    } catch (e) { setError(e.message || "Couldn't sign you out — please try again."); refresh(); }
+    setBusy(false);
   }
   const wrap = { minHeight: "100vh", background: "var(--ground)", color: "var(--text)", fontFamily: "'IBM Plex Sans', system-ui, sans-serif", display: "flex", justifyContent: "center", padding: 16 };
   const box = { width: "min(440px, 100%)", display: "flex", flexDirection: "column", gap: 12 };
   if (loading) return <div style={wrap}><div style={box}>Loading…</div></div>;
+  if (loadError) return <div style={wrap}><div style={box}><h1 style={{ fontSize: 20 }}>No connection</h1><p>{loadError}</p><button onClick={() => { setLoading(true); refresh(); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 12, padding: "12px 18px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Try again</button></div></div>;
   if (!location) return <div style={wrap}><div style={box}><h1 style={{ fontSize: 20 }}>Site not found</h1><p>This sign-in code isn't linked to a site any more. Please ask reception.</p></div></div>;
   if (done) return (
     <div style={wrap}><div style={{ ...box, alignItems: "center", textAlign: "center", paddingTop: 40 }}>
@@ -72,10 +89,12 @@ export function SignInPortal({ locationId }) {
       {mode === "out" ? (
         <div className="bcard" style={{ gap: 8 }}>
           {onSite.length === 0 && <div className="bsub">Nobody is signed in right now.</div>}
+          {error && <div style={{ color: "var(--danger)", fontSize: 13 }}>{error}</div>}
           {onSite.map((x) => (
             <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
               <div style={{ flex: 1 }}><div style={{ fontWeight: 650 }}>{x.name}</div><div className="bsub">{x.company || (x.kind === "visitor" ? "Visitor" : "")}</div></div>
-              <button disabled={busy} onClick={() => signOut(x.id)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
+              {x.selfOut === false && !x.needsPhone && !readKeys()[x.id] ? <span className="bsub">Ask reception</span>
+                : <button disabled={busy} onClick={() => signOut(x.id)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>}
             </div>
           ))}
         </div>

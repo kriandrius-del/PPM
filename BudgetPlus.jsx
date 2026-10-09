@@ -1,8 +1,8 @@
 // Budget → Overview, Checks and Tools.
 import { useState, useMemo } from "react";
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
-import { AlertTriangle, ArrowRightLeft, CalendarRange, CalendarX, CheckCircle2, Copy, FileSpreadsheet, Gauge, Lock, PiggyBank, Printer, RefreshCw, Scale, Settings2, ShieldAlert, ShieldCheck, TrendingUp, Upload, Users, Wallet } from "lucide-react";
-import { ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
+import { AlertTriangle, ArrowRightLeft, CalendarRange, CheckCircle2, FileSpreadsheet, Gauge, Lock, PiggyBank, Printer, Scale, Settings2, ShieldAlert, TrendingUp, Upload, Wallet } from "lucide-react";
+import { Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
 import { MONTH_LABELS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
 import { addMonths, daysUntil, escapeHtml, fmtDate, gbp, isMirrored, parseDelimited, replacementYear, toISO } from "../lib/utils.js";
@@ -71,7 +71,7 @@ export function budgetModel({ year, budgets, services, works, suppliers, devices
   suppliers.forEach((s) => { if (!planM[s.category]) return; const mo = s.costFrequency === "annual" ? (Number(s.costAmount) || 0) / 12 : Number(s.costAmount) || 0; for (let i = 0; i < 12; i++) planM[s.category][i] += mo; });
   // What the plan says should have been spent by today (dated lines up to today, finished cost-line months, contract months so far).
   const planTo = z();
-  budgetLines.forEach((l) => { if (inYear(l.date) && planTo[l.category] !== undefined && l.status !== "skipped" && (l.date <= today || (l.actualAmount != null && l.actualAmount !== "") || l.actualServiceId)) planTo[l.category] += Number(l.amount) || 0; });
+  budgetLines.forEach((l) => { if (inYear(l.date) && planTo[l.category] !== undefined && l.status !== "skipped" && l.date <= today) planTo[l.category] += Number(l.amount) || 0; });
   costLines.forEach((l) => { if (planTo[l.category] === undefined) return; for (let i = 0; i < 12; i++) { const idx = fyS - 1 + i; const cy = l.year + Math.floor(idx / 12); const ym = `${cy}-${String((idx % 12) + 1).padStart(2, "0")}`; if (cy === year && (ym < today.slice(0, 7) || (ym === today.slice(0, 7) && l.actual?.[i] != null))) planTo[l.category] += Number(l.budget?.[i]) || 0; } });
   suppliers.forEach((s) => { if (planTo[s.category] === undefined) return; const mo = s.costFrequency === "annual" ? (Number(s.costAmount) || 0) / 12 : Number(s.costAmount) || 0; planTo[s.category] += mo * Math.max(0, elapsedMonths - 1); });
   const rows = CATEGORY_KEYS.map((c) => {
@@ -97,7 +97,7 @@ const rag = (r) => { if (!r.budget) return ["—", "var(--faint)"]; const p = r.
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
 
 /* ---------- Overview ---------- */
-export function BudgetOverview({ nextYearPlan = null, model, year, prevModel, services, works, suppliers, devices, invoices = [], pos = [], savings = [], floorArea = 0, bs = {}, onSaveBs }) {
+export function BudgetOverview({ model, year, prevModel, services, works, suppliers, devices, invoices = [], pos = [], savings = [], floorArea = 0, bs = {}, onSaveBs }) {
   const m = model; const yearPct = Math.round(m.yearFrac * 100); const usedPct = m.budget ? Math.round((m.spent / m.budget) * 100) : null;
   const devById = Object.fromEntries(devices.map((d) => [d.id, d])); const supById = Object.fromEntries(suppliers.map((s) => [s.id, s]));
   const inYear = (d) => d && Number(String(d).slice(0, 4)) === year;
@@ -227,13 +227,6 @@ export function BudgetOverview({ nextYearPlan = null, model, year, prevModel, se
           </div>
         ); })()}
       </div>
-      {nextYearPlan && nextYearPlan.total > 0 && <div style={card}>
-        <H icon={CalendarRange}>Already planned for {year + 1}</H>
-        <div className="bbig" style={{ fontSize: 24 }}>{gbp(nextYearPlan.total)}</div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12.3 }}>{Object.entries(nextYearPlan.byCat).filter(([, v]) => v > 0).map(([c, v]) => <span key={c}>{CATEGORY_META[c]?.label || c} <b style={mono}>{gbp(v)}</b></span>)}</div>
-        <div className="bsub">Planned service visits for {year + 1} (including annual price rises) — a starting point for next year's budget.</div>
-        {nextYearPlan.rows?.length > 0 && <ExportButton label="Download the plan (CSV)" filename={`planned-visits-${year + 1}.csv`} rows={[["Date", "Service", "Category", "Supplier", "Amount"], ...nextYearPlan.rows.map((l) => [l.date, l.description, CATEGORY_META[l.category]?.label || l.category, suppliers.find((s) => s.id === l.supplierId)?.name || "", Number(l.amount) || 0])]} />}
-      </div>}
       <div style={card}>
         <H icon={CalendarRange}>Spend heatmap {year}</H>
         <div style={{ overflowX: "auto" }}>
@@ -255,7 +248,7 @@ function NoteForm({ initial, placeholder, onSave }) {
 }
 
 /* ---------- Checks: things worth a look ---------- */
-export function BudgetChecks({ bs = {}, sync = {}, costLines = [], fyStart = 1, year, services, works, suppliers, devices, budgetLines, invoices = [], model }) {
+export function BudgetChecks({ costLines = [], fyStart = 1, year, services, works, suppliers, devices, budgetLines, invoices = [], model }) {
   const devById = Object.fromEntries(devices.map((d) => [d.id, d])); const inYear = (d) => d && Number(String(d).slice(0, 4)) === year;
   const overVisits = services.filter((v) => inYear(v.date) && !v.aborted && Number(devById[v.deviceId]?.budgetPerVisit) > 0 && Number(v.cost) > Number(devById[v.deviceId].budgetPerVisit) * 1.1).sort((a, b) => (Number(b.cost) - Number(devById[b.deviceId].budgetPerVisit)) - (Number(a.cost) - Number(devById[a.deviceId].budgetPerVisit)));
   const plannedDevs = new Set(budgetLines.filter((l) => inYear(l.date) && l.deviceId).map((l) => l.deviceId));
@@ -301,39 +294,6 @@ export function BudgetChecks({ bs = {}, sync = {}, costLines = [], fyStart = 1, 
           <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Late approval often means late payment — approve them in POs & invoices.</div>
         </Section>
       ); })()}
-      {(() => {
-        const today = new Date().toISOString().slice(0, 10); const t = (x) => new Date(x + "T00:00:00").getTime();
-        const live = new Set(devices.filter((d) => !d.archived).map((d) => d.id)); const dn = (id) => devices.find((d) => d.id === id)?.name || "Service";
-        const missed = budgetLines.filter((l) => l.deviceId && live.has(l.deviceId) && l.actualAmount == null && !l.actualServiceId && l.status !== "skipped" && String(l.date).startsWith(String(year)) && t(l.date) < t(today) - 14 * 864e5);
-        const groups = {}; budgetLines.filter((l) => l.deviceId && l.actualAmount == null && !l.actualServiceId && l.status !== "skipped" && l.date >= today).forEach((l) => { const k = `${l.deviceId}|${String(l.plannedFor || l.date).slice(0, 7)}`; (groups[k] = groups[k] || []).push(l); });
-        const dupes = Object.values(groups).filter((g) => g.length > 1 && !devices.find((d) => d.id === g[0].deviceId && (Number(d.repeatEveryDays) > 0 && Number(d.repeatEveryDays) < 28)));
-        const noSup = devices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0 && !d.supplierId);
-        const pct = Number(bs.overspendApprovalPct) || 0;
-        const overs = pct > 0 ? services.filter((v) => String(v.date).startsWith(String(year)) && Number(v.cost) > 0).map((v) => { const ln = budgetLines.find((l) => l.actualServiceId === v.id); const ref = Number(ln?.amount) || Number(devices.find((d) => d.id === v.deviceId)?.budgetPerVisit) || 0; return { v, ref }; }).filter((x) => x.ref > 0 && Number(x.v.cost) > x.ref * (1 + pct / 100)) : [];
-        const act = { background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", alignSelf: "flex-start" };
-        return (<>
-          <Section icon={CalendarX} title="Planned visits missed (over 2 weeks ago, not logged)" count={missed.length} empty="Every planned visit more than 2 weeks old has been logged or skipped.">
-            {missed.slice(0, 12).map((l) => row(l.id, `${dn(l.deviceId)}`, fmtDate(l.date), gbp(l.amount)))}
-            {missed.length > 0 && <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Log them if they happened (Services → Log visit), or release their budget if they didn't.</div>}
-            {missed.length > 0 && ACTIVE_CAN_EDIT && sync.onSkipLines && <button onClick={() => sync.onSkipLines(missed.map((l) => l.id))} style={act}>Release {gbp(missed.reduce((a, l) => a + (Number(l.amount) || 0), 0))} — mark {missed.length} as not happening</button>}
-          </Section>
-          <Section icon={Copy} title="Duplicate planned visits (same service, same month)" count={dupes.length} empty="No service has two planned visits in the same month.">
-            {dupes.slice(0, 10).map((g) => row(g[0].id, dn(g[0].deviceId), new Date(String(g[0].plannedFor || g[0].date) + "T12:00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" }), `${g.length} × ${gbp(g[0].amount)}`))}
-            {dupes.length > 0 && ACTIVE_CAN_EDIT && sync.onRemoveLines && <button onClick={() => sync.onRemoveLines(dupes.flatMap((g) => g.slice(1).map((l) => l.id)))} style={act}>Remove the extra {dupes.reduce((a, g) => a + g.length - 1, 0)}</button>}
-          </Section>
-          {(() => { const odd = devices.filter((d) => !d.archived && d.nextServiceDate && d.lastServiceDate && d.nextServiceDate < d.lastServiceDate); return odd.length ? <Section icon={AlertTriangle} title="Next due date is before the last visit" count={odd.length} empty="">
-            {odd.slice(0, 10).map((d) => row(d.id, d.name, `last ${fmtDate(d.lastServiceDate)}`, `next ${fmtDate(d.nextServiceDate)}`))}
-            <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Usually a typo in the next due date — open the service and correct it so its planned visits follow.</div>
-          </Section> : null; })()}
-          <Section icon={Users} title="Budgeted services with no supplier" count={noSup.length} empty="Every budgeted service has a supplier.">
-            {noSup.slice(0, 10).map((d) => row(d.id, d.name, "", `${gbp(d.budgetPerVisit)}/visit`))}
-            {noSup.length > 0 && <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Without a supplier, spend can't be shown by supplier and visits can't be chased.</div>}
-          </Section>
-          {pct > 0 && <Section icon={ShieldCheck} title={`Visits over budget by more than ${pct}% (need sign-off)`} count={overs.filter((x) => !x.v.overspendApprovedBy).length} empty={`No visit this year was more than ${pct}% over budget without sign-off.`}>
-            {overs.slice(0, 12).map((x) => row(x.v.id, `${dn(x.v.deviceId)} · ${fmtDate(x.v.date)}`, x.v.overspendApprovedBy ? `signed off by ${x.v.overspendApprovedBy}` : "NOT signed off", `${gbp(x.v.cost)} vs ${gbp(x.ref)}`))}
-          </Section>}
-        </>);
-      })()}
       <Section icon={Wallet} title="Monthly contract invoices not recorded" count={missingContractInv.length} empty="Every monthly contract has an invoice recorded for each finished month.">
         {missingContractInv.slice(0, 10).map((x) => row(x.s.id, x.s.name, `${x.months.length} month${x.months.length === 1 ? "" : "s"}`, x.months.join(", ")))}
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Chase the supplier, or record the invoices in POs & invoices, so contract spend isn't missed.</div>
@@ -347,7 +307,7 @@ export function BudgetChecks({ bs = {}, sync = {}, costLines = [], fyStart = 1, 
 }
 
 /* ---------- Tools ---------- */
-export function BudgetTools({ planHorizon = "nextYear", onSavePlanHorizon, onCheckPlans, history = [], userName = "", year, model, budgets, devices, bs = {}, onSaveBs, onMoveBudget, onSetBudgetsBulk, users = [], locationName = "", exportData }) {
+export function BudgetTools({ history = [], userName = "", year, model, budgets, devices, bs = {}, onSaveBs, onMoveBudget, onSetBudgetsBulk, users = [], locationName = "", exportData }) {
   const [phCat, setPhCat] = useState(CATEGORY_KEYS[0]);
   const [vir, setVir] = useState({ from: CATEGORY_KEYS[0], to: CATEGORY_KEYS[1] || CATEGORY_KEYS[0], amount: "", reason: "" });
   const [draw, setDraw] = useState({ cat: CATEGORY_KEYS[0], amount: "", reason: "" });
@@ -375,8 +335,6 @@ export function BudgetTools({ planHorizon = "nextYear", onSavePlanHorizon, onChe
           <Field label="Inflation for planning (%)"><TextInput type="number" min="0" step="0.5" defaultValue={bs.inflation ?? 4} onBlur={(e) => onSaveBs({ inflation: Number(e.target.value) || 0 })} /></Field>
           <Field label="Financial year starts in"><Select value={Number(bs.fyStart) || 1} onChange={(e) => onSaveBs({ fyStart: Number(e.target.value) })}>{MONTH_LABELS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</Select></Field>
           <Field label="Warn me at (% of budget)"><TextInput type="number" min="1" max="200" defaultValue={bs.alertPct ?? 80} onBlur={(e) => onSaveBs({ alertPct: Number(e.target.value) || 80 })} /></Field>
-          <Field label="Visits over budget by more than this % need sign-off (0 = off)"><TextInput type="number" min="0" max="500" defaultValue={bs.overspendApprovalPct ?? 0} onBlur={(e) => onSaveBs({ overspendApprovalPct: Number(e.target.value) || 0 })} /></Field>
-          {onSavePlanHorizon && <Field label="Plan service visits ahead until"><Select value={planHorizon} onChange={(e) => onSavePlanHorizon(e.target.value)}><option value="12">12 months ahead</option><option value="nextYear">End of next year (recommended)</option><option value="24">24 months ahead</option></Select></Field>}
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Budget owners</div>
         {CATEGORY_KEYS.map((c) => <div key={c} style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ width: 110, fontSize: 12.5 }}>{CATEGORY_META[c]?.label}</span><TextInput list="bud-owners" defaultValue={bs.owners?.[c] || ""} onBlur={(e) => onSaveBs({ owners: { ...(bs.owners || {}), [c]: e.target.value.trim() } })} placeholder="Name" style={{ flex: 1 }} /></div>)}
@@ -390,11 +348,6 @@ export function BudgetTools({ planHorizon = "nextYear", onSavePlanHorizon, onChe
           <tbody>{CATEGORY_KEYS.filter((c) => history.some((h) => h.rows.find((r) => r.cat === c)?.budget || h.rows.find((r) => r.cat === c)?.spent)).map((c) => <tr key={c} style={{ borderTop: "1px solid var(--border)" }}><td>{CATEGORY_META[c]?.label}</td>{history.map((h) => { const r = h.rows.find((x) => x.cat === c) || {}; const v = h.year === year ? r.forecast : r.spent; return <td key={h.year} style={{ textAlign: "right", ...mono }}><div>{gbp(v || 0)}</div><div style={{ fontSize: 10, color: r.budget && v > r.budget ? "var(--danger)" : "var(--faint)" }}>of {gbp(r.budget || 0)}</div></td>; })}</tr>)}</tbody>
         </table></div>
         <div style={{ fontSize: 11, color: "var(--faint)" }}>Past years show actual spend; {year} shows the forecast. Small figure = budget.</div>
-      </div>}
-      {onCheckPlans && <div style={box}>
-        <H icon={RefreshCw}>Service plans</H>
-        <div style={{ fontSize: 12.3, color: "var(--muted)" }}>The app checks every budgeted service's planned visits once a day: it adds visits up to your plan horizon and removes ones the schedule has moved past. Run it now after big changes.</div>
-        {ACTIVE_CAN_EDIT && <button onClick={onCheckPlans} style={{ alignSelf: "flex-start", background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Check all service plans now</button>}
       </div>}
       <div style={box}>
         <H icon={Lock}>Original vs revised budget {year}</H>

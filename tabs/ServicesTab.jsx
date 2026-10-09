@@ -2,9 +2,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, Copy, FileSpreadsheet, HardHat, LayoutGrid, List, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, Send, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
 import { Badge, CategoryBadge, ConfirmDeleteButton, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SignOffSection, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
-import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
+import { ACTIVE_CAN_EDIT, ACTIVE_CAN_MANAGE_ASSETS, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
 import { buildChaseEmail, printBulkStickers, printStickers } from "../lib/reports.js";
-import { addDays, addMonths, appBaseUrl, compressImage, currentBooking, daysUntil, downloadBlob, dueStatus, fmtDate, gbp, loadJsQR, missingRequiredFields, qrImageUrl, relativeDays, replacementYear, uid } from "../lib/utils.js";
+import { addDays, addMonths, appBaseUrl, orgParam, compressImage, currentBooking, daysUntil, downloadBlob, dueStatus, fmtDate, gbp, loadJsQR, missingRequiredFields, qrImageUrl, relativeDays, replacementYear, uid } from "../lib/utils.js";
 import { CONDITION_GRADES, CRITICALITY, MONTH_NAMES } from "../lib/constants.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
@@ -171,7 +171,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
         )}
       </div>
       {devices.length === 0 ? (
-        <EmptyState icon={Wrench} title="No services yet" body="Add the equipment or service you maintain at this location to start its history." actionLabel={ACTIVE_CAN_EDIT ? "Add a service" : undefined} onAction={onAdd} />
+        <EmptyState icon={Wrench} title="No services yet" body="Add the equipment or service you maintain at this location to start its history." actionLabel={ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && onAdd ? "Add a service" : undefined} onAction={onAdd || undefined} />
       ) : filteredDevices.length === 0 ? (
         <EmptyState icon={Wrench} title={dueFilter === "done" ? "Nothing done this month yet" : dueFilter === "todo" ? "All done for this month" : "Nothing matches this filter"} body={dueFilter === "done" ? "Services show here once this month's visit is logged, plus finished one-off jobs." : dueFilter === "todo" ? "Every service has had its visit logged this month. Tap Done or All to see them." : "Try a different filter or clear it to see everything."} />
       ) : (
@@ -244,12 +244,12 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
                       <QrCode size={15} color="#8A94A0" />
                     </button>
                     {onTogglePin && <button onClick={() => onTogglePin(d.id)} title={pinned.includes(d.id) ? "Unpin from Home" : "Pin to Home"} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pin size={14} color={pinned.includes(d.id) ? "#D97706" : "#C0C6CC"} fill={pinned.includes(d.id) ? "#D97706" : "none"} /></button>}
-                    {ACTIVE_CAN_EDIT && (
-                      <button onClick={() => onEdit(d)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                    {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && (
+                      <button onClick={() => onEdit(d)} aria-label={`Edit ${d.name}`} title="Edit" style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
                         <Pencil size={15} color="#8A94A0" />
                       </button>
                     )}
-                    <ConfirmDeleteButton onConfirm={() => onDelete(d.id)} />
+                    {ACTIVE_CAN_MANAGE_ASSETS && onDelete && <ConfirmDeleteButton onConfirm={() => onDelete(d.id)} />}
                   </div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, flexWrap: "wrap", gap: 6 }}>
@@ -284,7 +284,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
                 )}
                 {d.archived ? (
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  {ACTIVE_CAN_EDIT && <button onClick={() => onRestore?.(d.id)} style={{ flex: 1, background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><ArchiveRestore size={13} /> Restore</button>}
+                  {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && onRestore && <button onClick={() => onRestore(d.id)} style={{ flex: 1, background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><ArchiveRestore size={13} /> Restore</button>}
                   <button onClick={() => onHistory(d.id)} style={{ flex: 1, background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>History</button>
                 </div>
                 ) : selecting ? null : (
@@ -317,13 +317,13 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
         <BulkLogModal devices={[...devices, ...archivedDevices].filter((d) => selected.includes(d.id))} defaultTech={currentUserName || ""} onClose={() => setBulkOpen(false)}
           onSave={(opts) => { onBulkLog(selected, opts); setBulkOpen(false); setSelecting(false); setSelected([]); }} />
       )}
-      {ACTIVE_CAN_EDIT && onImport && dueFilter !== "archived" && (<>
+      {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && onImport && dueFilter !== "archived" && (<>
         {onCopySite && ACTIVE_CAN_EDIT && <button onClick={onCopySite} style={{ background: "none", border: "1px dashed #C7D0DA", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", marginBottom: 6 }}><Copy size={14} /> Copy services from another site</button>}
           <button onClick={onImport} style={{ width: "100%", marginTop: 14, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <FileSpreadsheet size={14} /> Import services from a spreadsheet
         </button>
       </>)}
-      {ACTIVE_CAN_EDIT && onLibrary && dueFilter !== "archived" && (
+      {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && onLibrary && dueFilter !== "archived" && (
         <button onClick={onLibrary} style={{ width: "100%", marginTop: 8, background: "none", border: "1px dashed var(--border-strong)", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <BookOpen size={14} /> Add several from the service library
         </button>
@@ -360,7 +360,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
 export function ServiceQrModal({ device, locationLabel, onClose }) {
   const base = appBaseUrl();
   const stickers = [
-    { key: "request", title: "Report a problem", url: `${base}?request=${device.id}`, hint: "Scan with your phone camera — no login needed" },
+    { key: "request", title: "Report a problem", url: `${base}?request=${device.id}${orgParam()}`, hint: "Scan with your phone camera — no login needed" },
     { key: "service", title: "Staff: service record", url: `${base}?service=${device.id}`, hint: "Opens history & Log visit" },
   ];
   const [printBlocked, setPrintBlocked] = useState(false);

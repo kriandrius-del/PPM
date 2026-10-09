@@ -1,6 +1,6 @@
 // Site → Actions, Spaces and Walk-rounds; the on-call rota; booking several visits together; merging duplicate services.
 import { useEffect, useState } from "react";
-import { addDays, addMonths, appBaseUrl, checklistLabel, compressImage, currentBooking, daysUntil, escapeHtml, fmtDate, qrImageUrl, uid } from "../lib/utils.js";
+import { addDays, addMonths, appBaseUrl, orgParam, checklistLabel, compressImage, currentBooking, daysUntil, escapeHtml, fmtDate, qrImageUrl, uid } from "../lib/utils.js";
 import { buildCleaningSchedule, buildWalkroundReport, openPrintReport, tableHtml } from "../lib/reports.js";
 import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
@@ -95,10 +95,10 @@ export function ActionModal({ existing, people = [], onClose, onSave, onDelete }
 }
 
 /* ---------- Spaces (rooms / areas with floor area) ---------- */
-export function SpacesView({ spaces, devices = [], onSave, onDelete, locationName, onOpenArea }) {
+export function SpacesView({ spaces, buildings = [], devices = [], onSave, onDelete, locationName, onOpenArea }) {
   const [editing, setEditing] = useState(null);
   const total = spaces.reduce((t, s) => t + (Number(s.areaM2) || 0), 0);
-  const byFloor = {}; spaces.forEach((s) => { (byFloor[s.floor || "—"] = byFloor[s.floor || "—"] || []).push(s); });
+  const bName = (id) => buildings.find((b) => b.id === id)?.name || ""; const byFloor = {}; spaces.forEach((s) => { const k = [bName(s.buildingId), s.floor].filter(Boolean).join(" · ") || "—"; (byFloor[k] = byFloor[k] || []).push(s); });
   const count = (name) => devices.filter((d) => (d.area || "").trim().toLowerCase() === name.trim().toLowerCase()).length;
   return (
     <div>
@@ -108,7 +108,7 @@ export function SpacesView({ spaces, devices = [], onSave, onDelete, locationNam
         <MetricBlock label="Capacity" value={spaces.reduce((t, s) => t + (Number(s.capacity) || 0), 0) || "—"} />
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Plus size={15} /> Add a space</PrimaryButton>}
+        {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Plus size={15} /> Add a room or space</PrimaryButton>}
         {spaces.some((s) => s.cleaning) && <button onClick={() => openPrintReport("Cleaning schedule", locationName, buildCleaningSchedule(spaces))} title="Print cleaning schedule" style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 650, color: "var(--accent)", fontFamily: "inherit" }}><Sparkles size={13} /> Cleaning</button>}
         {spaces.length > 0 && <ExportButton label="CSV" filename="spaces.csv" rows={[["Space", "Floor", "Use", "Area m²", "Capacity", "Services", "Notes"], ...spaces.map((s) => [s.name, s.floor || "", s.use || "", s.areaM2 || "", s.capacity || "", count(s.name), s.notes || ""])]} />}
       </div>
@@ -130,22 +130,31 @@ export function SpacesView({ spaces, devices = [], onSave, onDelete, locationNam
           </div>
         </div>
       ))}
-      {editing && <SpaceModal existing={editing.id ? editing : null} onClose={() => setEditing(null)} onSave={(s) => { onSave(s); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
+      {editing && <SpaceModal buildings={buildings} existing={editing.id ? editing : null} onClose={() => setEditing(null)} onSave={(s) => { onSave(s); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
     </div>
   );
 }
-function SpaceModal({ existing, onClose, onSave, onDelete }) {
+export function SpaceModal({ existing, buildings = [], defaults = {}, onClose, onSave, onDelete }) {
   const [name, setName] = useState(existing?.name || ""); const [floor, setFloor] = useState(existing?.floor || "");
+  const [buildingId, setBuildingId] = useState(existing?.buildingId || defaults.buildingId || (buildings.length === 1 ? buildings[0].id : ""));
+  const [floorId, setFloorId] = useState(existing?.floorId || defaults.floorId || "");
+  const bld = buildings.find((b) => b.id === buildingId); const floors = bld?.floors || [];
   const [use, setUse] = useState(existing?.use || SPACE_USES[0]); const [areaM2, setAreaM2] = useState(existing?.areaM2 != null ? String(existing.areaM2) : "");
   const [capacity, setCapacity] = useState(existing?.capacity != null ? String(existing.capacity) : ""); const [notes, setNotes] = useState(existing?.notes || "");
   const [cleaning, setCleaning] = useState(existing?.cleaning || ""); const [cleaningNotes, setCleaningNotes] = useState(existing?.cleaningNotes || "");
   const [condition, setCondition] = useState(existing?.condition || 0); const [conditionNote, setConditionNote] = useState(existing?.conditionNote || "");
   return (
-    <Modal title={existing ? "Space" : "Add a space"} onClose={onClose}>
+    <Modal title={existing ? "Room / space" : "Add a room or space"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <Field label="Name (match the Area / room used on services)"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Plant room" /></Field>
+        {buildings.length > 0 && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <Field label="Building"><Select value={buildingId} onChange={(e) => { setBuildingId(e.target.value); setFloorId(""); }}><option value="">— not in a building —</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
+            {floors.length > 0 && <Field label="Floor"><Select value={floorId} onChange={(e) => { setFloorId(e.target.value); const f = floors.find((x) => x.id === e.target.value); if (f) setFloor(f.name); }}><option value="">— choose —</option>{floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</Select></Field>}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 8 }}>
-          <Field label="Floor"><TextInput value={floor} onChange={(e) => setFloor(e.target.value)} placeholder="e.g. Ground" /></Field>
+          {!(buildings.length > 0 && floors.length > 0) && <Field label="Floor"><TextInput value={floor} onChange={(e) => setFloor(e.target.value)} placeholder="e.g. Ground" /></Field>}
           <Field label="Use"><Select value={use} onChange={(e) => setUse(e.target.value)}>{SPACE_USES.map((u) => <option key={u} value={u}>{u}</option>)}</Select></Field>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -158,7 +167,7 @@ function SpaceModal({ existing, onClose, onSave, onDelete }) {
           <Field label="Cleaning notes"><TextInput value={cleaningNotes} onChange={(e) => setCleaningNotes(e.target.value)} placeholder="e.g. Deep clean monthly" /></Field>
         </div>
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: 50 }} /></Field>
-        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), floor: floor.trim(), use, areaM2: areaM2 === "" ? null : Number(areaM2), capacity: capacity === "" ? null : Number(capacity), notes: notes.trim(), cleaning, cleaningNotes: cleaningNotes.trim(), condition: condition || null, conditionNote: conditionNote.trim(), conditionAt: condition && condition !== existing?.condition ? new Date().toISOString().slice(0, 10) : existing?.conditionAt })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), floor: (floors.find((f) => f.id === floorId)?.name || floor).trim(), buildingId: buildingId || null, floorId: (buildingId && floorId) || null, use, areaM2: areaM2 === "" ? null : Number(areaM2), capacity: capacity === "" ? null : Number(capacity), notes: notes.trim(), cleaning, cleaningNotes: cleaningNotes.trim(), condition: condition || null, conditionNote: conditionNote.trim(), conditionAt: condition && condition !== existing?.condition ? new Date().toISOString().slice(0, 10) : existing?.conditionAt })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this space" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -261,10 +270,10 @@ export function OnCallCard({ rota = [], onSave }) {
             <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, background: r === now ? "var(--accent-soft)" : "var(--card-hi)", borderRadius: 8, padding: "6px 9px" }}>
               <span style={{ flex: 1 }}><b>{r.name}</b>{r.phone ? ` · ${r.phone}` : ""}</span>
               <span style={{ color: "var(--faint)" }}>{fmtDate(r.from)}{r.to ? ` – ${fmtDate(r.to)}` : ""}</span>
-              {ACTIVE_CAN_EDIT && <button onClick={() => onSave(rota.filter((x) => x.id !== r.id))} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={12} color="#A3ABB4" /></button>}
+              {ACTIVE_CAN_EDIT && onSave && <button onClick={() => onSave(rota.filter((x) => x.id !== r.id))} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={12} color="#A3ABB4" /></button>}
             </div>
           ))}
-          {ACTIVE_CAN_EDIT && (
+          {ACTIVE_CAN_EDIT && onSave && (
             <div style={{ display: "flex", flexDirection: "column", gap: 5, background: "var(--card-hi)", borderRadius: 9, padding: 8 }}>
               <div style={{ display: "flex", gap: 6 }}>
                 <TextInput value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} placeholder="Name" style={{ flex: 1, minWidth: 0 }} />
@@ -328,7 +337,7 @@ export function MergeServiceModal({ device, devices, onClose, onMerge }) {
   return (
     <Modal title="Merge duplicate service" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Moves every visit, job, task and planned visit from <b>{device.name}</b> onto the service you choose, then removes <b>{device.name}</b>. It can be restored for 30 days from 🕘 → Deleted.</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Moves every visit, job, task and planned visit from <b>{device.name}</b> onto the service you choose, then removes <b>{device.name}</b>. It can be restored for 30 days from More → Deleted items.</div>
         <Field label="Keep this service"><Select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Choose…</option>{others.map((d) => <option key={d.id} value={d.id}>{d.name}{d.area ? ` — ${d.area}` : ""}</option>)}</Select></Field>
         <PrimaryButton onClick={() => target && onMerge(device.id, target)} style={{ opacity: target ? 1 : 0.5 }}><CheckCircle2 size={15} /> Merge into this service</PrimaryButton>
       </div>
@@ -750,7 +759,7 @@ export function FeedbackView({ onRaiseJob, items, locationId, locationName, area
   const since = Date.now() - days * 86400000;
   const list = items.filter((f) => new Date(f.at).getTime() >= since && (!area || f.area === area));
   const avg = (t) => { const v = list.map((f) => f.ratings?.[t]).filter(Boolean); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
-  const url = `${appBaseUrl()}?feedback=${locationId}`;
+  const url = `${appBaseUrl()}?feedback=${locationId}${orgParam()}`;
   return (
     <div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
