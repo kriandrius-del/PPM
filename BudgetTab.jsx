@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from "react";
 import { ShieldAlert, Plus, Sparkles, CopyPlus, FileCheck, CheckCircle2, Pencil, ChevronDown, Trash2, Loader2, Camera, ChevronLeft, ChevronRight, Receipt, Download } from "lucide-react";
 import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar } from "recharts";
 import { CategoryBadge, CategoryOptions, ConfirmDeleteButton, EmptyState, ExportButton, Field, MetricBlock, Modal, PrimaryButton, Select, SubCategoryField, TextInput, ToggleButton } from "../components/ui.jsx";
-import { MONTH_LABELS, WEEKDAY_LABELS } from "../lib/constants.js";
+import { APP_VERSION, MONTH_LABELS, WEEKDAY_LABELS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, CATEGORY_KEYS, CATEGORY_META, emptyCatMap } from "../lib/globals.js";
 import { buildAccountingCsv } from "../lib/reports.js";
 import { addDays, addMonths, collectActuals, compressImage, downloadBlob, fmtDate, gbp, getMonthGrid, isMirrored, suggestForDevice, toISODate } from "../lib/utils.js";
@@ -62,9 +62,10 @@ export function BudgetTab({ serviceSync = null, onOpenService, costLines = [], o
   // max was never entered.
   const effectiveMaxByCategory = useMemo(() => {
     const m = {};
-    CATEGORY_KEYS.forEach((c) => { m[c] = maxByCategory[c] > 0 ? maxByCategory[c] : plannedByCategory[c]; });
+    // Same figure as the header and Overview (includes cost lines and contracts, not just plan lines).
+    CATEGORY_KEYS.forEach((c) => { const r = model.rows.find((x) => x.cat === c); m[c] = r ? r.budget : maxByCategory[c] > 0 ? maxByCategory[c] : plannedByCategory[c]; });
     return m;
-  }, [maxByCategory, plannedByCategory]);
+  }, [maxByCategory, plannedByCategory, model]);
   const totalBudget = CATEGORY_KEYS.reduce((s, c) => s + effectiveMaxByCategory[c], 0);
 
   // Same fallback, but for an arbitrary year (used by the multi-year chart).
@@ -112,8 +113,10 @@ export function BudgetTab({ serviceSync = null, onOpenService, costLines = [], o
       if (m[l.category] !== undefined) m[l.category] += Number(l.actualAmount) || 0;
     });
     CATEGORY_KEYS.forEach((c) => { m[c] += supplierMonthlyByCategory[c] * 12; });
+    // Use the shared model's spend so every Budget view shows the same "spent" figure.
+    CATEGORY_KEYS.forEach((c) => { const r = model.rows.find((x) => x.cat === c); if (r) m[c] = r.spent; });
     return m;
-  }, [services, works, budgetLines, deviceCat, year, supplierMonthlyByCategory]);
+  }, [services, works, budgetLines, deviceCat, year, supplierMonthlyByCategory, model]);
 
   const nonControllableTotal = useMemo(() => works
     .filter((w) => w.budgetType === "non_controllable" && w.status !== "rejected" && new Date(w.dateRaised).getFullYear() === year)
@@ -337,15 +340,16 @@ export function BudgetTab({ serviceSync = null, onOpenService, costLines = [], o
           {Array.from({ length: 6 }, (_, i) => thisYear - 4 + i).map((y) => <option key={y} value={y}>{y}</option>)}
         </Select>
         <div style={{ display: "flex", gap: 10 }}>
-          <MetricBlock label="Total budget" value={gbp(totalBudget)} />
-          <MetricBlock label={variance >= 0 ? "Remaining" : "Over budget"} value={gbp(Math.abs(variance))} tone={variance >= 0 ? "ok" : "danger"} />
+          <MetricBlock label="Total budget" value={gbp(model.budget)} />
+          <MetricBlock label={model.budget - model.spent >= 0 ? "Left to spend" : "Over budget"} value={gbp(Math.abs(model.budget - model.spent))} tone={model.budget - model.spent >= 0 ? "ok" : "danger"} />
         </div>
       </div>
 
+      <div style={{ fontSize: 10.5, color: "var(--faint)", textAlign: "right", marginTop: -8, marginBottom: 6 }}>App version {APP_VERSION}</div>
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
         {[["overview", "Overview"], ["costlines", "Cost lines"], ["plan", "Plan"], ["month", "Month"], ["year", "Year"], ["calendar", "Calendar"], ["variance", "Variance"], ["checks", "Checks"], ["tools", "Tools"]].map(([k, l]) => <ToggleButton key={k} active={view === k} onClick={() => setView(k)}>{l}</ToggleButton>)}
       </div>
-      {view === "overview" && <BudgetOverview model={model} prevModel={prevModel} year={year} services={services} works={works} suppliers={suppliers} devices={devices} invoices={invoices} pos={pos} savings={savings} floorArea={floorArea} bs={bs} onSaveBs={onSaveBs} />}
+      {view === "overview" && <BudgetOverview nextYearPlan={(() => { const ny = String(year + 1); const byCat = {}; let total = 0; const rows = budgetLines.filter((l) => String(l.date).startsWith(ny) && l.status !== "skipped").sort((a, b) => a.date.localeCompare(b.date)); rows.forEach((l) => { byCat[l.category] = (byCat[l.category] || 0) + (Number(l.amount) || 0); total += Number(l.amount) || 0; }); return { byCat, total, rows }; })()} model={model} prevModel={prevModel} year={year} services={services} works={works} suppliers={suppliers} devices={devices} invoices={invoices} pos={pos} savings={savings} floorArea={floorArea} bs={bs} onSaveBs={onSaveBs} />}
       {view === "costlines" && <CostLinesView onOpenService={onOpenService} serviceRowsFor={(cat, fy, fyS) => {
         const key = (y, m) => { const idx = (y - fy) * 12 + (m - fyS); return idx >= 0 && idx < 12 ? idx : -1; };
         return devices.filter((d) => !d.archived && (d.serviceCategory || "maintenance") === cat).map((d) => {
@@ -353,14 +357,14 @@ export function BudgetTab({ serviceSync = null, onOpenService, costLines = [], o
           budgetLines.forEach((l) => { if (l.deviceId !== d.id || l.status === "skipped") return; const [y, m] = String(l.date).split("-").map(Number); const k = key(y, m); if (k < 0) return; budget[k] += Number(l.amount) || 0; visits++; });
           services.forEach((v) => { if (v.deviceId !== d.id || !Number(v.cost)) return; const [y, m] = String(v.date).split("-").map(Number); const k = key(y, m); if (k < 0) return; actual[k] = (actual[k] || 0) + Number(v.cost); });
           const todayISO = new Date().toISOString().slice(0, 10);
-          const budgetToDate = budgetLines.filter((l) => l.deviceId === d.id && l.status !== "skipped" && l.date <= todayISO && key(...String(l.date).split("-").map(Number).slice(0, 2)) >= 0).reduce((t, l) => t + (Number(l.amount) || 0), 0);
+          const budgetToDate = budgetLines.filter((l) => l.deviceId === d.id && l.status !== "skipped" && (l.date <= todayISO || (l.actualAmount != null && l.actualAmount !== "") || l.actualServiceId) && key(...String(l.date).split("-").map(Number).slice(0, 2)) >= 0).reduce((t, l) => t + (Number(l.amount) || 0), 0);
           return { id: `svc-${d.id}`, deviceId: d.id, name: d.name, budget, actual, visits, auto: true, budgetToDate };
         }).filter((r) => r.budget.some(Boolean) || r.actual.some((x) => x != null));
       }} lines={costLines} suppliers={suppliers} fyStart={Number(bs.fyStart) || 1} bs={bs} onSaveBs={onSaveBs} onSaveMany={onSaveCostLines} onDelete={onDeleteCostLine} onRecordInvoice={onRecordInvoice} locationName={locationName} userName={userName} />}
       {view === "checks" && serviceSync && <ServiceSyncPanel sync={serviceSync} />}
       {view === "tools" && serviceSync && ACTIVE_CAN_EDIT && <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 14, marginBottom: 12, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}><div style={{ flex: "1 1 240px", fontSize: 13 }}><b>Plan service visits ahead</b><div style={{ fontSize: 12, color: "var(--muted)" }}>Adds any missing planned visits for every service with a budget per visit — nothing existing is changed.</div></div><button onClick={() => serviceSync.onPlan(devices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0).map((d) => d.id), 12)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Next 12 months</button><button onClick={() => serviceSync.onPlan(devices.filter((d) => !d.archived && Number(d.budgetPerVisit) > 0).map((d) => d.id), 24)} style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Next 24 months</button></div>}
-      {view === "checks" && <BudgetChecks costLines={costLines} fyStart={Number(bs.fyStart) || 1} model={model} year={year} services={services} works={works} suppliers={suppliers} devices={devices} budgetLines={budgetLines} invoices={invoices} />}
-      {view === "tools" && <BudgetTools history={[year - 2, year - 1, year].map((y) => ({ year: y, ...budgetModel({ year: y, budgets, services, works, suppliers, devices, budgetLines, costLines, bs, asOf: y < year ? `${y}-12-31` : undefined }) })).filter((h) => h.budget || h.spent)} userName={userName} year={year} model={model} budgets={budgets} devices={devices} bs={bs} onSaveBs={onSaveBs} onMoveBudget={onMoveBudget} onSetBudgetsBulk={onSetBudgetsBulk} users={userNames} locationName={locationName} exportData={{ excel: () => exportBudgetPack({ model, year, locationName, lines: budgetLines, suppliers, bs }), print: () => printBudgetSummary({ model, year, locationName, bs }) }} />}
+      {view === "checks" && <BudgetChecks bs={bs} sync={serviceSync || {}} costLines={costLines} fyStart={Number(bs.fyStart) || 1} model={model} year={year} services={services} works={works} suppliers={suppliers} devices={devices} budgetLines={budgetLines} invoices={invoices} />}
+      {view === "tools" && <BudgetTools planHorizon={serviceSync?.planHorizon} onSavePlanHorizon={serviceSync?.onSavePlanHorizon} onCheckPlans={serviceSync?.onCheckPlans} history={[year - 2, year - 1, year].map((y) => ({ year: y, ...budgetModel({ year: y, budgets, services, works, suppliers, devices, budgetLines, costLines, bs, asOf: y < year ? `${y}-12-31` : undefined }) })).filter((h) => h.budget || h.spent)} userName={userName} year={year} model={model} budgets={budgets} devices={devices} bs={bs} onSaveBs={onSaveBs} onMoveBudget={onMoveBudget} onSetBudgetsBulk={onSetBudgetsBulk} users={userNames} locationName={locationName} exportData={{ excel: () => exportBudgetPack({ model, year, locationName, lines: budgetLines, suppliers, bs }), print: () => printBudgetSummary({ model, year, locationName, bs }) }} />}
       {!["overview", "checks", "tools", "costlines"].includes(view) && <>
       {/* Per-category max & control */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
@@ -576,7 +580,7 @@ export function BudgetTab({ serviceSync = null, onOpenService, costLines = [], o
                       return (
                         <tr key={l.id} onClick={() => setRecordingSpendFor(l)} style={{ borderBottom: "1px solid #F0F1F3", cursor: "pointer" }}>
                           <td style={{ padding: "10px 10px", whiteSpace: "nowrap", color: "var(--muted)" }}>{fmtDate(l.date)}</td>
-                          <td style={{ padding: "10px 10px", fontWeight: 600, maxWidth: 160 }}>{l.description}</td>
+                          <td style={{ padding: "10px 10px", fontWeight: 600, maxWidth: 160 }}>{l.description}{l.plannedFor && <div style={{ fontSize: 10.5, fontWeight: 650, color: "var(--accent)" }}>booked · planned {fmtDate(l.plannedFor)}</div>}</td>
                           <td style={{ padding: "10px 10px" }}><CategoryBadge category={l.category} subCategory={l.subCategory} /></td>
                           <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(l.amount)}</td>
                           <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: spent ? "var(--text)" : "#C0C6CC" }}>{spent ? gbp(l.actualAmount) : "—"}</td>
