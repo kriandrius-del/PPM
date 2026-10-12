@@ -896,17 +896,17 @@ function LabourMaterials({ work, onUpdate, spares = [], onUseSpare }) {
       {parts.map((p, i) => <div key={`p${i}`} style={{ fontSize: 12.3, display: "flex", gap: 6 }}><span style={{ flex: 1 }}>🔧 {p.qty} × {p.name} (from stock)</span><b>{gbp((Number(p.qty) || 0) * (Number(p.unitCost) || 0))}</b></div>)}
       {ACTIVE_CAN_EDIT && (
         <>
-          <div style={{ display: "flex", gap: 5 }}>
-            <select value={d.type} onChange={(e) => setD((p) => ({ ...p, type: e.target.value }))} style={{ ...inputStyle, width: 100, fontSize: 12 }}><option value="labour">Labour</option><option value="material">Materials</option></select>
-            <TextInput value={d.desc} onChange={(e) => setD((p) => ({ ...p, desc: e.target.value }))} placeholder="What" style={{ flex: 1, minWidth: 0 }} />
-            <TextInput type="number" min="0" step="0.25" value={d.qty} onChange={(e) => setD((p) => ({ ...p, qty: e.target.value }))} placeholder={d.type === "labour" ? "hrs" : "qty"} style={{ width: 58 }} />
-            <TextInput type="number" min="0" step="0.01" value={d.rate} onChange={(e) => setD((p) => ({ ...p, rate: e.target.value }))} placeholder="£ each" style={{ width: 70 }} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            <select aria-label="Labour or materials" value={d.type} onChange={(e) => setD((p) => ({ ...p, type: e.target.value }))} style={{ ...inputStyle, width: 100, fontSize: 12 }}><option value="labour">Labour</option><option value="material">Materials</option></select>
+            <TextInput value={d.desc} onChange={(e) => setD((p) => ({ ...p, desc: e.target.value }))} placeholder="What" aria-label="What was done or used" style={{ flex: "1 1 160px", minWidth: 0 }} />
+            <TextInput type="number" min="0" step="0.25" value={d.qty} onChange={(e) => setD((p) => ({ ...p, qty: e.target.value }))} placeholder={d.type === "labour" ? "hrs" : "qty"} aria-label={d.type === "labour" ? "Hours" : "Quantity"} style={{ width: 58 }} />
+            <TextInput type="number" min="0" step="0.01" value={d.rate} onChange={(e) => setD((p) => ({ ...p, rate: e.target.value }))} placeholder="£ each" aria-label="Price each" style={{ width: 84 }} />
             <button type="button" onClick={() => { if (!d.qty || !d.rate) return; onUpdate({ lines: [...lines, { ...d, qty: Number(d.qty), rate: Number(d.rate) }] }); setD({ type: d.type, desc: "", qty: "", rate: d.rate }); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Add</button>
           </div>
           {spares.length > 0 && onUseSpare && (
             <div style={{ display: "flex", gap: 5 }}>
-              <select value={spareId} onChange={(e) => setSpareId(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 12 }}><option value="">Use a spare part from stock…</option>{spares.map((sp) => <option key={sp.id} value={sp.id}>{sp.name} ({sp.qty} in stock)</option>)}</select>
-              <TextInput type="number" min="1" value={spareQty} onChange={(e) => setSpareQty(e.target.value)} style={{ width: 54 }} />
+              <select aria-label="Spare part from stock" value={spareId} onChange={(e) => setSpareId(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 12 }}><option value="">Use a spare part from stock…</option>{spares.map((sp) => <option key={sp.id} value={sp.id}>{sp.name} ({sp.qty} in stock)</option>)}</select>
+              <TextInput type="number" min="1" step="1" aria-label="How many" value={spareQty} onChange={(e) => setSpareQty(e.target.value)} style={{ width: 58 }} />
               <button type="button" disabled={!spareId} onClick={() => { if (!spareId) return; if (onUseSpare(spareId, Number(spareQty)) !== false) { setSpareId(""); setSpareQty("1"); } }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use</button>
             </div>
           )}

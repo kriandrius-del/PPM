@@ -9,7 +9,7 @@
 - **A job's steps (OPS-03):** quote → approval → purchase order → work done → invoice, with the next step and its button. A PO can't be raised while an over-limit quote waits for approval, and an invoice recorded from a job is linked to the job's PO.
 - **Booking emails (OPS-04):** Book from the Schedule, and **Write the booking email** opens your email app with it written out (Service Book doesn't send email itself — see GOING-LIVE.md).
 - **Tablets and phones (HOM-04, RES-01, CS-04, OPS-06):** pop-ups size themselves to the part of the screen above the on-screen keyboard and are centred on tablets; button labels no longer break in the middle of a word; CSV exports are real downloads (they did nothing on iPad); **Report incident** opens the form straight away; the top-bar search becomes a magnifier when space is tight.
-- **Smaller fixes:** shutdown type "Other" asks what it is; imports refuse impossible dates (31/02); using a part on a job checks the quantity and stock and ignores a double tap.
+- **Smaller fixes:** shutdown type "Other" asks what it is; imports refuse impossible dates (31/02); using a part on a job checks the quantity and stock and ignores a double tap; when something is refused, the message now shows the reason (`tellUser` in `MainApp.jsx` — not written to the activity log) and long messages wrap on phones; the labour and materials boxes on a job wrap on phones.
 - **Decision applied — hide other areas:** engineers, finance and senior management only see their own areas, in the menu, search and notifications (`otherAreasFor` / `canSeeArea` in `app/navigation.js`). Links into a hidden area go to Home.
 
 **Round 30.2 changes** (role controls you asked for before the review):

@@ -172,7 +172,7 @@ export function MainApp() {
   function setDeviceModal(v) {
     if (v && !canManageRef.current) {
       if (v.record) setHistoryFor(v.record.id);
-      else showToast("Ask an FM manager or coordinator to add assets", "Your role can log visits and work on assets, but not add or delete them.");
+      else tellUser("Ask an FM manager or coordinator to add assets", "Your role can log visits and work on assets, but not add or delete them.");
       return;
     }
     setDeviceModalRaw(v);
@@ -188,7 +188,7 @@ export function MainApp() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toast.undo ? 7000 : 2200);
+    const t = setTimeout(() => setToast(null), toast.undo ? 7000 : toast.hint ? 4500 : 2200);
     return () => clearTimeout(t);
   }, [toast]);
   useEffect(() => {
@@ -264,10 +264,13 @@ export function MainApp() {
   }, []);
   // Every toast is also written to the shared activity log (who did what, when, where).
   const NO_LOG = new Set(["Set a budget per visit first", "Already up to date"]);
-  function showToast(msg, detail) {
-    setToast({ msg });
+  // showDetail: also show the detail under the message (otherwise it only goes in the activity log).
+  function showToast(msg, detail, showDetail = false) {
+    setToast({ msg, hint: showDetail && detail ? detail : null });
     if (!NO_LOG.has(msg)) logActivity(detail ? `${msg} — ${detail}` : msg);
   }
+  // A refusal or a pointer: show it with the reason, but don't record it as activity (nothing happened).
+  function tellUser(msg, hint) { setToast({ msg, hint: hint || null }); }
   function logActivity(text) {
     const entry = { id: uid(), at: new Date().toISOString(), by: currentUserRef.current || "Unknown", locationId: locationRef.current || null, text };
     setActivity((prev) => { const next = [entry, ...prev].slice(0, 500); saveShared(SKEYS.activity, next); return next; });
@@ -1126,8 +1129,8 @@ export function MainApp() {
   function useSpareOnWork(workId, spareId, qty) {
     const sp = spares.find((x) => x.id === spareId); const w = works.find((x) => x.id === workId); if (!sp || !w) return false;
     const at = new Date().toISOString(); const n = Number(qty);
-    if (!Number.isInteger(n) || n < 1) { showToast("Not taken from stock", "Enter a whole number of 1 or more"); return false; }
-    if (n > (Number(sp.qty) || 0)) { showToast("Not taken from stock", `Only ${Number(sp.qty) || 0} ${sp.name} in stock — add stock first in Resources → Spares & stock`); return false; }
+    if (!Number.isInteger(n) || n < 1) { tellUser("Not taken from stock", "Enter a whole number of 1 or more."); return false; }
+    if (n > (Number(sp.qty) || 0)) { tellUser("Not taken from stock", `Only ${Number(sp.qty) || 0} ${sp.name} in stock — add stock first in Resources → Spares & stock.`); return false; }
     // A double tap mustn't take the parts twice.
     const key = `${workId}:${spareId}:${n}`; if (lastSpareUse.current.key === key && Date.now() - lastSpareUse.current.t < 4000) return false;
     lastSpareUse.current = { key, t: Date.now() };
@@ -1169,7 +1172,7 @@ export function MainApp() {
     const number = window.prompt(`Invoice number for "${String(w.description).slice(0, 40)}" (${gbp(w.finalCost ?? w.quoteAmount)}):`, ""); if (number === null) return;
     const po = w.poNumber ? purchaseOrders.find((x) => x.number === w.poNumber) : null;   // link the job's PO, so the invoice shows against it
     invOps.save({ number: number.trim() || `Job ${w.id.slice(-6).toUpperCase()}`, supplierId: w.supplierId || null, amount: Number(w.finalCost ?? w.quoteAmount) || 0, vatRate: 20, workId: w.id, date: new Date().toISOString().slice(0, 10), status: "received", poId: po?.id || null, poNumberText: w.poNumber || "", poNumber: w.poNumber || undefined });
-    showToast("Invoice recorded", "Approve it in Commercial → POs & invoices");
+    showToast("Invoice recorded", "Approve it in Commercial → POs & invoices", true);
   }
   function poFromWork(w) {
     const nums = purchaseOrders.map((p) => Number(String(p.number).match(/(\d+)\s*$/)?.[1])).filter((n) => !isNaN(n));
@@ -1301,7 +1304,7 @@ export function MainApp() {
   // A link, search result or notification into an area this role doesn't have goes Home instead.
   useEffect(() => {
     const a = String(navId).split(".")[0];
-    if (!canSeeArea(role, a)) { setNavId("home.command"); showToast("Not part of your role", "That page isn't available to you"); }
+    if (!canSeeArea(role, a)) { setNavId("home.command"); tellUser("Not part of your role", "That page isn't available to you."); }
   }, [navId, role]); // eslint-disable-line react-hooks/exhaustive-deps
   // The top-bar figures open the list they count, with only that filter on.
   const [worksFocus, setWorksFocus] = useState(null);
@@ -3107,9 +3110,9 @@ export function MainApp() {
         <div style={{
           position: "fixed", bottom: 86, left: "50%", transform: "translateX(-50%)", background: "var(--head)", color: "var(--on-accent)",
           padding: toast.undo ? "6px 6px 6px 16px" : "9px 16px", borderRadius: 20, fontSize: 12.5, fontWeight: 600, boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
-          zIndex: 60, whiteSpace: "nowrap", pointerEvents: toast.undo ? "auto" : "none", display: "flex", alignItems: "center", gap: 10,
-        }}>
-          <span>{toast.msg}</span>
+          zIndex: 60, width: "max-content", maxWidth: "calc(100vw - 32px)", whiteSpace: "normal", textAlign: "center", pointerEvents: toast.undo ? "auto" : "none", display: "flex", alignItems: "center", gap: 10,
+        }} role="status">
+          <span>{toast.msg}{toast.hint && <span style={{ display: "block", fontWeight: 500, fontSize: 12, opacity: 0.88, marginTop: 2 }}>{toast.hint}</span>}</span>
           {toast.undo && ACTIVE_CAN_EDIT && (
             <button onClick={undoLast} style={{ background: "#D97706", color: "var(--on-accent)", border: "none", borderRadius: 14, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
               <Undo2 size={13} /> Undo
