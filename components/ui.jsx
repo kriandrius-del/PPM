@@ -4,7 +4,7 @@ import { InlineModalContext } from "./ds.jsx";
 import { Download, ImagePlus, Loader2, MapPin, Plus, ShieldAlert, Trash2, X } from "lucide-react";
 import { WORK_PRIORITIES, WORK_STATUSES, toneStyles } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
-import { compressImage, csvHref, fieldsFor } from "../lib/utils.js";
+import { compressImage, downloadCsv, fieldsFor } from "../lib/utils.js";
 
 export function CategoryOptions() { return CATEGORY_KEYS.map((k) => <option key={k} value={k}>{CATEGORY_META[k].label}</option>); }
 
@@ -69,8 +69,23 @@ export function SubCategoryField({ value, onChange, suggestions }) {
   );
 }
 
+// The part of the screen you can actually see. On a phone or iPad with the on-screen keyboard open this is
+// shorter than the window, so pop-ups size and place themselves inside it instead of behind the keyboard.
+export function useVisibleViewport() {
+  const read = () => { const vv = typeof window !== "undefined" ? window.visualViewport : null; return vv ? { h: vv.height, top: vv.offsetTop, w: vv.width } : null; };
+  const [v, setV] = useState(read);
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null; if (!vv) return undefined;
+    let raf = 0; const on = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setV(read())); };
+    vv.addEventListener("resize", on); vv.addEventListener("scroll", on);
+    return () => { cancelAnimationFrame(raf); vv.removeEventListener("resize", on); vv.removeEventListener("scroll", on); };
+  }, []);
+  return v;
+}
+
 export function Modal({ title, onClose, children, width = 480 }) {
   const inline = useContext(InlineModalContext);
+  const view = useVisibleViewport();
   useEffect(() => {
     if (inline) return undefined;
     const onKey = (e) => { if (e.key === "Escape" && onClose) onClose(); };
@@ -84,15 +99,23 @@ export function Modal({ title, onClose, children, width = 480 }) {
       <InlineModalContext.Provider value={false}>{children}</InlineModalContext.Provider>
     </div>
   );
+  // Phones: a sheet from the bottom of the visible screen (above the keyboard). Tablets and computers: centred.
+  const wideScreen = (view?.w || (typeof window !== "undefined" ? window.innerWidth : 1024)) >= 640;
+  const visH = view?.h || null;
+  // Typing in a field: keep it in sight once the keyboard has opened.
+  const keepInView = (e) => {
+    const t = e.target; if (!t || !t.matches || !t.matches("input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select")) return;
+    setTimeout(() => { try { t.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (err) { /* old browsers */ } }, 320);
+  };
   return (
-    <div data-modal-open="1" style={{ position: "fixed", inset: 0, background: "rgba(20,26,33,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        background: "var(--card)", width: "100%", maxWidth: width, maxHeight: "88vh", overflowY: "auto",
-        borderRadius: "16px 16px 0 0", padding: 20, boxShadow: "0 -8px 30px rgba(0,0,0,0.2)",
+    <div data-modal-open="1" style={{ position: "fixed", left: 0, right: 0, top: view ? view.top : 0, height: visH || "100%", background: "rgba(20,26,33,0.45)", display: "flex", alignItems: wideScreen ? "center" : "flex-end", justifyContent: "center", zIndex: 50, padding: wideScreen ? 16 : 0, boxSizing: "border-box" }} onClick={onClose}>
+      <div className="fm-modal-panel" onClick={(e) => e.stopPropagation()} onFocusCapture={keepInView} style={{
+        background: "var(--card)", width: "100%", maxWidth: width, maxHeight: visH ? Math.round(visH * (wideScreen ? 0.94 : 0.92)) : "88vh", overflowY: "auto", overscrollBehavior: "contain",
+        borderRadius: wideScreen ? 16 : "16px 16px 0 0", padding: 20, paddingBottom: wideScreen ? 20 : "calc(20px + env(safe-area-inset-bottom, 0px))", boxShadow: "0 -8px 30px rgba(0,0,0,0.2)", boxSizing: "border-box",
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--text)", fontFamily: "'IBM Plex Sans', sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: 6, cursor: "pointer", display: "flex" }}>
+          <button onClick={onClose} aria-label="Close" style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: 6, cursor: "pointer", display: "flex", flexShrink: 0 }}>
             <X size={17} color="#5B6672" />
           </button>
         </div>
@@ -156,10 +179,10 @@ export function ConfirmDeleteButton({ onConfirm, size = 15 }) {
 
 export function ExportButton({ rows, filename, label = "Export CSV" }) {
   return (
-    <a href={csvHref(rows)} download={filename} style={{
+    <button type="button" onClick={() => downloadCsv(typeof rows === "function" ? rows() : rows, filename)} title={`Download ${filename}`} style={{
       display: "inline-flex", alignItems: "center", gap: 6, background: "var(--card-hi)", color: "var(--accent)",
-      border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, textDecoration: "none",
-    }}><Download size={13} /> {label}</a>
+      border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, textDecoration: "none", cursor: "pointer", fontFamily: "inherit",
+    }}><Download size={13} /> {label}</button>
   );
 }
 

@@ -16,16 +16,28 @@ export function roomFor(device, spaces) {
   const mine = spaces.filter((s) => s.locationId === device.locationId);
   if (device.spaceId) { const r = mine.find((s) => s.id === device.spaceId); if (r) return r; }
   const a = norm(device.area);
-  return a ? mine.find((s) => norm(s.name) === a) || null : null;
+  if (!a) return null;
+  // Placed straight in a building (or on a floor): its Area text only matches rooms there.
+  const pool = device.buildingId ? mine.filter((s) => s.buildingId === device.buildingId && (!device.floorId || s.floorId === device.floorId)) : mine;
+  return pool.find((s) => norm(s.name) === a) || null;
 }
 
-// Full place of an asset: { site, building, floor, room }.
+// Full place of an asset (or a meter, isolation point…): { site, building, floor, room }.
+// A record can sit in a room, or straight in a building or on a floor when it isn't in any room (buildingId/floorId).
 export function placeOf(device, { locations = [], buildings = [], spaces = [] }) {
   const site = locations.find((l) => l.id === device?.locationId) || null;
   const room = roomFor(device, spaces);
-  const building = room?.buildingId ? buildings.find((b) => b.id === room.buildingId) || null : null;
-  const floor = building && room?.floorId ? (building.floors || []).find((f) => f.id === room.floorId) || null : null;
+  const bId = room ? room.buildingId : device?.buildingId;
+  const building = bId ? buildings.find((b) => b.id === bId) || null : null;
+  const fId = room ? room.floorId : device?.floorId;
+  const floor = building && fId ? (building.floors || []).find((f) => f.id === fId) || null : null;
   return { site, building, floor, room, floorText: !floor && room?.floor ? room.floor : "" };
+}
+// The building/floor/room fields to store for a place chosen in a form (the room decides the building and floor).
+export function placeFields({ buildingId = "", floorId = "", spaceId = "" } = {}, spaces = []) {
+  const room = spaceId ? spaces.find((s) => s.id === spaceId) : null;
+  if (room) return { spaceId: room.id, buildingId: room.buildingId || null, floorId: room.floorId || null };
+  return { spaceId: null, buildingId: buildingId || null, floorId: (buildingId && floorId) || null };
 }
 export function placeLabel(p, { withSite = false } = {}) {
   return [withSite && p.site?.name, p.building?.name, p.floor?.name || p.floorText, p.room?.name].filter(Boolean).join(" › ");
@@ -37,18 +49,20 @@ export function siteTree({ siteId, buildings = [], spaces = [], devices = [] }) 
   const rooms = spaces.filter((s) => s.locationId === siteId);
   const assets = devices.filter((d) => d.locationId === siteId);
   const assetsIn = new Map(rooms.map((r) => [r.id, []]));
-  const unplaced = [];
-  assets.forEach((d) => { const r = roomFor(d, rooms); if (r) assetsIn.get(r.id).push(d); else unplaced.push(d); });
+  const siteBuildingIds = new Set(buildings.filter((b) => b.locationId === siteId).map((b) => b.id));
+  const unplaced = []; const inBuilding = [];   // inBuilding: placed in a building (or on a floor) but not in a room
+  assets.forEach((d) => { const r = roomFor(d, rooms); if (r) assetsIn.get(r.id).push(d); else if (d.buildingId && siteBuildingIds.has(d.buildingId)) inBuilding.push(d); else unplaced.push(d); });
   const roomNode = (r) => ({ type: "room", id: r.id, name: r.name, room: r, assets: assetsIn.get(r.id) || [] });
   const bl = buildings.filter((b) => b.locationId === siteId).sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
   const used = new Set();
   const bNodes = bl.map((b) => {
     const mineRooms = rooms.filter((r) => r.buildingId === b.id); mineRooms.forEach((r) => used.add(r.id));
     const floors = [...(b.floors || [])].sort((x, y) => (Number(x.level) || 0) - (Number(y.level) || 0) || String(x.name).localeCompare(String(y.name)));
-    const fNodes = floors.map((f) => ({ type: "floor", id: f.id, name: f.name, floor: f, building: b, rooms: mineRooms.filter((r) => r.floorId === f.id).map(roomNode) }));
+    const mineLoose = inBuilding.filter((d) => d.buildingId === b.id);
+    const fNodes = floors.map((f) => ({ type: "floor", id: f.id, name: f.name, floor: f, building: b, rooms: mineRooms.filter((r) => r.floorId === f.id).map(roomNode), assetsHere: mineLoose.filter((d) => d.floorId === f.id) }));
     const noFloor = mineRooms.filter((r) => !r.floorId || !floors.some((f) => f.id === r.floorId));
-    if (noFloor.length) fNodes.push({ type: "floor", id: `${b.id}:none`, name: "No floor set", building: b, rooms: noFloor.map(roomNode), virtual: true });
-    return { type: "building", id: b.id, name: b.name, building: b, floors: fNodes };
+    if (noFloor.length) fNodes.push({ type: "floor", id: `${b.id}:none`, name: "No floor set", building: b, rooms: noFloor.map(roomNode), assetsHere: [], virtual: true });
+    return { type: "building", id: b.id, name: b.name, building: b, floors: fNodes, assetsHere: mineLoose.filter((d) => !d.floorId || !floors.some((f) => f.id === d.floorId)) };
   });
   const loose = rooms.filter((r) => !used.has(r.id)).map(roomNode);
   return { buildings: bNodes, looseRooms: loose, unplaced, rooms, assets };
@@ -56,8 +70,8 @@ export function siteTree({ siteId, buildings = [], spaces = [], devices = [] }) 
 export function assetsUnder(node) {
   if (!node) return [];
   if (node.type === "room") return node.assets;
-  if (node.type === "floor") return node.rooms.flatMap((r) => r.assets);
-  if (node.type === "building") return node.floors.flatMap((f) => f.rooms.flatMap((r) => r.assets));
+  if (node.type === "floor") return [...node.rooms.flatMap((r) => r.assets), ...(node.assetsHere || [])];
+  if (node.type === "building") return [...node.floors.flatMap((f) => [...f.rooms.flatMap((r) => r.assets), ...(f.assetsHere || [])]), ...(node.assetsHere || [])];
   return [];
 }
 

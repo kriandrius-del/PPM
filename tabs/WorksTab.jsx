@@ -1,5 +1,5 @@
 // Reactive works and projects.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, FileSpreadsheet, FolderKanban, Mail, Printer, Receipt, Repeat, Send, Siren, Square, Timer, Trash2, Upload, X } from "lucide-react";
 import { BudgetTypeTag, CategoryBadge, ConfirmTextDelete, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, PriorityTag, Select, TextArea, TextInput, ToggleButton, WorkStatusTag, inputStyle } from "../components/ui.jsx";
 import { PRIORITY_RANK, PROJECT_STATUSES, SLA_DAYS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
@@ -8,14 +8,16 @@ import { addDays, appBaseUrl, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp,
 import { buildWorkOrderSheet, openPrintReport, tableHtml } from "../lib/reports.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
-export function WorksTab({ budgetByCat = null, initialOpenId = null, onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
+export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = null, onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
   const [importOpen, setImportOpen] = useState(false);
   const [waitingOnly, setWaitingOnly] = useState(false); const [overQuoteOnly, setOverQuoteOnly] = useState(false);
   const needsApproval = (w) => approvalThreshold > 0 && Number(w.quoteAmount) >= approvalThreshold && !w.approvedBy && w.status !== "rejected" && w.status !== "completed";
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState(String(approvalThreshold || ""));
-  const [statusFilter, setStatusFilter] = useState("open"); // 'open' | 'requested' | 'all' | 'closed'
+  const [statusFilter, setStatusFilter] = useState(focus?.filter || "open"); // 'open' | 'quotes' | 'requested' | 'all' | 'closed'
   const [tradeFilter, setTradeFilter] = useState("");
+  // Opened from a figure (e.g. Home's "Open quotes"): show exactly what that figure counts, nothing else filtered.
+  useEffect(() => { if (focus?.filter) { setStatusFilter(focus.filter); setWaitingOnly(false); setOverQuoteOnly(false); setTradeFilter(""); } }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const [sortBy, setSortBy] = useState("priority");
   const [chaseOpen, setChaseOpen] = useState(false);
   const overdueWorks = works.filter((w) => !["completed", "rejected", "on_hold"].includes(w.status) && workSla(w)?.breached && w.supplierId);
@@ -32,12 +34,13 @@ export function WorksTab({ budgetByCat = null, initialOpenId = null, onDuplicate
     return <EmptyState icon={Receipt} title="No extra works logged" body={hasDevices ? "Track work outside the regular service plan — requests, quotes, approvals and follow-ups from failed checks." : "Add a service first, then log extra works against it."} actionLabel={hasDevices && ACTIVE_CAN_EDIT ? "Add extra work" : undefined} onAction={hasDevices ? onAdd : undefined} />;
   }
   const isClosed = (w) => w.status === "completed" || w.status === "rejected";
+  const isOpenQuote = (w) => w.status === "quoted" || w.status === "approved";   // same rule as Home's "Open quotes"
   const requestedCount = works.filter((w) => w.status === "requested").length;
   const filtered = works
     .filter((w) => !tradeFilter || w.category === tradeFilter)
     .filter((w) => !waitingOnly || (w.waitingOn && !isClosed(w)))
     .filter((w) => !overQuoteOnly || (Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1))
-    .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : !isClosed(w))
+    .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : statusFilter === "quotes" ? isOpenQuote(w) : !isClosed(w))
     .sort((a, b) => sortBy === "newest" ? (b.dateRaised || "").localeCompare(a.dateRaised || "") : sortBy === "oldest" ? (a.dateRaised || "").localeCompare(b.dateRaised || "") : sortBy === "target" ? String(workSla(a)?.deadline || "9999").localeCompare(String(workSla(b)?.deadline || "9999")) : sortBy === "value" ? (Number(b.quoteAmount) || 0) - (Number(a.quoteAmount) || 0) : (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || ""));
   const openWork = openWorkId ? works.find((w) => w.id === openWorkId) : null;
   const csvRows = [
@@ -141,11 +144,12 @@ export function WorksTab({ budgetByCat = null, initialOpenId = null, onDuplicate
       {chaseOpen && <ChaseWorksModal works={overdueWorks} suppliers={suppliers} deviceById={deviceById} locationName={locationName} onClose={() => setChaseOpen(false)} onSent={onLogChase} />}
       {(() => { const open = works.filter((w) => ["approved", "in_progress"].includes(w.status)); const v = open.reduce((a, w) => a + (Number(w.finalCost ?? w.quoteAmount) || 0), 0); return open.length ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(v)}</b> committed on {open.length} approved / in-progress job{open.length === 1 ? "" : "s"}</div> : null; })()}
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-        <ToggleButton active={statusFilter === "open"} onClick={() => setStatusFilter("open")}>Open</ToggleButton>
-        <ToggleButton active={statusFilter === "requested"} onClick={() => setStatusFilter("requested")}>New requests{requestedCount ? ` (${requestedCount})` : ""}</ToggleButton>
-        <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Closed</ToggleButton>
-        <ToggleButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All</ToggleButton>
-        {works.some((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1) && <ToggleButton active={overQuoteOnly} onClick={() => setOverQuoteOnly((v) => !v)}>Over quote ({works.filter((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1).length})</ToggleButton>}
+        <ToggleButton active={statusFilter === "open"} onClick={() => setStatusFilter("open")}>Open ({works.filter((w) => !isClosed(w)).length})</ToggleButton>
+        <ToggleButton active={statusFilter === "quotes"} onClick={() => setStatusFilter("quotes")}>Open quotes ({works.filter(isOpenQuote).length})</ToggleButton>
+        <ToggleButton active={statusFilter === "requested"} onClick={() => setStatusFilter("requested")}>New requests ({requestedCount})</ToggleButton>
+        <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Closed ({works.filter(isClosed).length})</ToggleButton>
+        <ToggleButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All ({works.length})</ToggleButton>
+        {works.some((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1) && <ToggleButton active={overQuoteOnly} title="Jobs whose final cost is more than 10% above the quote" onClick={() => setOverQuoteOnly((v) => !v)}>Cost over quote ({works.filter((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1).length})</ToggleButton>}
         {works.some((w) => w.waitingOn && !isClosed(w)) && <ToggleButton active={waitingOnly} onClick={() => setWaitingOnly((v) => !v)}>Waiting on something ({works.filter((w) => w.waitingOn && !isClosed(w)).length})</ToggleButton>}
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "7px 8px", fontSize: 12.5 }}>
           <option value="priority">Priority first</option><option value="target">Target date</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="value">Highest value</option>
@@ -156,6 +160,10 @@ export function WorksTab({ budgetByCat = null, initialOpenId = null, onDuplicate
             {[...new Set(works.map((w) => w.category).filter(Boolean))].sort().map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
+      </div>
+      <div className="fm-sub" style={{ fontSize: 12, color: "var(--muted)", margin: "-4px 0 10px" }}>
+        {{ open: "Showing every job that isn't completed or rejected.", quotes: "Showing jobs with a quote waiting for a decision, or approved and not finished — the same jobs as Home's Open quotes.", requested: "Showing new requests that haven't been quoted or assigned yet.", closed: "Showing completed and rejected jobs.", all: "Showing every job." }[statusFilter]}
+        {(waitingOnly || overQuoteOnly || tradeFilter) ? " Extra filters are on, so some may be hidden." : ""} {filtered.length} shown.
       </div>
       {filtered.length === 0 ? (
         <div style={{ textAlign: "center", color: "var(--faint)", fontSize: 12.5, padding: "24px 0" }}>Nothing in this view.</div>
@@ -247,6 +255,54 @@ export function WorksTab({ budgetByCat = null, initialOpenId = null, onDuplicate
   );
 }
 
+// The life of a reactive job, step by step: quote → approval → purchase order → work done → invoice.
+// Shows what's done, what comes next, and the button for it (or who has to do it, if this person can't).
+function JobSteps({ work, needsApproval, approvalThreshold = 0, invoicedTotal = 0, onRaisePO, onInvoice, onUpdate }) {
+  if (work.status === "rejected") return <div style={{ fontSize: 12.5, background: "var(--card-hi)", borderRadius: 10, padding: "9px 11px" }}><b>Rejected.</b> Nothing more to do on this job.</div>;
+  const quoted = Number(work.quoteAmount) > 0;
+  const overLimit = approvalThreshold > 0 && Number(work.quoteAmount) >= approvalThreshold;
+  const done = work.status === "completed";
+  const goAhead = ["approved", "in_progress", "completed"].includes(work.status);
+  const approved = overLimit ? !!work.approvedBy : quoted;
+  const hasPO = !!work.poNumber; const invoiced = invoicedTotal > 0;
+  const steps = [
+    ["Quote", quoted, quoted ? gbp(work.quoteAmount) : "not added yet"],
+    ["Approval", approved && !needsApproval, !quoted ? "after the quote" : overLimit ? (work.approvedBy ? `by ${work.approvedBy}` : `needed — over ${gbp(approvalThreshold)}`) : `not needed — under ${gbp(approvalThreshold || 0)}`],
+    ["Purchase order", hasPO, hasPO ? work.poNumber : "optional"],
+    ["Work done", done, done ? fmtDate(work.completedAt) : goAhead ? "in hand" : "not started"],
+    ["Invoice", invoiced, invoiced ? `${gbp(invoicedTotal)} recorded` : "not recorded"],
+  ];
+  const canPO = onRaisePO && ACTIVE_CAN_EDIT && !hasPO && quoted && !needsApproval && !done;
+  const canInvoice = onInvoice && ACTIVE_CAN_EDIT && goAhead;
+  const canComplete = ACTIVE_CAN_EDIT && !done && quoted && !needsApproval;
+  let next;
+  if (!quoted) next = "Add the quote amount (Quote amount, further down), then it can be approved if it's over the limit.";
+  else if (needsApproval) next = ACTIVE_CAN_APPROVE ? "Approve or reject the quote — the buttons are just below." : "Approval by finance, or by someone an admin allows to approve quotes (see below).";
+  else if (!hasPO && !done) next = canPO ? "Raise a purchase order for the supplier (optional — skip it if your company doesn't use POs)." : "A purchase order is optional. Someone with finance permission raises it in Commercial → POs & invoices, or type an existing PO number further down.";
+  else if (!done) next = "When the work is finished, mark it completed.";
+  else if (!invoiced) next = canInvoice ? "Record the supplier's invoice against this job." : "Someone with finance permission records the invoice in Commercial → POs & invoices.";
+  else next = "Invoice recorded. It's approved and paid in Commercial → POs & invoices.";
+  const btn = (primary) => ({ background: primary ? "var(--accent)" : "var(--card)", color: primary ? "var(--on-accent)" : "var(--accent)", border: primary ? "none" : "1px solid var(--border)", borderRadius: 8, padding: "7px 11px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" });
+  const stage = !quoted || needsApproval ? 0 : !hasPO && !done ? 2 : !done ? 3 : 4;
+  return (
+    <div data-testid="job-steps" style={{ background: "var(--card-hi)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
+        {steps.map(([label, ok, note], i) => (
+          <span key={label} style={{ fontSize: 12, color: ok ? "var(--ok)" : "var(--muted)", fontWeight: ok ? 650 : 500, whiteSpace: "nowrap" }}>{ok ? "✓" : `${i + 1}.`} {label} <span style={{ fontWeight: 400, color: "var(--faint)" }}>· {note}</span></span>
+        ))}
+      </div>
+      <div style={{ fontSize: 12.5 }}><b>Next:</b> {next}</div>
+      {(canPO || canComplete || canInvoice) && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {canPO && <button type="button" onClick={onRaisePO} style={btn(stage === 2)}>Raise a PO</button>}
+          {canComplete && <button type="button" onClick={() => onUpdate({ status: "completed" })} style={btn(stage === 3)}>Mark completed</button>}
+          {canInvoice && <button type="button" onClick={onInvoice} style={btn(stage === 4 && !invoiced)}>{invoiced ? "Record another invoice" : "Record the invoice"}</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, onInvoice, onRaisePO, spares = [], onUseSpare, onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
   const [po, setPo] = useState(work.poNumber || "");
   const [statusMsg, setStatusMsg] = useState("");
@@ -266,6 +322,7 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
     <Modal title={device ? device.name : "Extra work"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 13.5, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{work.description}</div>
+        <JobSteps work={work} needsApproval={needsApproval} approvalThreshold={approvalThreshold} invoicedTotal={invoicedTotal} onRaisePO={onRaisePO} onInvoice={onInvoice} onUpdate={onUpdate} />
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Raised {fmtDate(work.dateRaised)}{work.requestedBy ? ` by ${work.requestedBy}` : work.loggedBy ? ` by ${work.loggedBy}` : ""}{work.source === "checklist" ? " · from a failed checklist item" : work.source === "request" ? " · via request portal" : ""}</div>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Status">
@@ -331,8 +388,7 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
             onDuplicate && ACTIVE_CAN_EDIT && ["Duplicate job", onDuplicate],
             ["Copy link", () => { const u = `${appBaseUrl()}?job=${work.id}`; try { navigator.clipboard?.writeText(u); } catch (e) { /* ignore */ } alert("Link to this job copied — anyone on the team can open it from the link."); }],
             ["Copy summary", () => { const sup = suppliers.find((s) => s.id === work.supplierId); const t = `${device?.name || "Job"}: ${work.description}\nRef ${work.id.slice(-6).toUpperCase()} · ${(work.priority || "medium").toUpperCase()} · ${WORK_STATUSES.find((x) => x.key === work.status)?.label || work.status}${sup ? ` · ${sup.name}` : ""}${work.quoteAmount ? ` · ${gbp(work.finalCost ?? work.quoteAmount)}` : ""}${work.poNumber ? ` · PO ${work.poNumber}` : ""}\nRaised ${fmtDate(work.dateRaised)}${workSla(work) ? ` · target ${fmtDate(workSla(work).deadline)}` : ""}`; try { navigator.clipboard?.writeText(t); } catch (e) { /* ignore */ } alert("Job summary copied — paste it into Teams, WhatsApp or an email."); }],
-            onRaisePO && ACTIVE_CAN_EDIT && !work.poNumber && Number(work.quoteAmount) > 0 && ["Raise a PO", onRaisePO],
-            onInvoice && ACTIVE_CAN_EDIT && ["approved", "in_progress", "completed"].includes(work.status) && ["Record the invoice", onInvoice],
+            // Raise a PO / Record the invoice are in the job's steps at the top, where they only appear at the right point.
           ].filter(Boolean).map(([l, fn]) => <button key={l} type="button" onClick={fn} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{l}</button>)}
         </div>
         {(() => { const others = allWorks.filter((x) => x.id !== work.id && x.deviceId === work.deviceId && !["completed", "rejected"].includes(x.status)); return others.length ? <div style={{ fontSize: 12, background: "var(--warn-soft)", borderRadius: 9, padding: "7px 10px" }}><b>{others.length} other open job{others.length === 1 ? "" : "s"} on this service:</b> {others.slice(0, 4).map((x) => `${x.description} (${(WORK_STATUSES.find((st) => st.key === x.status)?.label || x.status).toLowerCase()})`).join(" · ")}</div> : null; })()}
@@ -851,7 +907,7 @@ function LabourMaterials({ work, onUpdate, spares = [], onUseSpare }) {
             <div style={{ display: "flex", gap: 5 }}>
               <select value={spareId} onChange={(e) => setSpareId(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 12 }}><option value="">Use a spare part from stock…</option>{spares.map((sp) => <option key={sp.id} value={sp.id}>{sp.name} ({sp.qty} in stock)</option>)}</select>
               <TextInput type="number" min="1" value={spareQty} onChange={(e) => setSpareQty(e.target.value)} style={{ width: 54 }} />
-              <button type="button" onClick={() => { if (!spareId) return; onUseSpare(spareId, Number(spareQty) || 1); setSpareId(""); setSpareQty("1"); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use</button>
+              <button type="button" disabled={!spareId} onClick={() => { if (!spareId) return; if (onUseSpare(spareId, Number(spareQty)) !== false) { setSpareId(""); setSpareQty("1"); } }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use</button>
             </div>
           )}
           {total > 0 && Number(work.finalCost) !== Math.round(total * 100) / 100 && <button type="button" onClick={() => onUpdate({ finalCost: Math.round(total * 100) / 100 })} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--ok)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use {gbp(total)} as the final cost</button>}

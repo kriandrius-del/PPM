@@ -1,4 +1,6 @@
 // Add/edit service, log a visit, service history, import and service library.
+import { PlacePicker } from "../features/assets/PlacePicker.jsx";
+import { placeFields, placeLabel, placeOf, roomFor } from "../features/assets/places.js";
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Ban, BookOpen, Camera, CheckCircle2, CheckSquare, ChevronDown, ClipboardList, Copy, Download, FileSpreadsheet, HardHat, ImagePlus, KeyRound, Link2, Loader2, Mail, MapPin, PauseCircle, Pencil, Plus, Printer, RefreshCw, ShieldCheck, SkipForward, Square, Star, StickyNote, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, SignOffSection, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
@@ -325,7 +327,7 @@ export function AddDeviceTaskModal({ existing, onClose, onSave, onDelete }) {
 /* ---------------------------------------------------------
    Add Device Modal
 --------------------------------------------------------- */
-export function AddDeviceModal({ plannedCount = 0, siblingNames = [], allTags = [], budgetHeadByCat = {}, onPause, onResume, onArchive, countries, locations, defaultLocationId, existing, prefill, subcategoriesByCategory, suppliers, onClose, onSave, onDelete, onDuplicate }) {
+export function AddDeviceModal({ buildings = [], spaces = [], plannedCount = 0, siblingNames = [], allTags = [], budgetHeadByCat = {}, onPause, onResume, onArchive, countries, locations, defaultLocationId, existing, prefill, subcategoriesByCategory, suppliers, onClose, onSave, onDelete, onDuplicate }) {
   const isEdit = !!existing;
   const src = existing || prefill || null; // prefill = duplicating another service
   const [name, setName] = useState(src?.name || "");
@@ -333,7 +335,8 @@ export function AddDeviceModal({ plannedCount = 0, siblingNames = [], allTags = 
   const [category, setCategory] = useState(src?.category || "");
   const [serviceCategory, setServiceCategory] = useState(src?.serviceCategory || "maintenance");
   const [subCategory, setSubCategory] = useState(src?.subCategory || "");
-  const [locationId, setLocationId] = useState(src?.locationId || defaultLocationId || locations[0]?.id || "");
+  const [locationId, setLocationIdRaw] = useState(src?.locationId || defaultLocationId || locations[0]?.id || "");
+  const setLocationId = (id) => { setLocationIdRaw(id); if (id !== locationId) setPlace({ buildingId: "", floorId: "", spaceId: "" }); };
   const [supplierId, setSupplierId] = useState(src?.supplierId || "");
   const [checklist, setChecklist] = useState(src?.checklist || []);
   const [templateId, setTemplateId] = useState("");
@@ -364,6 +367,14 @@ export function AddDeviceModal({ plannedCount = 0, siblingNames = [], allTags = 
   const [usageInterval, setUsageInterval] = useState(src?.usageInterval ? String(src.usageInterval) : "");
   const [custom, setCustom] = useState(src?.custom || {});
   const [area, setArea] = useState(src?.area || "");
+  // Where it is: building → floor → room (the room is also kept as the Area text, so older screens still match it).
+  const [place, setPlace] = useState(() => { const r = roomFor(src, spaces); return r ? { buildingId: r.buildingId || "", floorId: r.floorId || "", spaceId: r.id } : { buildingId: src?.buildingId || "", floorId: src?.floorId || "", spaceId: "" }; });
+  function choosePlace(next) {
+    const before = spaces.find((x) => x.id === place.spaceId); const after = spaces.find((x) => x.id === next.spaceId);
+    if (after && (!area.trim() || (before && area.trim() === before.name))) setArea(after.name);
+    if (!after && before && area.trim() === before.name) setArea("");
+    setPlace(next);
+  }
   const [photo, setPhoto] = useState(src?.photo || null);
   const [gallery, setGallery] = useState(src?.gallery || []);
   const [links, setLinks] = useState(src?.links || []);
@@ -416,7 +427,7 @@ export function AddDeviceModal({ plannedCount = 0, siblingNames = [], allTags = 
       condition: condition || null, conditionNotes: conditionNotes.trim(), conditionDate: condition && condition !== (existing?.condition || "") ? new Date().toISOString().slice(0, 10) : (existing?.conditionDate || null),
       parentId: parentId || null, criticality, tags: [...new Set(tags.split(",").map((t) => t.trim()).filter(Boolean))],
       accessNotes: accessNotes.trim(), instructions: instructions.trim(), permits, ramsRequired, certRequired, assignee: assignee || null,
-      area: area.trim(), photo: photo || null, links: links.filter((l) => l.url.trim()).map((l) => ({ label: l.label.trim() || "Link", url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : `https://${l.url.trim()}` })),
+      area: area.trim(), ...placeFields(place, spaces), photo: photo || null, links: links.filter((l) => l.url.trim()).map((l) => ({ label: l.label.trim() || "Link", url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : `https://${l.url.trim()}` })),
     };
     if (isEdit) {
       onSave({ ...base, serviceIntervalMonths: interval ? Number(interval) : null, nextServiceDate: nextDate || null });
@@ -506,6 +517,7 @@ export function AddDeviceModal({ plannedCount = 0, siblingNames = [], allTags = 
           </Field>
         )}
         <Field label="Tags (optional, comma separated)"><TextInput list="ppm-tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. roof, landlord, winter" /><datalist id="ppm-tags">{(TAG_SUGGESTIONS_CACHE[locationId] || []).map((t) => <option key={t} value={t} />)}</datalist></Field>
+        <PlacePicker siteId={locationId} buildings={buildings} spaces={spaces} value={place} onChange={choosePlace} label="Where is it? (building, floor, room)" />
         <Field label="Area / room (optional)">
           <TextInput list={areaListId} value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Ground floor plant room, Kitchen, Roof" />
           <datalist id={areaListId}>{(AREA_SUGGESTIONS_CACHE[locationId] || []).map((a) => <option key={a} value={a} />)}</datalist>
@@ -1154,8 +1166,20 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
 /* ---------------------------------------------------------
    Add Extra Work Modal
 --------------------------------------------------------- */
-export function AddWorkModal({ jobTemplates = null, onSaveJobTemplates, openWorks = [], prefill = null, devices, suppliers = [], defaultDeviceId, onClose, onSave }) {
+export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemplates = null, onSaveJobTemplates, openWorks = [], prefill = null, devices, suppliers = [], defaultDeviceId, onClose, onSave }) {
   const [deviceId, setDeviceId] = useState(defaultDeviceId || devices[0]?.id);
+  // Narrow the asset list by building / floor / room; the list itself is grouped by where each asset is.
+  const [where, setWhere] = useState({ buildingId: "", floorId: "", spaceId: "" });
+  const placeTxt = (d) => placeLabel(placeOf(d, { buildings, spaces })) || "Not in a building or room";
+  const inWhere = (d) => { if (!where.buildingId && !where.spaceId) return true; const p = placeOf(d, { buildings, spaces }); if (where.spaceId) return p.room?.id === where.spaceId; if (where.floorId) return p.building?.id === where.buildingId && p.floor?.id === where.floorId; return p.building?.id === where.buildingId; };
+  const shown = devices.filter(inWhere);
+  const groups = {}; shown.forEach((d) => { const k = placeTxt(d); (groups[k] = groups[k] || []).push(d); });
+  const groupKeys = Object.keys(groups).sort((a, b) => (a === "Not in a building or room") - (b === "Not in a building or room") || a.localeCompare(b, undefined, { numeric: true }));
+  function chooseWhere(w) {
+    setWhere(w);
+    const next = devices.filter((d) => { if (!w.buildingId && !w.spaceId) return true; const p = placeOf(d, { buildings, spaces }); if (w.spaceId) return p.room?.id === w.spaceId; if (w.floorId) return p.building?.id === w.buildingId && p.floor?.id === w.floorId; return p.building?.id === w.buildingId; });
+    if (!next.some((d) => d.id === deviceId)) { const d = next[0]; setDeviceId(d?.id || ""); if (d?.supplierId) setSupplierId(d.supplierId); }
+  }
   const [priority, setPriority] = useState(prefill?.priority || "medium");
   const [poNumber, setPoNumber] = useState("");
   const [workCustom, setWorkCustom] = useState({});
@@ -1195,10 +1219,16 @@ export function AddWorkModal({ jobTemplates = null, onSaveJobTemplates, openWork
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {(() => { const dup = openWorks.filter((w) => w.deviceId === deviceId); return dup.length ? <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>This service already has {dup.length} open job{dup.length === 1 ? "" : "s"}: {dup.slice(0, 2).map((w) => `"${String(w.description).slice(0, 40)}" (${w.status.replace("_", " ")})`).join(", ")}. Check it isn't the same problem.</div> : null; })()}
         {suppliers.find((s) => s.id === supplierId)?.status === "blocked" && <div style={{ fontSize: 12, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 700 }}>This supplier is marked "Do not use".</div>}
-        <Field label="Service">
-          <Select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); const d = devices.find((x) => x.id === e.target.value); if (d?.supplierId) setSupplierId(d.supplierId); if (!prefill?.priority && d?.criticality === "critical") setPriority("high"); }}>
-            {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        {(buildings.some((b) => b.locationId === siteId) || spaces.some((x) => x.locationId === siteId)) && (
+          <PlacePicker siteId={siteId} buildings={buildings} spaces={spaces} value={where} onChange={chooseWhere} label="Where (narrows the list below)" anyLabel="— Any building —" hint={false} />
+        )}
+        <Field label="Asset or service the job is for">
+          <Select value={deviceId || ""} onChange={(e) => { setDeviceId(e.target.value); const d = devices.find((x) => x.id === e.target.value); if (d?.supplierId) setSupplierId(d.supplierId); if (!prefill?.priority && d?.criticality === "critical") setPriority("high"); }}>
+            {!shown.length && <option value="">No assets here yet</option>}
+            {groupKeys.length === 1 ? groups[groupKeys[0]].map((d) => <option key={d.id} value={d.id}>{d.name}</option>)
+              : groupKeys.map((k) => <optgroup key={k} label={k}>{groups[k].map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</optgroup>)}
           </Select>
+          <span style={{ fontSize: 11.5, color: "var(--faint)", fontWeight: 400 }}>{shown.length ? "Jobs are raised against an asset or service, so its history, supplier and costs stay together. Not listed? Add it first in Assets." : "No assets in this place yet — add one in Assets → Locations (Add an asset here), or choose another place."}</span>
         </Field>
         {!prefill?.description && (
           <Field label="Common jobs (tap to fill in)">

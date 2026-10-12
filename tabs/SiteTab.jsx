@@ -1,5 +1,7 @@
 // Site records (now spread across Operations, Assets, Compliance & Safety and Resources): meters, spares, keys, audits, incidents, permits to work, waste.
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { PlacePicker, usePlaces, usePlaceText } from "../features/assets/PlacePicker.jsx";
+import { placeFields } from "../features/assets/places.js";
 import { Activity, BellRing, BookOpen, CalendarClock, Camera, Car, CheckCircle2, ChevronLeft, ClipboardCheck, ClipboardList, FileSignature, FileText, Flame, FlaskConical, Gauge, GraduationCap, Key, KeyRound, LayoutGrid, Leaf as LeafIcon, ListChecks, Mail, MapPin, Megaphone, Package, Pencil, Plus, Power, Printer, QrCode, Recycle, ShieldAlert, Siren, Star, Thermometer, Trash2, Upload, Wrench, ZapOff } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ConfirmDeleteButton, ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
@@ -10,6 +12,7 @@ import { appBaseUrl, orgParam, compressImage, daysUntil, escapeHtml, fmtDate, gb
 import { xlsxToText } from "../lib/excelTemplate.js";
 
 export function MetersTab({ locationName = "", onImportReadings, meters, readings, suppliers, onSaveMeter, onArchiveMeter, onAddReading, onDeleteReading }) {
+  const placeText = usePlaceText();
   const [editing, setEditing] = useState(null);
   const [readingFor, setReadingFor] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -59,7 +62,7 @@ export function MetersTab({ locationName = "", onImportReadings, meters, reading
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                 <button onClick={() => setOpenId(openId === m.id ? null : m.id)} style={{ flex: 1, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700 }}>{m.name}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{t.label}{m.serial ? ` · #${m.serial}` : ""}{m.mpan ? ` · ${m.mpan}` : ""}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{t.label}{placeText(m) ? ` · ${placeText(m)}` : ""}{m.serial ? ` · #${m.serial}` : ""}{m.mpan ? ` · ${m.mpan}` : ""}</div>
                   {(() => { const d0 = new Date(); d0.setDate(1); d0.setMonth(d0.getMonth() - 1); const k = d0.toISOString().slice(0, 7); const kLy = `${Number(k.slice(0, 4)) - 1}${k.slice(4)}`; const a = st.monthly[k], b = st.monthly[kLy]; if (!a || !b) return null; const pct = Math.round(((a - b) / b) * 100); return <div style={{ fontSize: 11.5, fontWeight: 650, color: pct > 5 ? "var(--danger)" : pct < -5 ? "var(--ok)" : "var(--muted)" }}>{d0.toLocaleDateString("en-GB", { month: "long" })}: {Math.round(a).toLocaleString("en-GB")} {m.unit} — {pct >= 0 ? "▲" : "▼"} {Math.abs(pct)}% vs last year</div>; })()}
                 </button>
                 {ACTIVE_CAN_EDIT && <button onClick={() => setEditing(m)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color="#8A94A0" /></button>}
@@ -123,6 +126,8 @@ export function MetersTab({ locationName = "", onImportReadings, meters, reading
 }
 
 export function MeterModal({ existing, suppliers, onClose, onSave }) {
+  const { spaces } = usePlaces();
+  const [place, setPlace] = useState({ buildingId: existing?.buildingId || "", floorId: existing?.floorId || "", spaceId: existing?.spaceId || "" });
   const [name, setName] = useState(existing?.name || "");
   const [type, setType] = useState(existing?.type || "electricity");
   const [unit, setUnit] = useState(existing?.unit ?? METER_TYPES.electricity.unit);
@@ -137,6 +142,7 @@ export function MeterModal({ existing, suppliers, onClose, onSave }) {
     <Modal title={existing ? "Edit meter" : "Add a meter"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Field label="Meter name"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Main electricity incomer" /></Field>
+        <PlacePicker value={place} onChange={setPlace} label="Where is the meter? (optional)" />
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Type">
             <Select value={type} onChange={(e) => { setType(e.target.value); if (!existing) { setUnit(METER_TYPES[e.target.value].unit); setCo2(String(DEFAULT_CO2[e.target.value])); } }}>
@@ -166,7 +172,7 @@ export function MeterModal({ existing, suppliers, onClose, onSave }) {
           <Field label={`kg CO₂e per ${unit || "unit"}`}><TextInput type="number" step="0.001" min="0" value={co2} onChange={(e) => setCo2(e.target.value)} /></Field>
         </div>
         <span style={{ fontSize: 10.5, color: "var(--faint)", marginTop: -6 }}>Carbon defaults are approximate UK factors (electricity 0.207 kg/kWh, gas 2.04 kg/m³, water 0.34 kg/m³) — update to your supplier's or the latest government figures.</span>
-        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), type, unit: unit.trim(), serial: serial.trim(), mpan: mpan.trim(), readEveryDays: Number(readEveryDays) || 31, supplierId: supplierId || null, tariff: tariff === "" ? null : Number(tariff), co2Factor: co2 === "" ? null : Number(co2), annualTarget: annualTarget === "" ? null : Number(annualTarget) })}><CheckCircle2 size={15} /> Save meter</PrimaryButton>
+        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), ...placeFields(place, spaces), type, unit: unit.trim(), serial: serial.trim(), mpan: mpan.trim(), readEveryDays: Number(readEveryDays) || 31, supplierId: supplierId || null, tariff: tariff === "" ? null : Number(tariff), co2Factor: co2 === "" ? null : Number(co2), annualTarget: annualTarget === "" ? null : Number(annualTarget) })}><CheckCircle2 size={15} /> Save meter</PrimaryButton>
       </div>
     </Modal>
   );
@@ -663,8 +669,10 @@ export function AuditTemplatesModal({ templates, onClose, onSave }) {
 /* ---------------------------------------------------------
    Incident & near-miss log
 --------------------------------------------------------- */
-export function IncidentsView({ onAddAction, onShareLesson, onRaiseWork, incidents, areas, locationName, onSave, onDelete }) {
+export function IncidentsView({ openNew = 0, onAddAction, onShareLesson, onRaiseWork, incidents, areas, locationName, onSave, onDelete }) {
   const [editing, setEditing] = useState(null);
+  const seenNew = useRef(0);
+  useEffect(() => { if (openNew && openNew !== seenNew.current && ACTIVE_CAN_EDIT) { seenNew.current = openNew; setEditing({}); } }, [openNew]);   // "Report incident" on Home
   const [filter, setFilter] = useState("open");
   const list = incidents.filter((i) => filter === "all" || (filter === "open" ? i.status !== "closed" : i.status === "closed")).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const yr = String(new Date().getFullYear());

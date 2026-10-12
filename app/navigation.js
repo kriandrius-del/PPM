@@ -73,8 +73,7 @@ export function alertTarget(a) {
   return hit ? hit[1] : resolveTarget(a?.tab);
 }
 
-// Everything else stays one tap away, under "Other areas" — no screen is hidden from any role.
-export function otherAreasFor(role) {
-  const mine = new Set(areasFor(role).map((a) => a.key));
-  return AREAS.filter((a) => !mine.has(a.key));
-}
+// Phase 1 review decision: engineers, finance and senior management only see their own areas
+// (e.g. an engineer doesn't get Commercial or Reports). The other roles have every area anyway.
+export function otherAreasFor() { return []; }
+export function canSeeArea(role, areaKey) { return areasFor(role).some((a) => a.key === areaKey); }

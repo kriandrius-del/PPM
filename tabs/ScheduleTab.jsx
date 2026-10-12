@@ -5,15 +5,17 @@ import { CategoryBadge, EmptyState, Field, Modal, PrimaryButton, StatusDot, Text
 import { MONTH_LABELS, UK_BANK_HOLIDAYS, WEEKDAY_LABELS } from "../lib/constants.js";
 import { ACTIVE_CAN_EDIT, CATEGORY_META, emptyCatMap } from "../lib/globals.js";
 import { downloadIcs } from "../lib/reports.js";
-import { addDays, dueStatus, fmtDate, gbp, getMonthGrid, inBlackout, toISODate, uid, weekStart } from "../lib/utils.js";
+import { addDays, currentBooking, dueStatus, fmtDate, gbp, getMonthGrid, inBlackout, toISODate, uid, weekStart } from "../lib/utils.js";
+import { BookingModal } from "./ServicesTab.jsx";
 
 /* ---------------------------------------------------------
    Schedule Tab — colour-coded calendar (month / year)
    Shows both upcoming due dates (ring) and completed service
    dates (filled dot) so logged history actually appears here.
 --------------------------------------------------------- */
-export function ScheduleCalendarTab({ onExportCalendar, onPrintLookahead, devices, services, tasks, onLogService, onEditService, onMarkTaskDone, visitBudgets = [], suppliers = [], locationName = "", blackouts = [], avoidWeekends = false, onReschedule, onRescheduleTask, onSaveBlackouts, onShiftOutOfBlackouts }) {
+export function ScheduleCalendarTab({ onBook = null, onExportCalendar, onPrintLookahead, devices, services, tasks, onLogService, onEditService, onMarkTaskDone, visitBudgets = [], suppliers = [], locationName = "", blackouts = [], avoidWeekends = false, onReschedule, onRescheduleTask, onSaveBlackouts, onShiftOutOfBlackouts }) {
   const [moving, setMoving] = useState(null); // { kind: 'device'|'task', id, name, from }
+  const [bookFor, setBookFor] = useState(null);   // book a visit (and write the booking email) from the planner
   const [showBlackouts, setShowBlackouts] = useState(false);
   function doMove(item, iso) {
     if (!item || !iso) return;
@@ -76,7 +78,7 @@ export function ScheduleCalendarTab({ onExportCalendar, onPrintLookahead, device
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
         <ToggleButton active={view === "month"} onClick={() => setView("month")}>Month</ToggleButton>
         <ToggleButton active={view === "year"} onClick={() => setView("year")}>Year</ToggleButton>
         <ToggleButton active={view === "capacity"} onClick={() => setView("capacity")}>Capacity</ToggleButton>
@@ -177,15 +179,15 @@ export function ScheduleCalendarTab({ onExportCalendar, onPrintLookahead, device
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Due this month ({monthDue.length}){(() => { const all = monthDue.map((x) => x.device || x).filter((d) => d && d.budgetPerVisit); const tot = all.reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); const booked = all.filter((d) => d.booking?.date).reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); return tot ? <span style={{ fontWeight: 500 }}> · {gbp(tot)} planned{booked ? `, ${gbp(booked)} booked` : ""}</span> : null; })()}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Due dates in {new Date(cursorYear, cursorMonth, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })} ({monthDue.length}){(() => { const all = monthDue.map((x) => x.device || x).filter((d) => d && d.budgetPerVisit); const tot = all.reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); const booked = all.filter((d) => d.booking?.date).reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); return tot ? <span style={{ fontWeight: 500 }}> · {gbp(tot)} planned{booked ? `, ${gbp(booked)} booked` : ""}</span> : null; })()}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {monthDue.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing due.</div>}
-              {monthDue.map((d) => <DueRow key={d.id} device={d} onLogService={onLogService} onMove={ACTIVE_CAN_EDIT ? () => setMoving({ kind: "device", id: d.id, name: d.name, from: d.nextServiceDate }) : undefined} />)}
+              {monthDue.map((d) => <DueRow key={d.id} device={d} onLogService={onLogService} onBook={onBook ? () => setBookFor(d) : undefined} onMove={ACTIVE_CAN_EDIT ? () => setMoving({ kind: "device", id: d.id, name: d.name, from: d.nextServiceDate }) : undefined} />)}
             </div>
 
             {tasks.length > 0 && (
               <>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", margin: "16px 0 8px" }}>Tasks due this month ({monthTasks.length})</div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", margin: "16px 0 8px" }}>Tasks due in {new Date(cursorYear, cursorMonth, 1).toLocaleDateString("en-GB", { month: "long" })} ({monthTasks.length})</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {monthTasks.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing due.</div>}
                   {monthTasks.map((t) => <TaskDueRow key={t.id} task={t} device={deviceById[t.deviceId]} onMarkDone={onMarkTaskDone} onMove={ACTIVE_CAN_EDIT ? () => setMoving({ kind: "task", id: t.id, name: t.name, from: t.nextDate }) : undefined} />)}
@@ -193,7 +195,7 @@ export function ScheduleCalendarTab({ onExportCalendar, onPrintLookahead, device
               </>
             )}
 
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", margin: "16px 0 8px" }}>Completed this month ({monthDone.length})</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", margin: "16px 0 8px" }}>Completed in {new Date(cursorYear, cursorMonth, 1).toLocaleDateString("en-GB", { month: "long" })} ({monthDone.length})</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {monthDone.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing logged.</div>}
               {monthDone.map((s) => (
@@ -207,6 +209,7 @@ export function ScheduleCalendarTab({ onExportCalendar, onPrintLookahead, device
           onOpenMonth={(m) => { setCursorMonth(m); setView("month"); setSelectedDate(null); }} />
       )}
 
+      {bookFor && <BookingModal supplier={suppliers.find((x) => x.id === bookFor.supplierId) || null} locationName={locationName} device={bookFor} onClose={() => setBookFor(null)} onSave={(b) => { onBook(bookFor.id, b); setBookFor(null); }} />}
       {selectedDate && (
         <DayDetailModal date={selectedDate} due={dueByDate[selectedDate] || []} done={doneByDate[selectedDate] || []}
           dueTasks={taskDueByDate[selectedDate] || []} deviceById={deviceById} onClose={() => setSelectedDate(null)}
@@ -277,7 +280,7 @@ export function TaskDueRow({ task, device, onMarkDone, onMove }) {
   );
 }
 
-export function DueRow({ device, onLogService, onMove }) {
+export function DueRow({ device, onLogService, onMove, onBook }) {
   const status = dueStatus(device.nextServiceDate);
   const catColor = (CATEGORY_META[device.serviceCategory] || CATEGORY_META.maintenance).color;
   return (
@@ -291,6 +294,7 @@ export function DueRow({ device, onLogService, onMove }) {
           </div>
         </div>
       </div>
+      {onBook && <button onClick={onBook} title="Book this visit with the supplier and write the booking email" style={{ background: currentBooking(device) ? "var(--ok-soft)" : "none", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", fontSize: 11.5, fontWeight: 600, color: currentBooking(device) ? "var(--ok)" : "var(--accent)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{currentBooking(device) ? "Booked" : "Book"}</button>}
       {onMove && <button onClick={onMove} title="Reschedule" style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", fontSize: 11.5, fontWeight: 600, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit", marginRight: 6, whiteSpace: "nowrap" }}>Move</button>}
       {ACTIVE_CAN_EDIT && (
         <button onClick={() => onLogService(device.id)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 600, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Log</button>

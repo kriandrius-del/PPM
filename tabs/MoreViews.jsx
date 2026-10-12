@@ -1,10 +1,12 @@
 // Site → Actions, Spaces and Walk-rounds; the on-call rota; booking several visits together; merging duplicate services.
 import { useEffect, useState } from "react";
+import { PlacePicker, usePlaces, usePlaceText } from "../features/assets/PlacePicker.jsx";
+import { placeFields } from "../features/assets/places.js";
 import { addDays, addMonths, appBaseUrl, orgParam, checklistLabel, compressImage, currentBooking, daysUntil, escapeHtml, fmtDate, qrImageUrl, uid } from "../lib/utils.js";
 import { buildCleaningSchedule, buildWalkroundReport, openPrintReport, tableHtml } from "../lib/reports.js";
 import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
-import { CalendarCheck, CalendarClock, Camera, Car, CheckCircle2, CheckSquare, ClipboardCheck, Copy, FlaskConical, LayoutGrid, ListChecks, ListPlus, Mail, MapPin, Phone, PhoneCall, Plus, Power, Printer, QrCode, Siren, Sparkles, Square, Star, Trash2, Upload, X, ZapOff } from "lucide-react";
+import { Building2, CalendarCheck, CalendarClock, Camera, Car, CheckCircle2, CheckSquare, ClipboardCheck, Copy, FlaskConical, LayoutGrid, ListChecks, ListPlus, Mail, MapPin, Phone, PhoneCall, Plus, Power, Printer, QrCode, Siren, Sparkles, Square, Star, Trash2, Upload, X, ZapOff } from "lucide-react";
 import { ACTION_SOURCES, CLEANING_FREQ, COSHH_HAZARDS, EQUIPMENT_TYPES, ISOLATION_KINDS, KEY_DATE_TYPES, SHUTDOWN_TYPES, SPACE_USES } from "../lib/constants.js";
 import { FEEDBACK_TOPICS } from "../components/PublicPages.jsx";
 
@@ -98,8 +100,12 @@ export function ActionModal({ existing, people = [], onClose, onSave, onDelete }
 export function SpacesView({ spaces, buildings = [], devices = [], onSave, onDelete, locationName, onOpenArea }) {
   const [editing, setEditing] = useState(null);
   const total = spaces.reduce((t, s) => t + (Number(s.areaM2) || 0), 0);
-  const bName = (id) => buildings.find((b) => b.id === id)?.name || ""; const byFloor = {}; spaces.forEach((s) => { const k = [bName(s.buildingId), s.floor].filter(Boolean).join(" · ") || "—"; (byFloor[k] = byFloor[k] || []).push(s); });
-  const count = (name) => devices.filter((d) => (d.area || "").trim().toLowerCase() === name.trim().toLowerCase()).length;
+  // Grouped by building, then floor — so a room on "Floor 2" never looks like a second building.
+  const bName = (id) => buildings.find((b) => b.id === id)?.name || "";
+  const floorName = (s) => { const b = buildings.find((x) => x.id === s.buildingId); return (b && (b.floors || []).find((f) => f.id === s.floorId)?.name) || s.floor || ""; };
+  const floorLevel = (s) => { const b = buildings.find((x) => x.id === s.buildingId); const f = b && (b.floors || []).find((x) => x.id === s.floorId); return f ? Number(f.level) || 0 : 999; };
+  const byBuilding = {}; spaces.forEach((s) => { const k = bName(s.buildingId) || "Not in a building"; (byBuilding[k] = byBuilding[k] || []).push(s); });
+  const count = (sp) => devices.filter((d) => (d.spaceId ? d.spaceId === sp.id : (d.area || "").trim().toLowerCase() === sp.name.trim().toLowerCase())).length;
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
@@ -110,26 +116,34 @@ export function SpacesView({ spaces, buildings = [], devices = [], onSave, onDel
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {ACTIVE_CAN_EDIT && <PrimaryButton onClick={() => setEditing({})} style={{ flex: 1 }}><Plus size={15} /> Add a room or space</PrimaryButton>}
         {spaces.some((s) => s.cleaning) && <button onClick={() => openPrintReport("Cleaning schedule", locationName, buildCleaningSchedule(spaces))} title="Print cleaning schedule" style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "0 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 650, color: "var(--accent)", fontFamily: "inherit" }}><Sparkles size={13} /> Cleaning</button>}
-        {spaces.length > 0 && <ExportButton label="CSV" filename="spaces.csv" rows={[["Space", "Floor", "Use", "Area m²", "Capacity", "Services", "Notes"], ...spaces.map((s) => [s.name, s.floor || "", s.use || "", s.areaM2 || "", s.capacity || "", count(s.name), s.notes || ""])]} />}
+        {spaces.length > 0 && <ExportButton label="CSV" filename="spaces.csv" rows={[["Space", "Building", "Floor", "Use", "Area m²", "Capacity", "Services", "Notes"], ...spaces.map((s) => [s.name, bName(s.buildingId), floorName(s), s.use || "", s.areaM2 || "", s.capacity || "", count(s), s.notes || ""])]} />}
       </div>
       {spaces.length === 0 ? (
         <EmptyState icon={LayoutGrid} title="No spaces yet" body="List your rooms and areas with their floor area and use. Services in each area are counted automatically, and total floor area gives you cost per m² on the Budget page." />
-      ) : Object.entries(byFloor).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true })).map(([fl, list]) => (
-        <div key={fl} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 750, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 5 }}>{fl === "—" ? "No floor set" : fl} · {Math.round(list.reduce((t, s) => t + (Number(s.areaM2) || 0), 0)).toLocaleString("en-GB")} m²</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {list.sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
+      ) : Object.entries(byBuilding).sort((a, b) => (a[0] === "Not in a building") - (b[0] === "Not in a building") || a[0].localeCompare(b[0], undefined, { numeric: true })).map(([bl, blist]) => {
+        const floors = {}; blist.forEach((s) => { const k = floorName(s) || "No floor set"; (floors[k] = floors[k] || { level: floorLevel(s), list: [] }).list.push(s); });
+        return (
+        <div key={bl} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}><Building2 size={14} /> {bl} · {Math.round(blist.reduce((t, s) => t + (Number(s.areaM2) || 0), 0)).toLocaleString("en-GB")} m²</div>
+          {Object.entries(floors).sort((a, b) => a[1].level - b[1].level || a[0].localeCompare(b[0], undefined, { numeric: true })).map(([flName, fl]) => (
+          <div key={flName} style={{ marginBottom: 8, paddingLeft: 10, borderLeft: "2px solid var(--border)" }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", marginBottom: 5 }}>{flName === "No floor set" ? flName : `Floor: ${flName}`}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {fl.list.sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
               <div key={s.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => ACTIVE_CAN_EDIT && setEditing(s)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
                   <div style={{ fontSize: 13, fontWeight: 650 }}>{s.name}</div>
                   <div style={{ fontSize: 11.3, color: "var(--faint)" }}>{s.use || "—"}{s.areaM2 ? ` · ${s.areaM2} m²` : ""}{s.capacity ? ` · ${s.capacity} people` : ""}{s.cleaning ? ` · cleaned ${CLEANING_FREQ[s.cleaning].toLowerCase()}` : ""}{s.condition ? <span style={{ color: s.condition <= 2 ? "var(--danger)" : "var(--faint)" }}> · {"★".repeat(s.condition)}</span> : ""}</div>
                 </button>
-                {count(s.name) > 0 && <button onClick={() => onOpenArea?.(s.name)} style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 12, padding: "3px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{count(s.name)} service{count(s.name) === 1 ? "" : "s"}</button>}
+                {count(s) > 0 && <button onClick={() => onOpenArea?.(s.name)} style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 12, padding: "3px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{count(s)} service{count(s) === 1 ? "" : "s"}</button>}
               </div>
             ))}
+            </div>
           </div>
+          ))}
         </div>
-      ))}
+        );
+      })}
       {editing && <SpaceModal buildings={buildings} existing={editing.id ? editing : null} onClose={() => setEditing(null)} onSave={(s) => { onSave(s); setEditing(null); }} onDelete={(id) => { onDelete(id); setEditing(null); }} />}
     </div>
   );
@@ -150,11 +164,11 @@ export function SpaceModal({ existing, buildings = [], defaults = {}, onClose, o
         {buildings.length > 0 && (
           <div style={{ display: "flex", gap: 8 }}>
             <Field label="Building"><Select value={buildingId} onChange={(e) => { setBuildingId(e.target.value); setFloorId(""); }}><option value="">— not in a building —</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
-            {floors.length > 0 && <Field label="Floor"><Select value={floorId} onChange={(e) => { setFloorId(e.target.value); const f = floors.find((x) => x.id === e.target.value); if (f) setFloor(f.name); }}><option value="">— choose —</option>{floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</Select></Field>}
+            {floors.length > 0 && <Field label="Floor"><Select value={floorId} onChange={(e) => { setFloorId(e.target.value); const f = floors.find((x) => x.id === e.target.value); setFloor(f ? f.name : ""); }}><option value="">— choose —</option>{floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}<option value="__new">+ A new floor…</option></Select></Field>}
           </div>
         )}
         <div style={{ display: "flex", gap: 8 }}>
-          {!(buildings.length > 0 && floors.length > 0) && <Field label="Floor"><TextInput value={floor} onChange={(e) => setFloor(e.target.value)} placeholder="e.g. Ground" /></Field>}
+          {(!(buildings.length > 0 && floors.length > 0) || floorId === "__new") && <Field label={buildingId ? (floorId === "__new" ? "New floor name (added to the building)" : "Floor (added to the building)") : "Floor"}><TextInput value={floor} onChange={(e) => setFloor(e.target.value)} placeholder="e.g. Ground" /></Field>}
           <Field label="Use"><Select value={use} onChange={(e) => setUse(e.target.value)}>{SPACE_USES.map((u) => <option key={u} value={u}>{u}</option>)}</Select></Field>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -167,7 +181,7 @@ export function SpaceModal({ existing, buildings = [], defaults = {}, onClose, o
           <Field label="Cleaning notes"><TextInput value={cleaningNotes} onChange={(e) => setCleaningNotes(e.target.value)} placeholder="e.g. Deep clean monthly" /></Field>
         </div>
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: 50 }} /></Field>
-        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), floor: (floors.find((f) => f.id === floorId)?.name || floor).trim(), buildingId: buildingId || null, floorId: (buildingId && floorId) || null, use, areaM2: areaM2 === "" ? null : Number(areaM2), capacity: capacity === "" ? null : Number(capacity), notes: notes.trim(), cleaning, cleaningNotes: cleaningNotes.trim(), condition: condition || null, conditionNote: conditionNote.trim(), conditionAt: condition && condition !== existing?.condition ? new Date().toISOString().slice(0, 10) : existing?.conditionAt })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), floor: (floors.find((f) => f.id === floorId)?.name || floor).trim(), buildingId: buildingId || null, floorId: (buildingId && floorId && floorId !== "__new") ? floorId : null, use, areaM2: areaM2 === "" ? null : Number(areaM2), capacity: capacity === "" ? null : Number(capacity), notes: notes.trim(), cleaning, cleaningNotes: cleaningNotes.trim(), condition: condition || null, conditionNote: conditionNote.trim(), conditionAt: condition && condition !== existing?.condition ? new Date().toISOString().slice(0, 10) : existing?.conditionAt })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this space" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -299,7 +313,7 @@ export function BookTogetherModal({ devices, suppliers, onClose, onBook }) {
   devices.forEach((d) => { const n = daysUntil(d.nextServiceDate); if (d.supplierId && n !== null && n <= 45 && !currentBooking(d)) (groups[d.supplierId] = groups[d.supplierId] || []).push(d); });
   const entries = Object.entries(groups).filter(([, l]) => l.length >= 2).sort((a, b) => b[1].length - a[1].length);
   const [sel, setSel] = useState(entries[0]?.[0] || "");
-  const [date, setDate] = useState(""); const [time, setTime] = useState(""); const [ref, setRef] = useState("");
+  const [date, setDate] = useState(""); const [time, setTime] = useState(""); const [ref, setRef] = useState(""); const [mailNote, setMailNote] = useState("");
   const [picked, setPicked] = useState(() => (entries[0]?.[1] || []).map((d) => d.id));
   const list = groups[sel] || [];
   return (
@@ -322,6 +336,15 @@ export function BookTogetherModal({ devices, suppliers, onClose, onBook }) {
               <Field label="Time"><TextInput type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
               <Field label="Job ref"><TextInput value={ref} onChange={(e) => setRef(e.target.value)} /></Field>
             </div>
+            {date && picked.length > 0 && (() => { const sup = suppliers.find((x) => x.id === sel); return (
+              <button type="button" onClick={() => {
+                const items = list.filter((d) => picked.includes(d.id)).map((d) => `• ${d.name}${d.assetTag ? ` (#${d.assetTag})` : ""} — due ${fmtDate(d.nextServiceDate)}`).join("\n");
+                const body = `Hi${sup?.managerName ? ` ${sup.managerName.split(" ")[0]}` : ""},\n\nPlease can you confirm one visit on ${fmtDate(date)}${time ? ` at ${time}` : ""}${ref.trim() ? ` (your ref ${ref.trim()})` : ""} to cover:\n\n${items}\n\nKind regards`;
+                window.location.href = `mailto:${encodeURIComponent(sup?.managerEmail || "")}?subject=${encodeURIComponent(`Visit booking — ${picked.length} visits — ${fmtDate(date)}`)}&body=${encodeURIComponent(body)}`;
+                setMailNote(sup?.managerEmail ? "Your email app should now be open with the booking written out. Press Send there — Service Book doesn't send emails itself." : `No email address saved for ${sup?.name || "this supplier"} — the email opened without a "To" address.`);
+              }} style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 9, padding: "9px 10px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}><Mail size={13} style={{ verticalAlign: -2 }} /> Write the booking email</button>
+            ); })()}
+            {mailNote && <div role="status" style={{ fontSize: 12, background: "var(--ok-soft)", color: "var(--ok)", borderRadius: 8, padding: "7px 10px", fontWeight: 600 }}>{mailNote}</div>}
             <PrimaryButton onClick={() => date && picked.length && onBook(picked, { status: "booked", date, time, ref: ref.trim() })} style={{ opacity: date && picked.length ? 1 : 0.5 }}><CalendarCheck size={15} /> Book {picked.length} visit{picked.length === 1 ? "" : "s"} on one day</PrimaryButton>
           </>
         )}
@@ -652,10 +675,11 @@ export function CopySiteModal({ locations, countries, devices, suppliers, curren
 export function FloorPlansView({ plans, devices, onSave, onDelete, onOpenDevice }) {
   const [openId, setOpenId] = useState(plans[0]?.id || null);
   const [placing, setPlacing] = useState(""); const [busy, setBusy] = useState(false); const [name, setName] = useState("");
+  const placeText = usePlaceText(); const [where, setWhere] = useState({ buildingId: "", floorId: "" });   // which building / floor a new plan is of
   const plan = plans.find((p) => p.id === openId) || plans[0];
   async function upload(e) {
     const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setBusy(true);
-    try { const image = await compressImage(f, 1600, 0.7); const id = uid(); onSave({ name: name.trim() || f.name.replace(/\.[^.]+$/, ""), image, pins: [] }); setName(""); } catch (x) { alert("Couldn't read that image — use a JPG or PNG (save a PDF plan as an image first)."); }
+    try { const image = await compressImage(f, 1600, 0.7); const id = uid(); onSave({ name: name.trim() || f.name.replace(/\.[^.]+$/, ""), image, pins: [], buildingId: where.buildingId || null, floorId: (where.buildingId && where.floorId) || null }); setName(""); } catch (x) { alert("Couldn't read that image — use a JPG or PNG (save a PDF plan as an image first)."); }
     setBusy(false);
   }
   function place(e) {
@@ -668,8 +692,9 @@ export function FloorPlansView({ plans, devices, onSave, onDelete, onOpenDevice 
   return (
     <div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-        {plans.map((p) => <ToggleButton key={p.id} active={plan?.id === p.id} onClick={() => setOpenId(p.id)}>{p.name}</ToggleButton>)}
+        {plans.map((p) => <ToggleButton key={p.id} active={plan?.id === p.id} onClick={() => setOpenId(p.id)} title={placeText(p) || undefined}>{p.name}{placeText(p) ? <span style={{ display: "block", fontSize: 10.5, fontWeight: 500, opacity: 0.8 }}>{placeText(p)}</span> : null}</ToggleButton>)}
       </div>
+      {ACTIVE_CAN_EDIT && <div style={{ marginBottom: 6 }}><PlacePicker levels="floor" value={where} onChange={setWhere} label="New plan is of (optional)" hint={false} /></div>}
       {ACTIVE_CAN_EDIT && (
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Plan name, e.g. Ground floor" style={{ flex: 1 }} />
@@ -687,6 +712,7 @@ export function FloorPlansView({ plans, devices, onSave, onDelete, onOpenDevice 
               <button onClick={() => { if (window.confirm(`Delete the plan "${plan.name}"?`)) { onDelete(plan.id); setOpenId(null); } }} title="Delete plan" style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex" }}><Trash2 size={14} color="#9B2C2C" /></button>
             </div>
           )}
+          {ACTIVE_CAN_EDIT && <div style={{ marginBottom: 8 }}><PlacePicker levels="floor" value={{ buildingId: plan.buildingId || "", floorId: plan.floorId || "" }} onChange={(w) => onSave({ ...plan, buildingId: w.buildingId || null, floorId: (w.buildingId && w.floorId) || null })} label="This plan is of" hint={false} /></div>}
           {placing && <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent)", marginBottom: 6 }}>Now tap the plan where "{devices.find((d) => d.id === placing)?.name}" is.</div>}
           <div onClick={place} style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)", cursor: placing ? "crosshair" : "default", background: "#fff" }}>
             <img src={plan.image} alt={plan.name} style={{ width: "100%", display: "block", userSelect: "none" }} draggable={false} />
@@ -832,6 +858,7 @@ export function TvDashboard({ locationName, stats, onClose }) {
 
 /* ---------- Isolation points (stopcocks, gas valves, isolators…) ---------- */
 export function IsolationsView({ items, onSave, onDelete, onPrintEmergency }) {
+  const placeText = usePlaceText();
   const [editing, setEditing] = useState(null);
   return (
     <div>
@@ -845,7 +872,7 @@ export function IsolationsView({ items, onSave, onDelete, onPrintEmergency }) {
           {[...items].sort((a, b) => ISOLATION_KINDS.indexOf(a.kind) - ISOLATION_KINDS.indexOf(b.kind)).map((i) => (
             <button key={i.id} onClick={() => ACTIVE_CAN_EDIT && setEditing(i)} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)", width: "100%", minWidth: 0, boxSizing: "border-box" }}>
               {i.photo ? <img src={i.photo} alt="" style={{ width: 52, height: 52, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} /> : <span style={{ width: 52, height: 52, borderRadius: 8, background: "var(--danger-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Power size={20} color="var(--danger)" /></span>}
-              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}><b style={{ fontSize: 13.5 }}>{i.kind}</b><span style={{ display: "block", fontSize: 12.3 }}>{i.location}</span>{/valve|stopcock|isolator|shut-off/i.test(i.kind) && <span style={{ display: "block", fontSize: 11, fontWeight: 650, color: !i.lastExercised || -daysUntil(i.lastExercised) > 365 ? "var(--warn)" : "var(--ok)" }}>{i.lastExercised ? `Last operated ${fmtDate(i.lastExercised)}` : "Not operated on record"}{ACTIVE_CAN_EDIT && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onSave({ ...i, lastExercised: new Date().toISOString().slice(0, 10) }); }} style={{ marginLeft: 8, color: "var(--accent)", textDecoration: "underline" }}>operated today</span>}</span>}{i.serves && <span style={{ display: "block", fontSize: 11.3, color: "var(--faint)" }}>Serves: {i.serves}</span>}</span>
+              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}><b style={{ fontSize: 13.5 }}>{i.kind}</b>{placeText(i) && <span style={{ display: "block", fontSize: 11.5, color: "var(--faint)" }}>{placeText(i)}</span>}<span style={{ display: "block", fontSize: 12.3 }}>{i.location}</span>{/valve|stopcock|isolator|shut-off/i.test(i.kind) && <span style={{ display: "block", fontSize: 11, fontWeight: 650, color: !i.lastExercised || -daysUntil(i.lastExercised) > 365 ? "var(--warn)" : "var(--ok)" }}>{i.lastExercised ? `Last operated ${fmtDate(i.lastExercised)}` : "Not operated on record"}{ACTIVE_CAN_EDIT && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onSave({ ...i, lastExercised: new Date().toISOString().slice(0, 10) }); }} style={{ marginLeft: 8, color: "var(--accent)", textDecoration: "underline" }}>operated today</span>}</span>}{i.serves && <span style={{ display: "block", fontSize: 11.3, color: "var(--faint)" }}>Serves: {i.serves}</span>}</span>
             </button>
           ))}
         </div>
@@ -855,17 +882,20 @@ export function IsolationsView({ items, onSave, onDelete, onPrintEmergency }) {
   );
 }
 function IsolationModal({ existing, onClose, onSave, onDelete }) {
+  const { spaces } = usePlaces();
+  const [place, setPlace] = useState({ buildingId: existing?.buildingId || "", floorId: existing?.floorId || "", spaceId: existing?.spaceId || "" });
   const [kind, setKind] = useState(existing?.kind || ISOLATION_KINDS[0]); const [location, setLocation] = useState(existing?.location || "");
   const [serves, setServes] = useState(existing?.serves || ""); const [notes, setNotes] = useState(existing?.notes || ""); const [photos, setPhotos] = useState(existing?.photo ? [existing.photo] : []);
   return (
     <Modal title={existing ? "Isolation point" : "Add an isolation point"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <Field label="What"><Select value={kind} onChange={(e) => setKind(e.target.value)}>{ISOLATION_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</Select></Field>
+        <PlacePicker value={place} onChange={setPlace} label="Building, floor and room (optional)" />
         <Field label="Exactly where"><TextInput autoFocus value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Under the sink in the ground-floor cleaners' cupboard" /></Field>
         <Field label="What it shuts off"><TextInput value={serves} onChange={(e) => setServes(e.target.value)} placeholder="e.g. Whole building cold water" /></Field>
         <Field label="Notes"><TextInput value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Turn clockwise · key on the reception key safe" /></Field>
         <PhotoStrip photos={photos} onChange={setPhotos} max={1} label="Photo" />
-        <PrimaryButton onClick={() => location.trim() && onSave({ id: existing?.id, kind, location: location.trim(), serves: serves.trim(), notes: notes.trim(), photo: photos[0] || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <PrimaryButton onClick={() => location.trim() && onSave({ id: existing?.id, kind, ...placeFields(place, spaces), location: location.trim(), serves: serves.trim(), notes: notes.trim(), photo: photos[0] || null })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>
@@ -933,18 +963,20 @@ function CarModal({ existing, onClose, onSave, onDelete }) {
 }
 
 /* ---------- Planned shutdowns (power, water, lifts…) with occupant notices ---------- */
+// "Other" shutdowns carry their own description.
+export const shutdownType = (s) => (s?.type === "Other" && s?.typeOther ? s.typeOther : s?.type || "");
 export function ShutdownsView({ items, onSave, onDelete, locationName = "", userName = "" }) {
   const [editing, setEditing] = useState(null);
   const now = new Date().toISOString().slice(0, 16);
   const upcoming = items.filter((s) => (s.end || s.start) >= now).sort((a, b) => String(a.start).localeCompare(String(b.start)));
   const past = items.filter((s) => (s.end || s.start) < now).sort((a, b) => String(b.start).localeCompare(String(a.start)));
   const when = (s) => `${new Date(s.start).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${s.end ? ` – ${new Date(s.end).toLocaleString("en-GB", s.end.slice(0, 10) === s.start.slice(0, 10) ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}`;
-  const notice = (s) => { const e = escapeHtml; openPrintReport(`Planned ${s.type.toLowerCase()} shutdown`, locationName, `<div style="border:4px solid #D97706;border-radius:14px;padding:22px;text-align:center"><div style="font-size:15px;font-weight:800;letter-spacing:.1em;color:#B45309">PLANNED SHUTDOWN</div><div style="font-size:30px;font-weight:800;margin:8px 0">${e(s.type)}</div><div style="font-size:20px;font-weight:700">${e(when(s))}</div>${s.areas ? `<div style="font-size:16px;margin-top:10px">Affected: <b>${e(s.areas)}</b></div>` : ""}${s.reason ? `<div style="font-size:14px;margin-top:10px">${e(s.reason)}</div>` : ""}${s.impact ? `<div style="font-size:14px;margin-top:10px;background:#FEF3C7;border-radius:8px;padding:8px">${e(s.impact)}</div>` : ""}<div style="font-size:12px;color:#56616D;margin-top:14px">Questions? Contact the facilities team${s.contact ? ` — ${e(s.contact)}` : ""}. We're sorry for any inconvenience.</div></div>`); };
-  const email = (s) => { window.location.href = `mailto:?subject=${encodeURIComponent(`Planned ${s.type.toLowerCase()} shutdown — ${when(s)}`)}&body=${encodeURIComponent(`Hello,\n\nPlease note there will be a planned ${s.type.toLowerCase()} shutdown at ${locationName}:\n\nWhen: ${when(s)}${s.areas ? `\nAffected areas: ${s.areas}` : ""}${s.reason ? `\nWhy: ${s.reason}` : ""}${s.impact ? `\n\nWhat this means for you: ${s.impact}` : ""}\n\nWe're sorry for any inconvenience.${s.contact ? `\nQuestions: ${s.contact}` : ""}\n\n${userName}`)}`; onSave({ ...s, notifiedAt: new Date().toISOString() }); };
+  const notice = (s) => { const e = escapeHtml; openPrintReport(`Planned ${shutdownType(s).toLowerCase()} shutdown`, locationName, `<div style="border:4px solid #D97706;border-radius:14px;padding:22px;text-align:center"><div style="font-size:15px;font-weight:800;letter-spacing:.1em;color:#B45309">PLANNED SHUTDOWN</div><div style="font-size:30px;font-weight:800;margin:8px 0">${e(shutdownType(s))}</div><div style="font-size:20px;font-weight:700">${e(when(s))}</div>${s.areas ? `<div style="font-size:16px;margin-top:10px">Affected: <b>${e(s.areas)}</b></div>` : ""}${s.reason ? `<div style="font-size:14px;margin-top:10px">${e(s.reason)}</div>` : ""}${s.impact ? `<div style="font-size:14px;margin-top:10px;background:#FEF3C7;border-radius:8px;padding:8px">${e(s.impact)}</div>` : ""}<div style="font-size:12px;color:#56616D;margin-top:14px">Questions? Contact the facilities team${s.contact ? ` — ${e(s.contact)}` : ""}. We're sorry for any inconvenience.</div></div>`); };
+  const email = (s) => { window.location.href = `mailto:?subject=${encodeURIComponent(`Planned ${shutdownType(s).toLowerCase()} shutdown — ${when(s)}`)}&body=${encodeURIComponent(`Hello,\n\nPlease note there will be a planned ${shutdownType(s).toLowerCase()} shutdown at ${locationName}:\n\nWhen: ${when(s)}${s.areas ? `\nAffected areas: ${s.areas}` : ""}${s.reason ? `\nWhy: ${s.reason}` : ""}${s.impact ? `\n\nWhat this means for you: ${s.impact}` : ""}\n\nWe're sorry for any inconvenience.${s.contact ? `\nQuestions: ${s.contact}` : ""}\n\n${userName}`)}`; onSave({ ...s, notifiedAt: new Date().toISOString() }); };
   const row = (s) => (
     <div key={s.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${s.start <= now && (s.end || s.start) >= now ? "var(--danger)" : "#D97706"}`, borderRadius: 10, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 4 }}>
       <button onClick={() => ACTIVE_CAN_EDIT && setEditing(s)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.type}{s.start <= now && (s.end || s.start) >= now ? <span style={{ color: "var(--danger)" }}> · happening now</span> : null}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{shutdownType(s)}{s.start <= now && (s.end || s.start) >= now ? <span style={{ color: "var(--danger)" }}> · happening now</span> : null}</div>
         <div style={{ fontSize: 12.3 }}>{when(s)}</div>
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{[s.areas, s.contractor && `by ${s.contractor}`, s.notifiedAt && `occupants told ${fmtDate(s.notifiedAt.slice(0, 10))}`].filter(Boolean).join(" · ")}</div>
       </button>
@@ -969,12 +1001,14 @@ export function ShutdownsView({ items, onSave, onDelete, locationName = "", user
 }
 function ShutdownModal({ existing, onClose, onSave, onDelete }) {
   const [type, setType] = useState(existing?.type || SHUTDOWN_TYPES[0]); const [start, setStart] = useState(existing?.start || ""); const [end, setEnd] = useState(existing?.end || "");
+  const [typeOther, setTypeOther] = useState(existing?.typeOther || ""); const [err, setErr] = useState("");
   const [areas, setAreas] = useState(existing?.areas || ""); const [reason, setReason] = useState(existing?.reason || ""); const [impact, setImpact] = useState(existing?.impact || "");
   const [contractor, setContractor] = useState(existing?.contractor || ""); const [contact, setContact] = useState(existing?.contact || "");
   return (
     <Modal title={existing ? "Planned shutdown" : "Plan a shutdown"} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <Field label="What's being shut down"><Select value={type} onChange={(e) => setType(e.target.value)}>{SHUTDOWN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></Field>
+        <Field label="What's being shut down"><Select value={type} onChange={(e) => { setType(e.target.value); setErr(""); }}>{SHUTDOWN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></Field>
+        {type === "Other" && <Field label="Describe it"><TextInput autoFocus value={typeOther} onChange={(e) => { setTypeOther(e.target.value); setErr(""); }} placeholder="e.g. Chilled water, BMS, Car park barrier" maxLength={60} /></Field>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
           <Field label="From"><TextInput type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="Until"><TextInput type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
@@ -986,7 +1020,8 @@ function ShutdownModal({ existing, onClose, onSave, onDelete }) {
           <Field label="Contractor"><TextInput value={contractor} onChange={(e) => setContractor(e.target.value)} /></Field>
           <Field label="Contact for questions"><TextInput value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Name / phone" /></Field>
         </div>
-        <PrimaryButton onClick={() => start && onSave({ id: existing?.id, type, start, end, areas: areas.trim(), reason: reason.trim(), impact: impact.trim(), contractor: contractor.trim(), contact: contact.trim(), notifiedAt: existing?.notifiedAt })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        {err && <div role="alert" style={{ fontSize: 12, color: "var(--danger)", fontWeight: 650 }}>{err}</div>}
+        <PrimaryButton onClick={() => { if (!start) { setErr("Choose when it starts."); return; } if (type === "Other" && !typeOther.trim()) { setErr("Say what's being shut down."); return; } if (end && end < start) { setErr("The end is before the start."); return; } onSave({ id: existing?.id, type, typeOther: type === "Other" ? typeOther.trim() : "", start, end, areas: areas.trim(), reason: reason.trim(), impact: impact.trim(), contractor: contractor.trim(), contact: contact.trim(), notifiedAt: existing?.notifiedAt }); }}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete" onConfirm={() => onDelete(existing.id)} />}
       </div>
     </Modal>

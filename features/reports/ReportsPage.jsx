@@ -6,7 +6,7 @@ import { Btn, Card, InlineModalContext, Pill, ScoreRing } from "../../components
 import { Select } from "../../components/ui.jsx";
 import { MONTH_NAMES } from "../../lib/constants.js";
 import { buildXlsx, openPrintReport } from "../../lib/reports.js";
-import { csvHref, downloadBlob, gbp } from "../../lib/utils.js";
+import { downloadBlob, downloadCsv, gbp } from "../../lib/utils.js";
 import { buildMonthlyFm } from "./monthlyFm.js";
 import { HealthBreakdown, printHealth } from "../health/HealthPanel.jsx";
 import { healthBand } from "../health/siteHealth.js";
@@ -22,7 +22,7 @@ export function ReportsPage({ fmData, reportsData, siteName }) {
   async function excel() {
     const r = make();
     try { const blob = await buildXlsx([{ name: "Monthly FM report", headers: r.csv[0], rows: r.csv.slice(1), widths: [36, 16, 16] }]); downloadBlob(blob, `monthly-fm-report-${year}-${String(month + 1).padStart(2, "0")}.xlsx`); }
-    catch (e) { window.location.href = csvHref(r.csv); }
+    catch (e) { downloadCsv(r.csv, `monthly-fm-report-${year}-${String(month + 1).padStart(2, "0")}.csv`); }
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -32,7 +32,7 @@ export function ReportsPage({ fmData, reportsData, siteName }) {
           <Select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ width: "auto" }} aria-label="Month">{MONTH_NAMES.map((m, i) => <option key={m} value={i}>{m}</option>)}</Select>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: "auto" }} aria-label="Year">{years.map((y) => <option key={y} value={y}>{y}</option>)}</Select>
           <Btn variant="primary" icon={Printer} onClick={() => setBlocked(!openPrintReport(title, siteName, make().html))}>Open / print (PDF)</Btn>
-          <a className="fm-btn fm-btn-secondary fm-btn-md" href={csvHref(make().csv)} download={`monthly-fm-report-${year}-${String(month + 1).padStart(2, "0")}.csv`} style={{ textDecoration: "none" }}><Table2 size={15} /> CSV</a>
+          <Btn icon={Table2} onClick={() => downloadCsv(make().csv, `monthly-fm-report-${year}-${String(month + 1).padStart(2, "0")}.csv`)}>CSV</Btn>
           <Btn icon={Table2} onClick={excel}>Excel</Btn>
         </div>
         {blocked && <div className="fm-error">Your browser blocked the report window — allow pop-ups for this site and try again.</div>}

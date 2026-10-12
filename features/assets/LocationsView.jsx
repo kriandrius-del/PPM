@@ -55,9 +55,33 @@ function OrganiseModal({ siteName, areas, onClose, onRun }) {
   );
 }
 
-export function LocationsView({ org, countries = [], sites = [], siteId, buildings = [], spaces = [], devices = [], works = [], services = [], spendByDevice = {}, canEdit, onChooseSite, onOpenAsset, onSaveBuilding, onDeleteBuilding, onSaveSpace, onDeleteSpace, onOrganise }) {
+// Put existing assets into a building, floor or room (asset managers only).
+function MoveAssetsModal({ target, assets, placeText, onClose, onMove }) {
+  const [q, setQ] = useState(""); const [picked, setPicked] = useState([]);
+  const list = assets.filter((a) => !q.trim() || `${a.name} ${a.assetTag || ""} ${a.area || ""}`.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <Modal title={`Move assets into ${target.label}`} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="fm-sub">Tick the assets that are in {target.label}. Each one's record then shows this place, and it's counted here.</div>
+        <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search assets by name, tag or area" aria-label="Search assets" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 340, overflowY: "auto" }}>
+          {list.length === 0 && <div className="fm-sub">No other assets on this site match.</div>}
+          {list.map((a) => (
+            <label key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, background: "var(--card-hi)", borderRadius: 8, padding: "7px 9px", cursor: "pointer" }}>
+              <input type="checkbox" checked={picked.includes(a.id)} onChange={(e) => setPicked((p) => (e.target.checked ? [...p, a.id] : p.filter((x) => x !== a.id)))} style={{ margin: 0 }} />
+              <span style={{ flex: 1, minWidth: 0 }}><b style={{ fontWeight: 650 }}>{a.name}</b><span style={{ display: "block", fontSize: 11.5, color: "var(--faint)" }}>Now: {placeText(a) || "not in a building or room"}</span></span>
+            </label>
+          ))}
+        </div>
+        <PrimaryButton disabled={!picked.length} onClick={() => picked.length && onMove(picked)} style={{ opacity: picked.length ? 1 : 0.5 }}>Move {picked.length || ""} asset{picked.length === 1 ? "" : "s"} here</PrimaryButton>
+      </div>
+    </Modal>
+  );
+}
+
+export function LocationsView({ org, countries = [], sites = [], siteId, buildings = [], spaces = [], devices = [], works = [], services = [], spendByDevice = {}, canEdit, canManageAssets = false, onAddAsset, onMoveAssets, onChooseSite, onOpenAsset, onSaveBuilding, onDeleteBuilding, onSaveSpace, onDeleteSpace, onOrganise }) {
   const [path, setPath] = useState({ level: "site" });   // level: portfolio | site | building | floor | room | loose | unplaced
-  const [editB, setEditB] = useState(null); const [editR, setEditR] = useState(null); const [organise, setOrganise] = useState(false);
+  const [editB, setEditB] = useState(null); const [editR, setEditR] = useState(null); const [organise, setOrganise] = useState(false); const [moving, setMoving] = useState(null);
   const site = sites.find((s) => s.id === siteId);
   const tree = useMemo(() => siteTree({ siteId, buildings, spaces, devices: devices.filter((d) => !d.archived) }), [siteId, buildings, spaces, devices]);
   const bNode = tree.buildings.find((b) => b.id === path.buildingId);
@@ -91,6 +115,18 @@ export function LocationsView({ org, countries = [], sites = [], siteId, buildin
       <Kpi label={`Spend ${new Date().getFullYear()}`} value={gbp(spend)} />
     </div>
   );
+  // Where "Add an asset here" / "Move assets here" put things, for the place being looked at.
+  const here = path.level === "room" && rNode ? { label: rNode.name, fields: { spaceId: rNode.room.id, buildingId: rNode.room.buildingId || null, floorId: rNode.room.floorId || null }, area: rNode.name }
+    : path.level === "floor" && fNode && !fNode.virtual ? { label: `${bNode.name} › ${fNode.name}`, fields: { spaceId: null, buildingId: bNode.id, floorId: fNode.id } }
+    : path.level === "building" && bNode ? { label: bNode.name, fields: { spaceId: null, buildingId: bNode.id, floorId: null } } : null;
+  const placeText = (a) => { const r = tree.rooms.find((x) => x.id === roomForId(a)); const b = buildings.find((x) => x.id === (r ? r.buildingId : a.buildingId)); const f = b && (b.floors || []).find((x) => x.id === (r ? r.floorId : a.floorId)); return [b?.name, f?.name, r?.name].filter(Boolean).join(" › "); };
+  const roomForId = (a) => (tree.buildings.flatMap((b) => b.floors.flatMap((f) => f.rooms)).concat(tree.looseRooms).find((r) => r.assets.some((x) => x.id === a.id)) || {}).id;
+  const placeActions = here && canManageAssets && (onAddAsset || onMoveAssets) ? (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {onAddAsset && <Btn size="sm" icon={Plus} onClick={() => onAddAsset({ ...here.fields, area: here.area || "" })}>Add an asset here</Btn>}
+      {onMoveAssets && <Btn size="sm" icon={Boxes} onClick={() => setMoving(here)}>Move assets here</Btn>}
+    </div>
+  ) : null;
   const assetRows = (list) => list.length ? (
     <div className="fm-list">{list.slice(0, 200).map((a) => { const st = status(a); return <Row key={a.id} tone={st.tone} title={a.name} sub={[a.assetTag, st.label, st.reasons[0]].filter(Boolean).join(" · ")} right={<Pill tone={st.tone}>{st.label}</Pill>} onClick={() => onOpenAsset(a.id)} />; })}</div>
   ) : <div className="fm-sub">No assets here yet.</div>;
@@ -148,7 +184,7 @@ export function LocationsView({ org, countries = [], sites = [], siteId, buildin
     body = (
       <>
         {summary}
-        <div className="fm-section-title"><div className="fm-h2">Assets in {rNode.name}</div>{canEdit && <Btn size="sm" icon={Pencil} onClick={() => setEditR({ existing: rNode.room })}>Edit room</Btn>}</div>
+        <div className="fm-section-title"><div className="fm-h2">Assets in {rNode.name}</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{placeActions}{canEdit && <Btn size="sm" icon={Pencil} onClick={() => setEditR({ existing: rNode.room })}>Edit room</Btn>}</div></div>
         {assetRows(rNode.assets)}
         {openWorks.length > 0 && <><div className="fm-section-title"><div className="fm-h2">Open jobs</div></div><div className="fm-list">{openWorks.map((w) => <Row key={w.id} tone={w.priority === "high" ? "danger" : "warn"} title={w.description} sub={devices.find((d) => d.id === w.deviceId)?.name} />)}</div></>}
       </>
@@ -165,12 +201,13 @@ export function LocationsView({ org, countries = [], sites = [], siteId, buildin
       {body}
       {(path.level === "site" || path.level === "building" || path.level === "floor") && path.level !== "portfolio" && path.level !== "site" && (
         <>
-          <div className="fm-section-title"><div className="fm-h2">Assets</div></div>
+          <div className="fm-section-title"><div className="fm-h2">Assets</div>{placeActions}</div>
           {assetRows(assets)}
         </>
       )}
       {editB && <BuildingModal existing={editB.id ? editB : null} canDelete={editB.id ? !spaces.some((s) => s.buildingId === editB.id) : false} onClose={() => setEditB(null)} onDelete={(id) => { onDeleteBuilding(id); setEditB(null); setPath({ level: "site" }); }} onSave={(b) => { onSaveBuilding(b); setEditB(null); }} />}
       {editR && <SpaceModal buildings={buildings.filter((b) => b.locationId === siteId)} existing={editR.existing || null} defaults={editR.defaults || {}} onClose={() => setEditR(null)} onSave={(r) => { onSaveSpace(r); setEditR(null); }} onDelete={(id) => { onDeleteSpace(id); setEditR(null); setPath({ level: "site" }); }} />}
+      {moving && <MoveAssetsModal target={moving} placeText={placeText} assets={tree.assets.filter((a) => !assetsUnder(path.level === "room" ? rNode : path.level === "floor" ? fNode : bNode).some((x) => x.id === a.id))} onClose={() => setMoving(null)} onMove={(ids) => { onMoveAssets(ids, moving.fields, moving.area || ""); setMoving(null); }} />}
       {organise && <OrganiseModal siteName={site?.name} areas={areasToOrganise} onClose={() => setOrganise(false)} onRun={(name) => { onOrganise(name, areasToOrganise); setOrganise(false); }} />}
     </div>
   );

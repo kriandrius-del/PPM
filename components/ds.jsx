@@ -153,6 +153,9 @@ export const DS_CSS = `
 .fm-search { flex: 1; max-width: 520px; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card-hi); color: var(--faint); font: inherit; font-size: 13px; cursor: text; text-align: left; }
 .fm-search { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fm-search kbd { margin-left: auto; font-family: inherit; font-size: 11px; border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; color: var(--faint); background: var(--card); }
+.fm-search-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Not enough room beside the site, figures and profile (tablets, small laptops): just the magnifier. */
+@media (max-width: 1279px) { .fm-top .fm-search { flex: 0 0 40px; width: 40px; padding: 0; justify-content: center; } .fm-top .fm-search .fm-search-label, .fm-top .fm-search kbd { display: none; } }
 .fm-icon-btn { position: relative; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
 .fm-icon-btn .fm-count { position: absolute; top: -6px; right: -6px; }
 .fm-live { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 10px; border-radius: 16px; border: 1px solid var(--border); background: var(--card); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
@@ -223,6 +226,7 @@ export const DS_CSS = `
 .fm-seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .fm-table { width: 100%; border-collapse: collapse; font-size: 13px; overflow-wrap: normal; word-break: normal; }
 .fm-fab { bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important; }
+html.fm-typing .fm-bottom, html.fm-typing .fm-fab { display: none !important; }
 @media (max-width: 999px) { .fm-fab { bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important; } }
 .fm-table th { text-align: left; font-size: 11.5px; font-weight: 700; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .fm-table td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }

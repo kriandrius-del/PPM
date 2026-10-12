@@ -1,6 +1,6 @@
 // The frame around every screen: sidebar (desktop) or bottom bar (phone), top bar with site, search,
 // live/offline state, notifications and profile, then the area's sections and the page itself.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, ChevronDown, Cloud, CloudOff, HardDrive, Menu, Search, User, Wrench, X, AlertTriangle, RefreshCw } from "lucide-react";
 import { SubNav, useWide } from "../components/ds.jsx";
 import { AREA_BY_KEY } from "./navigation.js";
@@ -25,9 +25,24 @@ export function LiveChip({ state, onClick, compact = false }) {
   );
 }
 
+// While someone is typing on a touch screen, the bottom bar and the round + button step aside so the
+// on-screen keyboard never pushes them over the field being filled in.
+function useTypingFlag() {
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
+    const editable = (t) => t && t.matches && t.matches("input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]), textarea, select, [contenteditable=true]");
+    let off = 0;
+    const onIn = (e) => { if (editable(e.target)) { clearTimeout(off); document.documentElement.classList.add("fm-typing"); } };
+    const onOut = (e) => { if (editable(e.target)) { clearTimeout(off); off = setTimeout(() => { if (!editable(document.activeElement)) document.documentElement.classList.remove("fm-typing"); }, 150); } };
+    document.addEventListener("focusin", onIn); document.addEventListener("focusout", onOut);
+    return () => { clearTimeout(off); document.removeEventListener("focusin", onIn); document.removeEventListener("focusout", onOut); document.documentElement.classList.remove("fm-typing"); };
+  }, []);
+}
+
 export function AppShell({ areas, otherAreas = [], stats = [], brand = {}, area, section, onNavigate, areaBadges = {}, sectionBadges = {}, siteLabel, siteSub, onSite, onSearch, alertsCount = 0, onAlerts, live, onLive, userName, roleLabel, onProfile, phoneKeys = [], banners = null, pageTitle, pageSub, pageRight, children, onRefresh, syncing }) {
   const wide = useWide();
   const [menu, setMenu] = useState(false);
+  useTypingFlag();
   const cur = AREA_BY_KEY[area];
   const subItems = (cur?.sections || []).map(([k, l]) => ({ key: k, label: l, badge: sectionBadges[`${area}.${k}`]?.n, badgeTone: sectionBadges[`${area}.${k}`]?.tone }));
   const go = (a, s) => { setMenu(false); onNavigate(a, s); };
@@ -76,7 +91,7 @@ export function AppShell({ areas, otherAreas = [], stats = [], brand = {}, area,
       <div className="fm-main">
         <header className="fm-top">
           <button className="fm-site-btn" onClick={onSite} title="Change site"><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{siteLabel}{siteSub && <span className="fm-sub"> · {siteSub}</span>}</span><ChevronDown size={14} /></button>
-          <button className="fm-search" onClick={onSearch} aria-label="Search everything"><Search size={15} /> Search assets, jobs, suppliers, rooms… <kbd>/</kbd></button>
+          <button className="fm-search" onClick={onSearch} aria-label="Search everything" title="Search everything (/)"><Search size={15} style={{ flexShrink: 0 }} /><span className="fm-search-label">Search assets, jobs, suppliers, rooms…</span><kbd>/</kbd></button>
           {statChips}
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
             <button className="fm-icon-btn" onClick={onAlerts} title="Notifications" aria-label="Notifications">{<Bell size={16} />}{count(alertsCount)}</button>

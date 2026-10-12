@@ -4,7 +4,7 @@ import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck
 import { Badge, CategoryBadge, ConfirmDeleteButton, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SignOffSection, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
 import { ACTIVE_CAN_EDIT, ACTIVE_CAN_MANAGE_ASSETS, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
 import { buildChaseEmail, printBulkStickers, printStickers } from "../lib/reports.js";
-import { addDays, addMonths, appBaseUrl, orgParam, compressImage, currentBooking, daysUntil, downloadBlob, dueStatus, fmtDate, gbp, loadJsQR, missingRequiredFields, qrImageUrl, relativeDays, replacementYear, uid } from "../lib/utils.js";
+import { addDays, addMonths, appBaseUrl, orgParam, compressImage, currentBooking, daysUntil, downloadBlob, dueStatus, fmtDate, gbp, isDueThisMonth, isDueWithin30, isOverdueService, loadJsQR, missingRequiredFields, qrImageUrl, relativeDays, replacementYear, uid } from "../lib/utils.js";
 import { CONDITION_GRADES, CRITICALITY, MONTH_NAMES } from "../lib/constants.js";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
@@ -63,12 +63,9 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
     if (dueFilter === "done") return isDone(d);
     if (dueFilter === "todo") return !isDone(d);
     const days = daysUntil(d.nextServiceDate);
-    if (dueFilter === "overdue") return days !== null && days < 0;
-    if (dueFilter === "month") {
-      if (!d.nextServiceDate || doneThisMonth(d)) return false;
-      const dt = new Date(d.nextServiceDate + "T00:00:00");
-      return dt.getFullYear() === nowD.getFullYear() && dt.getMonth() === nowD.getMonth();
-    }
+    if (dueFilter === "overdue") return isOverdueService(d);
+    if (dueFilter === "month") return isDueThisMonth(d, nowD);
+    if (dueFilter === "soon") return isDueWithin30(d);
     return true;
   }).sort(sorters[sortBy] || byDue);
   return (
@@ -109,16 +106,23 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
       )}
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         <ToggleButton active={dueFilter === "todo"} onClick={() => setDueFilter("todo")}>To do ({devices.filter((d) => !isDone(d)).length})</ToggleButton>
-        <ToggleButton active={dueFilter === "overdue"} onClick={() => setDueFilter("overdue")}>Overdue</ToggleButton>
-        <ToggleButton active={dueFilter === "month"} onClick={() => setDueFilter("month")}>Due this month</ToggleButton>
+        <ToggleButton active={dueFilter === "overdue"} onClick={() => setDueFilter("overdue")}>Overdue ({devices.filter(isOverdueService).length})</ToggleButton>
+        <ToggleButton active={dueFilter === "month"} onClick={() => setDueFilter("month")}>Due this month ({devices.filter((d) => isDueThisMonth(d, nowD)).length})</ToggleButton>
+        <ToggleButton active={dueFilter === "soon"} onClick={() => setDueFilter("soon")}>Due in 30 days ({devices.filter(isDueWithin30).length})</ToggleButton>
         <ToggleButton active={dueFilter === "done"} onClick={() => setDueFilter("done")}>Done ({devices.filter(isDone).length})</ToggleButton>
-        <ToggleButton active={dueFilter === "all"} onClick={() => setDueFilter("all")}>All</ToggleButton>
+        <ToggleButton active={dueFilter === "all"} onClick={() => setDueFilter("all")}>All ({devices.length})</ToggleButton>
         {ACTIVE_USERS.length > 1 && devices.some((d) => d.assignee) && <ToggleButton active={mineOnly} onClick={() => onPrefs({ mine: !mineOnly })}>Mine</ToggleButton>}
         {archivedDevices.length > 0 && <ToggleButton active={dueFilter === "archived"} onClick={() => setDueFilter("archived")}>Archived ({archivedDevices.length})</ToggleButton>}
         {ACTIVE_CAN_EDIT && onBulkLog && dueFilter !== "archived" && (
           <ToggleButton active={selecting} onClick={() => { setSelecting((v) => !v); setSelected([]); }}>{selecting ? "Cancel select" : "Select…"}</ToggleButton>
         )}
       </div>
+      {["overdue", "month", "soon"].includes(dueFilter) && (
+        <div className="fm-sub" style={{ fontSize: 12, color: "var(--muted)", margin: "-6px 0 8px" }}>
+          {dueFilter === "overdue" ? "Services whose next due date has passed." : dueFilter === "month" ? `Services due in ${nowD.toLocaleDateString("en-GB", { month: "long" })} whose visit for this month isn't logged yet.` : `Services due between today and ${fmtDate(addDays(nowD.toISOString().slice(0, 10), 30))} (overdue ones are under Overdue).`}
+          {(mineOnly || tagFilter || catFilter !== "all") && " Other filters are on too, so some may be hidden."}
+        </div>
+      )}
       {dueFilter !== "archived" && (() => { const b = devices.filter((d) => annualCost(d) > 0); if (b.length < 2) return null; const tot = b.reduce((a, d) => a + annualCost(d), 0); return <div style={{ fontSize: 12, color: "var(--muted)", margin: "-4px 0 8px" }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(tot).replace(/\.00$/, "")}</b> a year across {b.length} budgeted service{b.length === 1 ? "" : "s"}{devices.length > b.length ? ` · ${devices.length - b.length} with no budget` : ""}</div>; })()}
       {ACTIVE_CAN_EDIT && onBookTogether && dueFilter !== "archived" && (() => { const g = {}; devices.forEach((d) => { const n = daysUntil(d.nextServiceDate); if (d.supplierId && n !== null && n <= 45 && !currentBooking(d)) g[d.supplierId] = (g[d.supplierId] || 0) + 1; }); return Object.values(g).some((n) => n >= 2) ? (
         <button onClick={onBookTogether} style={{ width: "100%", marginTop: -6, marginBottom: 10, background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
@@ -425,6 +429,7 @@ export function BookingModal({ supplier = null, locationName = "", device, onClo
   const [date, setDate] = useState(b?.date || device.nextServiceDate || "");
   const [time, setTime] = useState(b?.time || "");
   const [ref, setRef] = useState(b?.ref || "");
+  const [mailNote, setMailNote] = useState("");
   return (
     <Modal title={`Book visit — ${device.name}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -438,12 +443,16 @@ export function BookingModal({ supplier = null, locationName = "", device, onClo
           <Field label="Time (optional)"><TextInput type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
         </div>
         <Field label="Supplier job / booking ref (optional)"><TextInput value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. JOB-55812" /></Field>
+        <div style={{ fontSize: 12.5, fontWeight: 650 }}>Booking email to the supplier</div>
+        {!date && <div style={{ fontSize: 12, color: "var(--faint)", marginTop: -6 }}>Choose a date first — then you can write the booking email and add it to your calendar.</div>}
+        {date && !supplier?.managerEmail && <div style={{ fontSize: 12, color: "var(--warn)", marginTop: -6 }}>{supplier ? `No email address saved for ${supplier.name} — add one in People → Suppliers & contractors. The email will open without a "To" address.` : "No supplier is set for this service — the email will open without a \"To\" address."}</div>}
         {date && (
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => {
+              setMailNote("Your email app should now be open with the booking written out. Check it and press Send there — Service Book doesn't send emails itself.");
               const body = `Hi${supplier?.managerName ? ` ${supplier.managerName.split(" ")[0]}` : ""},\n\nPlease can you confirm your visit for ${device.name}${device.assetTag ? ` (#${device.assetTag})` : ""} on ${fmtDate(date)}${time ? ` at ${time}` : ""}${ref ? ` (your ref ${ref})` : ""}.\n\n${[device.accessNotes && `Access: ${device.accessNotes}`, (device.ramsRequired || device.permits?.length) && `Before starting: ${[device.ramsRequired && "send RAMS in advance", ...(device.permits || []).map((p) => `${p} permit needed`)].filter(Boolean).join(", ")}`, siteInfoText()].filter(Boolean).join("\n")}\n\nKind regards`;
               window.location.href = `mailto:${encodeURIComponent(supplier?.managerEmail || "")}?subject=${encodeURIComponent(`Visit booking — ${device.name} — ${fmtDate(date)}${time ? ` ${time}` : ""}`)}&body=${encodeURIComponent(body)}`;
-            }} style={{ flex: 1, background: "var(--accent-soft)", border: "none", borderRadius: 9, padding: "9px 10px", fontSize: 12.3, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><Mail size={13} /> Ask supplier to confirm</button>
+            }} style={{ flex: 1, background: "var(--accent-soft)", border: "none", borderRadius: 9, padding: "9px 10px", fontSize: 12.3, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><Mail size={13} />  Write the booking email</button>
             <button type="button" onClick={() => {
               const dt = (d, t) => d.replace(/-/g, "") + (t ? `T${t.replace(":", "")}00` : "");
               const endT = time ? (() => { const [h, m] = time.split(":").map(Number); return `${String(Math.min(23, h + 2)).padStart(2, "0")}:${String(m).padStart(2, "0")}`; })() : "";
@@ -454,6 +463,7 @@ export function BookingModal({ supplier = null, locationName = "", device, onClo
             }} style={{ flex: 1, background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 10px", fontSize: 12.3, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><CalendarPlus size={13} /> Add to my calendar</button>
           </div>
         )}
+        {mailNote && <div role="status" style={{ fontSize: 12, background: "var(--ok-soft)", color: "var(--ok)", borderRadius: 8, padding: "7px 10px", fontWeight: 600 }}>{mailNote}</div>}
         <PrimaryButton onClick={() => onSave({ status, date: date || null, time, ref: ref.trim() })}><CalendarCheck size={15} /> Save booking</PrimaryButton>
         {b && <button onClick={() => onSave(null)} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Clear booking</button>}
       </div>

@@ -1,4 +1,4 @@
-# Going live with logins — round 30.2
+# Going live with logins — round 30.3
 
 > **Phase 1 is in review.** Review it on a separate test copy first: the Phase 1 review checklist has the steps. Only follow this guide for your live app once Phase 1 is approved.
 
@@ -118,6 +118,8 @@ Things to know about roles:
 - **Other phones and computers?** They now show the sign-in page.
 - **Data that was only saved in one browser?** Sign in on that browser, then go to More → **Team & access** → **Copy into the company**. Nothing that's already there is lost.
 - **Forgot password?** Use **Forgot password?** on the sign-in page. It needs email sending to be set up (Step 1).
+- **Emails to suppliers** (booking a visit, chasing, asking for approval, weekly updates)? Service Book writes the email and opens it in your own email app, so it goes from your address and you can check it first; you press **Send** there. The app doesn't send email itself. Sending straight from the app would need an email service (for example Resend or Brevo behind a small Supabase function) — that isn't part of Phase 1.
+- **The review copy asks phones to log in to Vercel?** That's Vercel protecting preview builds, not the app. Log in to your Vercel account once on that phone, or test QR stickers on a device that is. Your live site isn't affected.
 - **Backups?** The Pro plan backs up daily. The **Download backup** file still works and now includes the photos.
 
 ## If something goes wrong

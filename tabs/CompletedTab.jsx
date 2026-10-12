@@ -12,6 +12,8 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [year, setYear] = useState("all");    // "all" or "2026"…
+  const [limit, setLimit] = useState(50);     // newest 50 first; "Show all" shows the rest
 
   if (services.length === 0) return (
     <div>
@@ -20,7 +22,9 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
     </div>
   );
 
+  const years = [...new Set(services.map((s) => String(s.date || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse();
   const filtered = services.filter((s) => {
+    if (year !== "all" && !String(s.date || "").startsWith(year)) return false;
     if (dateFrom && (!s.date || s.date < dateFrom)) return false;
     if (dateTo && (!s.date || s.date > dateTo)) return false;
     if (search.trim()) {
@@ -30,7 +34,8 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
       if (!hay.includes(q)) return false;
     }
     return true;
-  });
+  }).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.loggedAt || b.updatedAt || "").localeCompare(String(a.loggedAt || a.updatedAt || "")));   // newest first
+  const shown = filtered.slice(0, limit);
 
   const csvRows = [
     ["Visit name", "Service", "Supplier", "Date", "Technician", "Cost", "Logged by", "Notes"],
@@ -50,13 +55,19 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
           <button onClick={() => { setDateFrom(""); setDateTo(""); }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "9px 11px", fontSize: 12, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Clear</button>
         )}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 11.5, color: "var(--faint)", fontWeight: 600 }}>{filtered.length} of {services.length}</span>
-        <ExportButton rows={csvRows} filename="certificates.csv" />
+      {years.length > 1 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <ToggleButton active={year === "all"} onClick={() => { setYear("all"); setLimit(50); }}>All years ({services.length})</ToggleButton>
+          {years.map((y) => <ToggleButton key={y} active={year === y} onClick={() => { setYear(y); setLimit(50); }}>{y} ({services.filter((s) => String(s.date || "").startsWith(y)).length})</ToggleButton>)}
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>{filtered.length === services.length ? `All ${services.length} visits` : `${filtered.length} of ${services.length} visits`} · newest first{shown.length < filtered.length ? ` · showing the latest ${shown.length}` : ""}</span>
+        <ExportButton rows={csvRows} filename="visit-history.csv" />
       </div>
       {filtered.length === 0 ? (
         <div style={{ textAlign: "center", color: "var(--faint)", fontSize: 12.5, padding: "24px 0" }}>Nothing matches this search or date range.</div>
-      ) : filtered.map((s) => {
+      ) : shown.map((s) => {
         const dev = deviceById[s.deviceId];
         const supplier = s.supplierId ? supplierById[s.supplierId] : null;
         return (
@@ -65,7 +76,7 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
               {s.certificatePhoto ? <img src={s.certificatePhoto} alt="certificate" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <FileCheck size={20} color="#8A94A0" />}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 650, fontSize: 14 }}>{s.name || (dev ? dev.name : "Service")}</div>
+              <div style={{ fontWeight: 650, fontSize: 14 }}>{s.name || (dev ? dev.name : "Service")}{(s.aborted || s.skipped) && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 10, padding: "1px 7px" }}>{s.aborted ? "Not completed" : "Skipped"}</span>}</div>
               <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{dev ? dev.name : "Unknown service"}{supplier ? ` · ${supplier.name}` : ""}</div>
               <div style={{ fontSize: 12, color: "var(--faint)" }}>{fmtDate(s.date)} · {s.technician || "No technician noted"}{s.cost ? ` · ${gbp(s.cost)}` : ""}{s.poNumber ? ` · PO ${s.poNumber}` : ""}</div>
               {s.custom && Object.keys(s.custom).length > 0 && (
@@ -89,6 +100,12 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
           </button>
         );
       })}
+      {shown.length < filtered.length && (
+        <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+          <button type="button" onClick={() => setLimit((n) => n + 50)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Show 50 more</button>
+          <button type="button" onClick={() => setLimit(filtered.length)} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Show all {filtered.length}</button>
+        </div>
+      )}
     </div>
   );
 }

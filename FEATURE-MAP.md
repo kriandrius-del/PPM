@@ -1,6 +1,16 @@
-# Feature map — round 30.2 (FMOS phase 1, for review)
+# Feature map — round 30.3 (FMOS phase 1, review fixes)
 
-**Status:** Phase 1 is complete and frozen for your review. Phase 2 starts only after you approve it.
+**Status:** Phase 1 is in review. Round 30.3 fixes the snags from the first hands-on review; they need retesting, and the role, phone, QR and link checks are still to do. Phase 2 starts only after you approve Phase 1.
+
+**Round 30.3 changes** (fixes from the Phase 1 review — no Phase 2 work):
+
+- **Buildings, floors and rooms everywhere (AST-01, AST-03, AST-07):** asset, meter and isolation point forms have a building → floor → room picker, floor plans record their building and floor, and Raise a job can narrow its asset list by place. Locations has **Add an asset here** and **Move assets here** on every building, floor and room. A floor typed for a room becomes one of its building's floors, and Rooms & spaces groups rooms by building, then floor. Assets, meters and isolation points can sit straight in a building or on a floor (`buildingId`, `floorId`) as well as in a room (`spaceId`).
+- **Figures match their lists (HOM-06, OPS-05):** Overdue, Due ≤30d and Open quotes open exactly the list they count; "Due this month" has one meaning everywhere (`isDueThisMonth` in `lib/utils.js`); Reactive works has an **Open quotes** filter and counts on every filter; Visit history is newest first with a filter per year and Show all.
+- **A job's steps (OPS-03):** quote → approval → purchase order → work done → invoice, with the next step and its button. A PO can't be raised while an over-limit quote waits for approval, and an invoice recorded from a job is linked to the job's PO.
+- **Booking emails (OPS-04):** Book from the Schedule, and **Write the booking email** opens your email app with it written out (Service Book doesn't send email itself — see GOING-LIVE.md).
+- **Tablets and phones (HOM-04, RES-01, CS-04, OPS-06):** pop-ups size themselves to the part of the screen above the on-screen keyboard and are centred on tablets; button labels no longer break in the middle of a word; CSV exports are real downloads (they did nothing on iPad); **Report incident** opens the form straight away; the top-bar search becomes a magnifier when space is tight.
+- **Smaller fixes:** shutdown type "Other" asks what it is; imports refuse impossible dates (31/02); using a part on a job checks the quantity and stock and ignores a double tap.
+- **Decision applied — hide other areas:** engineers, finance and senior management only see their own areas, in the menu, search and notifications (`otherAreasFor` / `canSeeArea` in `app/navigation.js`). Links into a hidden area go to Home.
 
 **Round 30.2 changes** (role controls you asked for before the review):
 
@@ -18,7 +28,7 @@
 
 - **Header figures:** the Overdue, Due ≤30d and Open quotes figures are back in the top bar, on both phone and desktop.
 - **Overdue banner:** the "N services overdue — tap to review" banner is back.
-- **Every area for every role:** each role sees its own areas first, then the rest under **Other areas** in the sidebar and the phone menu.
+- **Every area for every role:** each role sees its own areas first, then the rest under **Other areas** in the sidebar and the phone menu. *(Changed in 30.3 after review: engineers, finance and senior management no longer get Other areas.)*
 - **Section counts:** the small counts from the old Site page are back on each section, and the old Site summary figures sit on the compliance register.
 - **Page summaries:** each page's one-line summary is back under its title.
 - **Search:** finds vehicles again.
@@ -61,6 +71,7 @@ What the app does, where each feature lives now, and where its code is. No featu
   - `org:buildings`: buildings with their floors.
   - Rooms (`org:spaces`) gain `buildingId` and `floorId`.
   - Assets (`org:devices`) gain `spaceId` and an optional `statusOverride`.
+  - Round 30.3: assets, meters (`org:meters`) and isolation points (`org:isolations`) can also carry `buildingId` / `floorId`; floor plans (`org:floorplans`) carry `buildingId` / `floorId`; shutdowns carry `typeOther`.
   - Personal `me:notif` holds which notifications you've read or marked done.
 - **Links:** an asset is in a room either through `spaceId` or because its Area text matches the room's name. **Assets → Locations → Organise into rooms** creates the rooms from Areas in one go.
 - **Roles:** the database decides who may change each list (`ppm_write_roles`), with a field-by-field rule for settings (`ppm_settings_check`). Saved rows can't be moved between lists, scopes or companies (`ppm_kv_freeze`).
