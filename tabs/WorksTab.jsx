@@ -3,13 +3,17 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, FileSpreadsheet, FolderKanban, Mail, Printer, Receipt, Repeat, Send, Siren, Square, Timer, Trash2, Upload, X } from "lucide-react";
 import { BudgetTypeTag, CategoryBadge, ConfirmTextDelete, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, PriorityTag, Select, TextArea, TextInput, ToggleButton, WorkStatusTag, inputStyle } from "../components/ui.jsx";
 import { PRIORITY_RANK, PROJECT_STATUSES, SLA_DAYS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
-import { ACTIVE_CAN_APPROVE, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_SLA, ACTIVE_USERS, siteInfoText } from "../lib/globals.js";
-import { addDays, appBaseUrl, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, parseDelimited, replacementYear, toISO, uid, workSla } from "../lib/utils.js";
+import { ACTIVE_HIDE_MONEY, ACTIVE_CAN_APPROVE, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_SLA, ACTIVE_USERS, siteInfoText } from "../lib/globals.js";
+import { maskMoney, addDays, appBaseUrl, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, parseDelimited, replacementYear, toISO, uid, workSla } from "../lib/utils.js";
 import { buildWorkOrderSheet, openPrintReport, tableHtml } from "../lib/reports.js";
+import { usePlaceText } from "../features/assets/PlacePicker.jsx";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
 export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = null, onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
   const [importOpen, setImportOpen] = useState(false);
+  const placeText = usePlaceText();
+  // what a job is for: its asset's name, or — for a job with no asset — where it is
+  const what = (w) => deviceById[w.deviceId]?.name || (w.deviceId ? "Unknown service" : placeText(w) || w.placeName || "No asset");
   const [waitingOnly, setWaitingOnly] = useState(false); const [overQuoteOnly, setOverQuoteOnly] = useState(false);
   const needsApproval = (w) => approvalThreshold > 0 && Number(w.quoteAmount) >= approvalThreshold && !w.approvedBy && w.status !== "rejected" && w.status !== "completed";
   const [editingThreshold, setEditingThreshold] = useState(false);
@@ -45,7 +49,7 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
   const openWork = openWorkId ? works.find((w) => w.id === openWorkId) : null;
   const csvRows = [
     ["Service", "Description", "Priority", "Assigned to", "Amount", "Status", "Budget type", "Date raised", "Raised by", "Comments"],
-    ...works.map((w) => [deviceById[w.deviceId]?.name || "", w.description || "", w.priority || "medium", w.supplierId ? (supplierById[w.supplierId]?.name || "") : "", w.quoteAmount || 0, w.status || "", w.budgetType === "non_controllable" ? "Non-controllable" : "Budgeted", w.dateRaised || "", w.requestedBy || w.loggedBy || "", (w.comments || []).length]),
+    ...works.map((w) => [what(w), w.description || "", w.priority || "medium", w.supplierId ? (supplierById[w.supplierId]?.name || "") : "", w.quoteAmount || 0, w.status || "", w.budgetType === "non_controllable" ? "Non-controllable" : "Budgeted", w.dateRaised || "", w.requestedBy || w.loggedBy || "", (w.comments || []).length]),
   ];
   return (
     <div>
@@ -56,19 +60,19 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
             <TextInput type="number" min="0" value={thresholdDraft} onChange={(e) => setThresholdDraft(e.target.value)} style={{ width: 90, padding: "6px 8px" }} />
             <button onClick={() => { onSetThreshold?.(Number(thresholdDraft) || 0); setEditingThreshold(false); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 7, padding: "6px 10px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Save</button>
           </div>
-        ) : (
+        ) : ACTIVE_HIDE_MONEY ? <span /> : (
           <button onClick={() => ACTIVE_CAN_EDIT && onSetThreshold && setEditingThreshold(true)} style={{ background: "none", border: "none", padding: 0, fontSize: 11.5, color: "var(--muted)", cursor: ACTIVE_CAN_EDIT && onSetThreshold ? "pointer" : "default", fontFamily: "inherit", textAlign: "left" }}>
             {approvalThreshold > 0 ? <>Quotes over <b>{gbp(approvalThreshold)}</b> need approval{ACTIVE_CAN_EDIT && onSetThreshold ? " · edit" : ""}</> : <>No approval rule{ACTIVE_CAN_EDIT && onSetThreshold ? " · set one" : ""}</>}
           </button>
         )}
-        <button onClick={async () => { const rows = works.map((w) => [w.dateRaised ? new Date(w.dateRaised + "T00:00:00") : null, deviceById[w.deviceId]?.name || "", w.description, w.category || "", w.priority || "medium", WORK_STATUSES.find((s) => s.key === w.status)?.label || w.status, supplierById[w.supplierId]?.name || "", Number(w.quoteAmount) || null, w.finalCost != null ? Number(w.finalCost) : null, workSla(w) ? new Date(workSla(w).deadline + "T00:00:00") : null, workSla(w)?.breached ? "Late" : "", w.poNumber || "", w.requestedBy || ""]);
+        <button onClick={async () => { const rows = works.map((w) => [w.dateRaised ? new Date(w.dateRaised + "T00:00:00") : null, what(w), w.description, w.category || "", w.priority || "medium", WORK_STATUSES.find((s) => s.key === w.status)?.label || w.status, supplierById[w.supplierId]?.name || "", Number(w.quoteAmount) || null, w.finalCost != null ? Number(w.finalCost) : null, workSla(w) ? new Date(workSla(w).deadline + "T00:00:00") : null, workSla(w)?.breached ? "Late" : "", w.poNumber || "", w.requestedBy || ""]);
           const buf = await buildStyledSheet({ title: "Reactive works", subtitle: `${locationName} · ${new Date().toLocaleDateString("en-GB")} · ${works.length} jobs`, sheetName: "Works", headers: ["Raised", "Service", "Work", "Trade", "Priority", "Status", "Supplier", "Quote", "Final cost", "Target", "On target?", "PO", "Requested by"], rows, widths: [12, 24, 40, 16, 10, 14, 22, 12, 12, 12, 10, 12, 16], numFmts: { 0: "dd/mm/yyyy", 7: "£#,##0.00", 8: "£#,##0.00", 9: "dd/mm/yyyy" }, cellStyle: (c, v, ri, ci) => { if (ci === 10 && v === "Late") excelColour(c, "FBEAEA", "C53030"); if (ci === 4 && v === "high") c.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFC53030" } }; } });
           downloadBlob(xlsxBlob(buf), "reactive-works.xlsx"); }} style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, marginRight: 6 }}><FileSpreadsheet size={13} /> Excel</button>
         {ACTIVE_CAN_EDIT && onImportWorks && <button onClick={() => setImportOpen(true)} style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, marginRight: 6 }}><Upload size={13} /> Import jobs</button>}
         {importOpen && <ImportWorksModal devices={Object.values(deviceById)} suppliers={suppliers} onClose={() => setImportOpen(false)} onImport={(rows) => { onImportWorks(rows); setImportOpen(false); }} />}
         <ExportButton rows={csvRows} filename="extra-works.csv" />
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      {!ACTIVE_HIDE_MONEY && <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "10px 12px" }}>
           <div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Budgeted total</div>
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(budgetedTotal)}</div>
@@ -77,7 +81,7 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
           <div style={{ fontSize: 11, color: "var(--warn)", fontWeight: 600 }}>Non-controllable</div>
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", color: "var(--warn)" }}>{gbp(nonControllableTotal)}</div>
         </div>
-      </div>
+      </div>}
       {slaEdit ? (
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 8, fontSize: 11.5, color: "var(--muted)" }}>
           Target days —
@@ -113,9 +117,9 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
                     return (
                       <div key={w.id} style={{ background: "var(--card)", borderRadius: 9, padding: 8, borderLeft: `3px solid ${(WORK_PRIORITIES.find((p) => p.key === (w.priority || "medium")) || {}).color || "#8A94A0"}` }}>
                         <button onClick={() => setOpenWorkId(w.id)} style={{ width: "100%", background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
-                          <div style={{ fontSize: 12.3, fontWeight: 700 }}>{deviceById[w.deviceId]?.name || "Service"}</div>
+                          <div style={{ fontSize: 12.3, fontWeight: 700 }}>{what(w)}</div>
                           <div style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{w.description}</div>
-                          <div style={{ fontSize: 10.5, color: sla?.breached && !sla.done ? "var(--danger)" : "var(--faint)", fontWeight: sla?.breached && !sla.done ? 700 : 500, marginTop: 3 }}>{gbp(w.quoteAmount)}{w.assignee ? ` · ${w.assignee}` : ""}{sla && !sla.done ? ` · ${sla.breached ? "overdue" : `by ${fmtDate(sla.deadline)}`}` : ""}</div>
+                          <div style={{ fontSize: 10.5, color: sla?.breached && !sla.done ? "var(--danger)" : "var(--faint)", fontWeight: sla?.breached && !sla.done ? 700 : 500, marginTop: 3 }}>{ACTIVE_HIDE_MONEY ? "" : gbp(w.quoteAmount)}{w.assignee ? `${ACTIVE_HIDE_MONEY ? "" : " · "}${w.assignee}` : ""}{sla && !sla.done ? ` · ${sla.breached ? "overdue" : `by ${fmtDate(sla.deadline)}`}` : ""}</div>
                         </button>
                         {ACTIVE_CAN_EDIT && (
                           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
@@ -142,17 +146,17 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
       )}
       {(() => { const rated = works.filter((w) => w.satisfaction); return rated.length ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>Requester satisfaction: <b style={{ color: "#D97706" }}>{(rated.reduce((t, w) => t + w.satisfaction, 0) / rated.length).toFixed(1)} ★</b> from {rated.length} job{rated.length === 1 ? "" : "s"}</div> : null; })()}
       {chaseOpen && <ChaseWorksModal works={overdueWorks} suppliers={suppliers} deviceById={deviceById} locationName={locationName} onClose={() => setChaseOpen(false)} onSent={onLogChase} />}
-      {(() => { const open = works.filter((w) => ["approved", "in_progress"].includes(w.status)); const v = open.reduce((a, w) => a + (Number(w.finalCost ?? w.quoteAmount) || 0), 0); return open.length ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(v)}</b> committed on {open.length} approved / in-progress job{open.length === 1 ? "" : "s"}</div> : null; })()}
+      {(() => { const open = works.filter((w) => ["approved", "in_progress"].includes(w.status)); const v = open.reduce((a, w) => a + (Number(w.finalCost ?? w.quoteAmount) || 0), 0); return open.length && !ACTIVE_HIDE_MONEY ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(v)}</b> committed on {open.length} approved / in-progress job{open.length === 1 ? "" : "s"}</div> : null; })()}
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
         <ToggleButton active={statusFilter === "open"} onClick={() => setStatusFilter("open")}>Open ({works.filter((w) => !isClosed(w)).length})</ToggleButton>
         <ToggleButton active={statusFilter === "quotes"} onClick={() => setStatusFilter("quotes")}>Open quotes ({works.filter(isOpenQuote).length})</ToggleButton>
         <ToggleButton active={statusFilter === "requested"} onClick={() => setStatusFilter("requested")}>New requests ({requestedCount})</ToggleButton>
         <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Closed ({works.filter(isClosed).length})</ToggleButton>
         <ToggleButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All ({works.length})</ToggleButton>
-        {works.some((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1) && <ToggleButton active={overQuoteOnly} title="Jobs whose final cost is more than 10% above the quote" onClick={() => setOverQuoteOnly((v) => !v)}>Cost over quote ({works.filter((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1).length})</ToggleButton>}
+        {!ACTIVE_HIDE_MONEY && works.some((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1) && <ToggleButton active={overQuoteOnly} title="Jobs whose final cost is more than 10% above the quote" onClick={() => setOverQuoteOnly((v) => !v)}>Cost over quote ({works.filter((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1).length})</ToggleButton>}
         {works.some((w) => w.waitingOn && !isClosed(w)) && <ToggleButton active={waitingOnly} onClick={() => setWaitingOnly((v) => !v)}>Waiting on something ({works.filter((w) => w.waitingOn && !isClosed(w)).length})</ToggleButton>}
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "7px 8px", fontSize: 12.5 }}>
-          <option value="priority">Priority first</option><option value="target">Target date</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="value">Highest value</option>
+          <option value="priority">Priority first</option><option value="target">Target date</option><option value="newest">Newest</option><option value="oldest">Oldest</option>{!ACTIVE_HIDE_MONEY && <option value="value">Highest value</option>}
         </select>
         {works.some((w) => w.category) && (
           <select value={tradeFilter} onChange={(e) => setTradeFilter(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "7px 8px", fontSize: 12.5 }}>
@@ -177,13 +181,14 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
             <button key={w.id} onClick={() => selecting ? toggleSel(w.id) : setOpenWorkId(w.id)} style={{ outline: selecting && selected.includes(w.id) ? "2px solid var(--accent)" : "none", background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${(WORK_PRIORITIES.find((p) => p.key === (w.priority || "medium")) || WORK_PRIORITIES[1]).color}`, borderRadius: 12, padding: 14, textAlign: "left", cursor: "pointer", fontFamily: "inherit", width: "100%" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}>{selecting && (selected.includes(w.id) ? <CheckSquare size={17} color="#2B4562" /> : <Square size={17} color="#A3ABB4" />)}{dev ? dev.name : "Unknown service"}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}>{selecting && (selected.includes(w.id) ? <CheckSquare size={17} color="#2B4562" /> : <Square size={17} color="#A3ABB4" />)}{what(w)}</div>
                   <div style={{ fontSize: 12, color: "var(--faint)", marginTop: 2 }}>Raised {fmtDate(w.dateRaised)}{w.requestedBy ? ` by ${w.requestedBy}` : ""}</div>
                 </div>
                 <WorkStatusTag status={w.status} />
               </div>
               <div style={{ margin: "8px 0", display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <PriorityTag priority={w.priority || "medium"} />
+                {!w.deviceId && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--accent-soft)", padding: "3px 8px", borderRadius: 20 }}>Room / building — no asset</span>}
                 {(() => {
                   const sla = workSla(w); if (!sla) return null;
                   if (sla.done) return sla.breached ? <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>Completed late</span> : null;
@@ -192,10 +197,10 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
                 {w.quoteValidUntil && ["quoted", "requested"].includes(w.status) && daysUntil(w.quoteValidUntil) <= 14 && <span style={{ fontSize: 11, fontWeight: 700, color: daysUntil(w.quoteValidUntil) < 0 ? "var(--danger)" : "var(--warn)", background: daysUntil(w.quoteValidUntil) < 0 ? "var(--danger-soft)" : "var(--warn-soft)", padding: "3px 8px", borderRadius: 20 }}>{daysUntil(w.quoteValidUntil) < 0 ? "Quote expired" : `Quote valid to ${fmtDate(w.quoteValidUntil)}`}</span>}
                 {needsApproval(w) && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)", background: "var(--warn-soft)", padding: "3px 8px", borderRadius: 20 }}>Needs approval</span>}
                 {w.approvedBy && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", background: "var(--ok-soft)", padding: "3px 8px", borderRadius: 20 }}>✓ Approved</span>}
-                {w.poNumber && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>PO {w.poNumber}</span>}
-                {w.finalCost != null && Number(w.quoteAmount) > 0 && (() => { const v = Number(w.finalCost) - Number(w.quoteAmount); const pct = Math.round((v / Number(w.quoteAmount)) * 100); return <span style={{ fontSize: 11, fontWeight: 700, color: v > 0 ? "var(--danger)" : "var(--ok)", background: v > 0 ? "var(--danger-soft)" : "var(--ok-soft)", padding: "3px 8px", borderRadius: 20 }}>Final {gbp(w.finalCost)} ({v > 0 ? "+" : ""}{pct}%)</span>; })()}
+                {w.poNumber && !ACTIVE_HIDE_MONEY && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>PO {w.poNumber}</span>}
+                {w.finalCost != null && Number(w.quoteAmount) > 0 && !ACTIVE_HIDE_MONEY && (() => { const v = Number(w.finalCost) - Number(w.quoteAmount); const pct = Math.round((v / Number(w.quoteAmount)) * 100); return <span style={{ fontSize: 11, fontWeight: 700, color: v > 0 ? "var(--danger)" : "var(--ok)", background: v > 0 ? "var(--danger-soft)" : "var(--ok-soft)", padding: "3px 8px", borderRadius: 20 }}>Final {gbp(w.finalCost)} ({v > 0 ? "+" : ""}{pct}%)</span>; })()}
                 {w.eta && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: daysUntil(w.eta) < 0 ? "var(--danger)" : "var(--accent)", background: daysUntil(w.eta) < 0 ? "var(--danger-soft)" : "var(--accent-soft)", padding: "3px 8px", borderRadius: 20 }}>Supplier ETA {fmtDate(w.eta)}</span>}
-                {Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1 && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>{Math.round((Number(w.finalCost) / Number(w.quoteAmount) - 1) * 100)}% over quote</span>}
+                {!ACTIVE_HIDE_MONEY && Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1 && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>{Math.round((Number(w.finalCost) / Number(w.quoteAmount) - 1) * 100)}% over quote</span>}
                 {w.escalatedAt && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>Escalated</span>}
                 {w.status === "completed" && w.completedAt && w.dateRaised && <span style={{ fontSize: 11, fontWeight: 650, color: "var(--muted)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>Done in {Math.max(0, Math.round((new Date(w.completedAt) - new Date(`${w.dateRaised}T09:00:00`)) / 864e5))} day{Math.max(0, Math.round((new Date(w.completedAt) - new Date(`${w.dateRaised}T09:00:00`)) / 864e5)) === 1 ? "" : "s"}</span>}
                 {w.waitingOn && !["completed", "rejected"].includes(w.status) && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warn)", background: "var(--warn-soft)", padding: "3px 8px", borderRadius: 20 }}>Waiting: {w.waitingOn.toLowerCase()}</span>}
@@ -209,7 +214,7 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
                 {(w.links || []).length > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>📎 {w.links.length}</span>}
                 {w.incidentId && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", background: "var(--danger-soft)", padding: "3px 8px", borderRadius: 20 }}>From incident</span>}
                 <CategoryBadge category={dev?.serviceCategory} />
-                <BudgetTypeTag type={w.budgetType} />
+                {!ACTIVE_HIDE_MONEY && <BudgetTypeTag type={w.budgetType} />}
               </div>
               <p style={{ fontSize: 13.5, color: "var(--text-2)", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{w.description}</p>
               {w.photos && w.photos.length > 0 && (
@@ -218,7 +223,7 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "var(--faint)" }}>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{gbp(w.quoteAmount)}</span>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{ACTIVE_HIDE_MONEY ? "" : gbp(w.quoteAmount)}</span>
                 <span>{assignee ? assignee.name : "Unassigned"} · {commentCount} comment{commentCount === 1 ? "" : "s"}</span>
               </div>
             </button>
@@ -265,19 +270,21 @@ function JobSteps({ work, needsApproval, approvalThreshold = 0, invoicedTotal = 
   const goAhead = ["approved", "in_progress", "completed"].includes(work.status);
   const approved = overLimit ? !!work.approvedBy : quoted;
   const hasPO = !!work.poNumber; const invoiced = invoicedTotal > 0;
+  const HM = ACTIVE_HIDE_MONEY;   // engineers: the steps without amounts, POs or invoices — the office handles those
   const steps = [
-    ["Quote", quoted, quoted ? gbp(work.quoteAmount) : "not added yet"],
-    ["Approval", approved && !needsApproval, !quoted ? "after the quote" : overLimit ? (work.approvedBy ? `by ${work.approvedBy}` : `needed — over ${gbp(approvalThreshold)}`) : `not needed — under ${gbp(approvalThreshold || 0)}`],
-    ["Purchase order", hasPO, hasPO ? work.poNumber : "optional"],
+    ["Quote", quoted, quoted ? (HM ? "added" : gbp(work.quoteAmount)) : HM ? "the office adds it" : "not added yet"],
+    ["Approval", approved && !needsApproval, !quoted ? "after the quote" : overLimit ? (work.approvedBy ? `by ${work.approvedBy}` : HM ? "needed" : `needed — over ${gbp(approvalThreshold)}`) : HM ? "not needed" : `not needed — under ${gbp(approvalThreshold || 0)}`],
+    !HM && ["Purchase order", hasPO, hasPO ? work.poNumber : "optional"],
     ["Work done", done, done ? fmtDate(work.completedAt) : goAhead ? "in hand" : "not started"],
-    ["Invoice", invoiced, invoiced ? `${gbp(invoicedTotal)} recorded` : "not recorded"],
-  ];
-  const canPO = onRaisePO && ACTIVE_CAN_EDIT && !hasPO && quoted && !needsApproval && !done;
-  const canInvoice = onInvoice && ACTIVE_CAN_EDIT && goAhead;
+    !HM && ["Invoice", invoiced, invoiced ? `${gbp(invoicedTotal)} recorded` : "not recorded"],
+  ].filter(Boolean);
+  const canPO = !HM && onRaisePO && ACTIVE_CAN_EDIT && !hasPO && quoted && !needsApproval && !done;
+  const canInvoice = !HM && onInvoice && ACTIVE_CAN_EDIT && goAhead;
   const canComplete = ACTIVE_CAN_EDIT && !done && quoted && !needsApproval;
   let next;
-  if (!quoted) next = "Add the quote amount (Quote amount, further down), then it can be approved if it's over the limit.";
+  if (!quoted) next = HM ? "The office adds the quote; then the job goes ahead, or waits for approval first." : "Add the quote amount (Quote amount, further down), then it can be approved if it's over the limit.";
   else if (needsApproval) next = ACTIVE_CAN_APPROVE ? "Approve or reject the quote — the buttons are just below." : "Approval by finance, or by someone an admin allows to approve quotes (see below).";
+  else if (HM) next = done ? "Done. The office deals with the invoice." : "When the work is finished, mark it completed.";
   else if (!hasPO && !done) next = canPO ? "Raise a purchase order for the supplier (optional — skip it if your company doesn't use POs)." : "A purchase order is optional. Someone with finance permission raises it in Commercial → POs & invoices, or type an existing PO number further down.";
   else if (!done) next = "When the work is finished, mark it completed.";
   else if (!invoiced) next = canInvoice ? "Record the supplier's invoice against this job." : "Someone with finance permission records the invoice in Commercial → POs & invoices.";
@@ -304,6 +311,9 @@ function JobSteps({ work, needsApproval, approvalThreshold = 0, invoicedTotal = 
 }
 
 export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, onInvoice, onRaisePO, spares = [], onUseSpare, onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
+  const placeText = usePlaceText();
+  // what the job is for: its asset, or (no asset) the room, floor or building it's on
+  const jobName = device ? device.name : (placeText(work) || work.placeName || "Job on a room or building");
   const [po, setPo] = useState(work.poNumber || "");
   const [statusMsg, setStatusMsg] = useState("");
   const [comment, setComment] = useState("");
@@ -319,7 +329,7 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
     setComment("");
   }
   return (
-    <Modal title={device ? device.name : "Extra work"} onClose={onClose}>
+    <Modal title={jobName} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 13.5, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{work.description}</div>
         <JobSteps work={work} needsApproval={needsApproval} approvalThreshold={approvalThreshold} invoicedTotal={invoicedTotal} onRaisePO={onRaisePO} onInvoice={onInvoice} onUpdate={onUpdate} />
@@ -328,7 +338,7 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
           <Field label="Status">
             <Select value={work.status} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => {
               const v = e.target.value;
-              if (needsApproval && ["approved", "in_progress", "completed"].includes(v)) { setStatusMsg(`This quote is over ${gbp(approvalThreshold)} — use Approve below first.`); return; }
+              if (needsApproval && ["approved", "in_progress", "completed"].includes(v)) { setStatusMsg(ACTIVE_HIDE_MONEY ? "This job needs approving before it can go ahead." : `This quote is over ${gbp(approvalThreshold)} — use Approve below first.`); return; }
               setStatusMsg(""); onUpdate({ status: v });
             }}>
               {WORK_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
@@ -343,7 +353,7 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
         {statusMsg && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: -4 }}>{statusMsg}</div>}
         {needsApproval && (
           <div style={{ background: "var(--warn-soft)", border: "1px solid #E6D9BC", borderRadius: 10, padding: 10 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--warn)" }}>Needs approval — quote is {gbp(work.quoteAmount)}, over the {gbp(approvalThreshold)} limit</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--warn)" }}>{ACTIVE_HIDE_MONEY ? "Needs approval before work starts" : <>Needs approval — quote is {gbp(work.quoteAmount)}, over the {gbp(approvalThreshold)} limit</>}</div>
             {(work.loggedBy || work.requestedBy) === currentUserName && <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 2 }}>You raised this job — ideally someone else approves it.</div>}
             {!ACTIVE_CAN_APPROVE && <div style={{ fontSize: 11.5, color: "var(--warn)", marginTop: 4 }}>Waiting for someone with quote approval permission (finance, or a person an admin has allowed to approve quotes). Editing the job doesn't approve it.</div>}
             {ACTIVE_CAN_EDIT && ACTIVE_CAN_APPROVE && (
@@ -356,12 +366,12 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
         )}
         {work.approvedBy && <div style={{ fontSize: 11.5, color: "var(--ok)", fontWeight: 650 }}>✓ Approved by {work.approvedBy} on {fmtDate(work.approvedAt?.slice(0, 10))}</div>}
         <CustomFieldInputs appliesTo="work" category={device?.serviceCategory} values={work.custom || {}} onChange={(v) => onUpdate({ custom: v })} readOnly={!ACTIVE_CAN_EDIT} />
-        <QuoteComparison work={work} suppliers={suppliers} currentUserName={currentUserName}
+        {!ACTIVE_HIDE_MONEY && <QuoteComparison work={work} suppliers={suppliers} currentUserName={currentUserName}
           onAccept={(q, quotes) => { setAmount(String(q.amount)); onUpdate({ quotes, supplierId: q.supplierId || null, quoteAmount: q.amount, comments: [...(work.comments || []), { text: `Accepted quote from ${suppliers.find((x) => x.id === q.supplierId)?.name || q.supplierName || "supplier"}: ${gbp(q.amount)}`, by: currentUserName || "Unknown", at: new Date().toISOString() }] }); }}
-          onChange={(quotes) => onUpdate({ quotes })} />
-        <Field label="PO / work order number">
+          onChange={(quotes) => onUpdate({ quotes })} />}
+        {!ACTIVE_HIDE_MONEY && <Field label="PO / work order number">
           <TextInput value={po} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => setPo(e.target.value)} onBlur={() => po !== (work.poNumber || "") && onUpdate({ poNumber: po.trim() })} placeholder="e.g. PO-40213" />
-        </Field>
+        </Field>}
         <Field label="Assigned supplier">
           <Select value={work.supplierId || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ supplierId: e.target.value || null })}>
             <option value="">— Unassigned —</option>
@@ -369,17 +379,17 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
             {otherSuppliers.length > 0 && <optgroup label="Other categories">{otherSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</optgroup>}
           </Select>
         </Field>
-        {needsApproval && ACTIVE_CAN_EDIT && (
+        {needsApproval && ACTIVE_CAN_EDIT && !ACTIVE_HIDE_MONEY && (
           <button type="button" onClick={() => {
-            const body = `Hi,\n\nPlease could you approve the following work${device ? ` on ${device.name}` : ""}:\n\n${work.description}\n\nQuote: ${gbp(work.quoteAmount)}${suppliers.find((s) => s.id === work.supplierId) ? ` from ${suppliers.find((s) => s.id === work.supplierId).name}` : ""}\nPriority: ${work.priority || "medium"}\nRaised: ${fmtDate(work.dateRaised)}${work.poNumber ? `\nPO: ${work.poNumber}` : ""}${(work.links || []).length ? `\n\nDocuments:\n${work.links.map((l) => `${l.label}: ${l.url}`).join("\n")}` : ""}\n\nThanks,\n${currentUserName || ""}`;
-            window.location.href = `mailto:?subject=${encodeURIComponent(`Approval needed: ${gbp(work.quoteAmount)} — ${device?.name || "work"}`)}&body=${encodeURIComponent(body)}`;
+            const body = `Hi,\n\nPlease could you approve the following work${` on ${jobName}`}:\n\n${work.description}\n\nQuote: ${gbp(work.quoteAmount)}${suppliers.find((s) => s.id === work.supplierId) ? ` from ${suppliers.find((s) => s.id === work.supplierId).name}` : ""}\nPriority: ${work.priority || "medium"}\nRaised: ${fmtDate(work.dateRaised)}${work.poNumber ? `\nPO: ${work.poNumber}` : ""}${(work.links || []).length ? `\n\nDocuments:\n${work.links.map((l) => `${l.label}: ${l.url}`).join("\n")}` : ""}\n\nThanks,\n${currentUserName || ""}`;
+            window.location.href = `mailto:?subject=${encodeURIComponent(`Approval needed: ${gbp(work.quoteAmount)} — ${jobName || "work"}`)}&body=${encodeURIComponent(body)}`;
             onUpdate({ comments: [...(work.comments || []), { text: "Approval requested by email", by: currentUserName || "Unknown", at: new Date().toISOString() }] });
           }} style={{ background: "var(--warn-soft)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--warn)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Mail size={14} /> Request approval by email
           </button>
         )}
-        {invoicedTotal > 0 && <div style={{ fontSize: 12.5, color: invoicedTotal > (Number(work.finalCost ?? work.quoteAmount) || 0) * 1.05 ? "var(--danger)" : "var(--ok)", fontWeight: 650 }}>Invoiced so far: {gbp(invoicedTotal)}{Number(work.quoteAmount) ? ` of ${gbp(work.finalCost ?? work.quoteAmount)}` : ""}</div>}
-        <button type="button" onClick={() => openPrintReport(`Work order — ${device?.name || ""}`, locationName, buildWorkOrderSheet(work, device, suppliers.find((s) => s.id === work.supplierId), locationName))} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print work order</button>
+        {invoicedTotal > 0 && !ACTIVE_HIDE_MONEY && <div style={{ fontSize: 12.5, color: invoicedTotal > (Number(work.finalCost ?? work.quoteAmount) || 0) * 1.05 ? "var(--danger)" : "var(--ok)", fontWeight: 650 }}>Invoiced so far: {gbp(invoicedTotal)}{Number(work.quoteAmount) ? ` of ${gbp(work.finalCost ?? work.quoteAmount)}` : ""}</div>}
+        <button type="button" onClick={() => openPrintReport(`Work order — ${jobName || ""}`, locationName, buildWorkOrderSheet(work, device || { name: jobName }, suppliers.find((s) => s.id === work.supplierId), locationName))} style={{ background: "var(--card-hi)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Printer size={14} /> Print work order</button>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
           {!["completed", "rejected"].includes(work.status) && <Field label="Waiting on"><Select value={work.waitingOn || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ waitingOn: e.target.value || null, comments: e.target.value ? [...(work.comments || []), { text: `Waiting on ${e.target.value.toLowerCase()}`, by: currentUserName || "Unknown", at: new Date().toISOString() }] : work.comments })}><option value="">Nothing</option>{["Parts", "Quote", "Access", "Approval", "Supplier", "Other"].map((x) => <option key={x} value={x}>{x}</option>)}</Select></Field>}
         </div>
@@ -387,13 +397,13 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
           {[
             onDuplicate && ACTIVE_CAN_EDIT && ["Duplicate job", onDuplicate],
             ["Copy link", () => { const u = `${appBaseUrl()}?job=${work.id}`; try { navigator.clipboard?.writeText(u); } catch (e) { /* ignore */ } alert("Link to this job copied — anyone on the team can open it from the link."); }],
-            ["Copy summary", () => { const sup = suppliers.find((s) => s.id === work.supplierId); const t = `${device?.name || "Job"}: ${work.description}\nRef ${work.id.slice(-6).toUpperCase()} · ${(work.priority || "medium").toUpperCase()} · ${WORK_STATUSES.find((x) => x.key === work.status)?.label || work.status}${sup ? ` · ${sup.name}` : ""}${work.quoteAmount ? ` · ${gbp(work.finalCost ?? work.quoteAmount)}` : ""}${work.poNumber ? ` · PO ${work.poNumber}` : ""}\nRaised ${fmtDate(work.dateRaised)}${workSla(work) ? ` · target ${fmtDate(workSla(work).deadline)}` : ""}`; try { navigator.clipboard?.writeText(t); } catch (e) { /* ignore */ } alert("Job summary copied — paste it into Teams, WhatsApp or an email."); }],
+            ["Copy summary", () => { const sup = suppliers.find((s) => s.id === work.supplierId); const t = `${jobName || "Job"}: ${work.description}\nRef ${work.id.slice(-6).toUpperCase()} · ${(work.priority || "medium").toUpperCase()} · ${WORK_STATUSES.find((x) => x.key === work.status)?.label || work.status}${sup ? ` · ${sup.name}` : ""}${work.quoteAmount && !ACTIVE_HIDE_MONEY ? ` · ${gbp(work.finalCost ?? work.quoteAmount)}` : ""}${work.poNumber && !ACTIVE_HIDE_MONEY ? ` · PO ${work.poNumber}` : ""}\nRaised ${fmtDate(work.dateRaised)}${workSla(work) ? ` · target ${fmtDate(workSla(work).deadline)}` : ""}`; try { navigator.clipboard?.writeText(t); } catch (e) { /* ignore */ } alert("Job summary copied — paste it into Teams, WhatsApp or an email."); }],
             // Raise a PO / Record the invoice are in the job's steps at the top, where they only appear at the right point.
           ].filter(Boolean).map(([l, fn]) => <button key={l} type="button" onClick={fn} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>{l}</button>)}
         </div>
-        {(() => { const others = allWorks.filter((x) => x.id !== work.id && x.deviceId === work.deviceId && !["completed", "rejected"].includes(x.status)); return others.length ? <div style={{ fontSize: 12, background: "var(--warn-soft)", borderRadius: 9, padding: "7px 10px" }}><b>{others.length} other open job{others.length === 1 ? "" : "s"} on this service:</b> {others.slice(0, 4).map((x) => `${x.description} (${(WORK_STATUSES.find((st) => st.key === x.status)?.label || x.status).toLowerCase()})`).join(" · ")}</div> : null; })()}
-        {catBudget && catBudget.budget > 0 && ["requested", "quoted"].includes(work.status) && Number(work.quoteAmount) > 0 && (() => { const after = catBudget.forecast + Number(work.quoteAmount); const pct = Math.round((after / catBudget.budget) * 100); return <div style={{ fontSize: 12, background: pct > 100 ? "var(--danger-soft)" : "var(--card-hi)", borderRadius: 9, padding: "7px 10px" }}>Approving this ({gbp(work.quoteAmount)}) takes the {catBudget.label} forecast to <b style={{ color: pct > 100 ? "var(--danger)" : "inherit" }}>{gbp(after)} — {pct}% of its {gbp(catBudget.budget)} budget</b>.</div>; })()}
-        <QuotesPanel work={work} suppliers={suppliers} device={device} locationName={locationName} onUpdate={onUpdate} userName={currentUserName} />
+        {(() => { const others = work.deviceId ? allWorks.filter((x) => x.id !== work.id && x.deviceId === work.deviceId && !["completed", "rejected"].includes(x.status)) : []; return others.length ? <div style={{ fontSize: 12, background: "var(--warn-soft)", borderRadius: 9, padding: "7px 10px" }}><b>{others.length} other open job{others.length === 1 ? "" : "s"} on this service:</b> {others.slice(0, 4).map((x) => `${x.description} (${(WORK_STATUSES.find((st) => st.key === x.status)?.label || x.status).toLowerCase()})`).join(" · ")}</div> : null; })()}
+        {catBudget && !ACTIVE_HIDE_MONEY && catBudget.budget > 0 && ["requested", "quoted"].includes(work.status) && Number(work.quoteAmount) > 0 && (() => { const after = catBudget.forecast + Number(work.quoteAmount); const pct = Math.round((after / catBudget.budget) * 100); return <div style={{ fontSize: 12, background: pct > 100 ? "var(--danger-soft)" : "var(--card-hi)", borderRadius: 9, padding: "7px 10px" }}>Approving this ({gbp(work.quoteAmount)}) takes the {catBudget.label} forecast to <b style={{ color: pct > 100 ? "var(--danger)" : "inherit" }}>{gbp(after)} — {pct}% of its {gbp(catBudget.budget)} budget</b>.</div>; })()}
+        {!ACTIVE_HIDE_MONEY && <QuotesPanel work={work} suppliers={suppliers} device={device || { name: jobName }} locationName={locationName} onUpdate={onUpdate} userName={currentUserName} />}
         <LabourMaterials work={work} onUpdate={onUpdate} spares={spares} onUseSpare={onUseSpare} />
         <WorkLinks links={work.links || []} onChange={ACTIVE_CAN_EDIT ? (links) => onUpdate({ links }) : null} />
         {onConvertToProject && ACTIVE_CAN_EDIT && !work.projectId && !["completed", "rejected"].includes(work.status) && (
@@ -414,8 +424,8 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
         {ACTIVE_CAN_EDIT && !["completed", "rejected", "on_hold"].includes(work.status) && (work.priority === "high" || workSla(work)?.breached) && suppliers.find((s) => s.id === work.supplierId)?.managerEmail && (
           <button type="button" onClick={() => {
             const sup = suppliers.find((s) => s.id === work.supplierId);
-            const body = `Hi${sup.managerName ? ` ${sup.managerName.split(" ")[0]}` : ""},\n\nI need to escalate this job at ${locationName}:\n\n${device?.name || ""}: ${work.description}\nRaised: ${fmtDate(work.dateRaised)}${workSla(work) ? ` · target ${fmtDate(workSla(work).deadline)}` : ""}${work.poNumber ? ` · PO ${work.poNumber}` : ""}\nPriority: ${(work.priority || "medium").toUpperCase()}\n\n${work.attendedAt ? "" : "No engineer has attended yet. "}Please confirm today when this will be resolved.\n\nThanks,\n${currentUserName || ""}`;
-            window.location.href = `mailto:${encodeURIComponent(sup.managerEmail)}?subject=${encodeURIComponent(`ESCALATION: ${device?.name || "job"} — ${locationName}`)}&body=${encodeURIComponent(body)}`;
+            const body = `Hi${sup.managerName ? ` ${sup.managerName.split(" ")[0]}` : ""},\n\nI need to escalate this job at ${locationName}:\n\n${jobName || ""}: ${work.description}\nRaised: ${fmtDate(work.dateRaised)}${workSla(work) ? ` · target ${fmtDate(workSla(work).deadline)}` : ""}${work.poNumber ? ` · PO ${work.poNumber}` : ""}\nPriority: ${(work.priority || "medium").toUpperCase()}\n\n${work.attendedAt ? "" : "No engineer has attended yet. "}Please confirm today when this will be resolved.\n\nThanks,\n${currentUserName || ""}`;
+            window.location.href = `mailto:${encodeURIComponent(sup.managerEmail)}?subject=${encodeURIComponent(`ESCALATION: ${jobName || "job"} — ${locationName}`)}&body=${encodeURIComponent(body)}`;
             onUpdate({ escalatedAt: new Date().toISOString(), comments: [...(work.comments || []), { text: `Escalated to ${sup.name}`, by: currentUserName || "Unknown", at: new Date().toISOString() }] });
           }} style={{ background: "var(--danger-soft)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, color: "var(--danger)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Siren size={14} /> Escalate to supplier's manager{work.escalatedAt ? ` (last ${fmtDate(work.escalatedAt.slice(0, 10))})` : ""}</button>
         )}
@@ -453,8 +463,8 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
         {work.requesterEmail && ACTIVE_CAN_EDIT && (
           <button type="button" onClick={() => {
             const st = WORK_STATUSES.find((s) => s.key === work.status)?.label || work.status;
-            const body = `Hi${work.requestedBy ? ` ${String(work.requestedBy).split(" ")[0]}` : ""},\n\nAn update on the problem you reported${device ? ` (${device.name})` : ""}:\n\n"${work.description}"\n\nStatus: ${st}${work.eta && work.status !== "completed" ? `\nExpected to be fixed by: ${fmtDate(work.eta)}` : ""}${work.status === "completed" ? "\n\nThis has now been completed — please let us know if there's still a problem." : ""}\n\nThanks,\n${currentUserName || "Facilities"}`;
-            window.location.href = `mailto:${encodeURIComponent(work.requesterEmail)}?subject=${encodeURIComponent(`Update: ${device?.name || "your request"} — ${st}`)}&body=${encodeURIComponent(body)}`;
+            const body = `Hi${work.requestedBy ? ` ${String(work.requestedBy).split(" ")[0]}` : ""},\n\nAn update on the problem you reported${` (${jobName})`}:\n\n"${work.description}"\n\nStatus: ${st}${work.eta && work.status !== "completed" ? `\nExpected to be fixed by: ${fmtDate(work.eta)}` : ""}${work.status === "completed" ? "\n\nThis has now been completed — please let us know if there's still a problem." : ""}\n\nThanks,\n${currentUserName || "Facilities"}`;
+            window.location.href = `mailto:${encodeURIComponent(work.requesterEmail)}?subject=${encodeURIComponent(`Update: ${jobName || "your request"} — ${st}`)}&body=${encodeURIComponent(body)}`;
             onUpdate({ comments: [...(work.comments || []), { text: `Update emailed to requester (${st})`, by: currentUserName || "Unknown", at: new Date().toISOString() }] });
           }} style={{ background: "var(--ok-soft)", border: "none", borderRadius: 9, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, color: "var(--ok)", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Mail size={14} /> Email the requester an update
@@ -476,15 +486,15 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
           const sla = workSla(work);
           function sendOrder() {
             const lines = [
-              `Service / asset: ${device?.name || ""}${device?.assetTag ? ` (#${device.assetTag})` : ""}`,
+              `Service / asset: ${jobName || ""}${device?.assetTag ? ` (#${device.assetTag})` : ""}`,
               `Work required: ${work.description}`, `Priority: ${(work.priority || "medium").replace(/^./, (c) => c.toUpperCase())}`,
-              sla && `Please complete by: ${fmtDate(sla.deadline)}`, work.poNumber && `PO number: ${work.poNumber}`,
-              Number(work.quoteAmount) ? `Agreed amount: ${gbp(work.quoteAmount)}` : null,
+              sla && `Please complete by: ${fmtDate(sla.deadline)}`, work.poNumber && !ACTIVE_HIDE_MONEY && `PO number: ${work.poNumber}`,
+              Number(work.quoteAmount) && !ACTIVE_HIDE_MONEY ? `Agreed amount: ${gbp(work.quoteAmount)}` : null,
               device?.accessNotes && `Access: ${device.accessNotes}`,
               siteInfoText(),
               (device?.ramsRequired || device?.permits?.length) && `Before starting: ${[device.ramsRequired && "send RAMS", ...(device.permits || []).map((p) => `${p} permit needed`)].filter(Boolean).join(", ")}`,
             ].filter(Boolean);
-            window.location.href = `mailto:${encodeURIComponent(sup?.managerEmail || "")}?subject=${encodeURIComponent(`Work order${work.poNumber ? ` ${work.poNumber}` : ""} — ${device?.name || ""}`)}&body=${encodeURIComponent(`Hi${sup?.managerName ? ` ${sup.managerName.split(" ")[0]}` : ""},\n\nPlease carry out the following work:\n\n${lines.join("\n")}\n\nPlease confirm receipt and your attendance date.\n\nKind regards,\n${currentUserName || ""}`)}`;
+            window.location.href = `mailto:${encodeURIComponent(sup?.managerEmail || "")}?subject=${encodeURIComponent(`Work order${work.poNumber && !ACTIVE_HIDE_MONEY ? ` ${work.poNumber}` : ""} — ${jobName || ""}`)}&body=${encodeURIComponent(`Hi${sup?.managerName ? ` ${sup.managerName.split(" ")[0]}` : ""},\n\nPlease carry out the following work:\n\n${lines.join("\n")}\n\nPlease confirm receipt and your attendance date.\n\nKind regards,\n${currentUserName || ""}`)}`;
             onUpdate({ comments: [...(work.comments || []), { text: `Work order emailed${sup ? ` to ${sup.name}` : ""}`, by: currentUserName || "Unknown", at: new Date().toISOString() }], ...(work.status === "approved" ? {} : {}) });
           }
           return (
@@ -493,11 +503,11 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
             </button>
           );
         })()}
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-          <Field label={`Quote / cost (${ACTIVE_CURRENCY_CODE})`}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          {!ACTIVE_HIDE_MONEY && <Field label={`Quote / cost (${ACTIVE_CURRENCY_CODE})`}>
             <TextInput type="number" min="0" step="0.01" value={amount} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => setAmount(e.target.value)} onBlur={() => onUpdate({ quoteAmount: amount ? Number(amount) : 0 })} placeholder="0.00" />
-          </Field>
-          {work.status === "completed" && (
+          </Field>}
+          {work.status === "completed" && !ACTIVE_HIDE_MONEY && (
             <Field label={`Final cost (${ACTIVE_CURRENCY_CODE})`}>
               <TextInput type="number" min="0" step="0.01" value={finalCost} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => setFinalCost(e.target.value)} onBlur={() => onUpdate({ finalCost: finalCost === "" ? null : Number(finalCost) })} placeholder="actual" />
             </Field>
@@ -505,21 +515,21 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
           <Field label="Trade">
             <Select value={work.category || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ category: e.target.value || null })}><option value="">—</option>{WORK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
           </Field>
-          <Field label="Capex?">
+          {!ACTIVE_HIDE_MONEY && <Field label="Capex?">
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.8, cursor: "pointer", paddingTop: 6 }}><input type="checkbox" checked={!!work.capex} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ capex: e.target.checked || undefined })} style={{ margin: 0 }} /> Capital</label>
-          </Field>
-          <Field label="Budget type">
+          </Field>}
+          {!ACTIVE_HIDE_MONEY && <Field label="Budget type">
             <Select value={work.budgetType || "budgeted"} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ budgetType: e.target.value })}>
               {WORK_BUDGET_TYPES.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
             </Select>
-          </Field>
+          </Field>}
         </div>
         {work.photos && work.photos.length > 0 && (
           <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
             {work.photos.map((p, i) => <img key={i} src={p} alt="" style={{ width: 80, height: 80, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: "1px solid var(--border)" }} />)}
           </div>
         )}
-        {ACTIVE_CAN_EDIT && ["approved", "in_progress", "completed"].includes(work.status) && (
+        {ACTIVE_CAN_EDIT && !ACTIVE_HIDE_MONEY && ["approved", "in_progress", "completed"].includes(work.status) && (
           <div style={{ background: "#F1F4F7", borderRadius: 10, padding: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>Turn this into…</div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -537,7 +547,7 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
               {comments.map((c, i) => (
                 <div key={i} style={{ background: "var(--card-hi)", borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 13, color: "var(--text)", whiteSpace: "pre-wrap" }}>{c.text}</div>
+                  <div style={{ fontSize: 13, color: "var(--text)", whiteSpace: "pre-wrap" }}>{maskMoney(c.text)}</div>
                   <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 3 }}>{c.by} · {new Date(c.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
                 </div>
               ))}
@@ -578,7 +588,7 @@ export function ProjectsView({ projects, devices, suppliers, onSave, onDelete })
   const spent = active.reduce((t, p) => t + (Number(p.spent) || 0), 0);
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+      <div style={{ display: ACTIVE_HIDE_MONEY ? "none" : "flex", gap: 8, marginBottom: 10 }}>
         <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Approved & live budget</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(budget)}</div></div>
         <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Spent so far</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace", color: spent > budget ? "var(--danger)" : "var(--text)" }}>{gbp(spent)}</div></div>
       </div>
@@ -593,7 +603,7 @@ export function ProjectsView({ projects, devices, suppliers, onSave, onDelete })
       )}
       {mode === "timeline" && <ProjectTimeline projects={list} onOpen={setEditing} />}
       {mode === "list" && (projects.length === 0 ? (
-        <EmptyState icon={FolderKanban} title="No projects yet" body="Track bigger one-off jobs — plant replacements, refurbishments, upgrades — with budget, spend, target date and milestones." />
+        <EmptyState icon={FolderKanban} title="No projects yet" body={ACTIVE_HIDE_MONEY ? "Bigger one-off jobs — plant replacements, refurbishments, upgrades — with their target dates and milestones." : "Track bigger one-off jobs — plant replacements, refurbishments, upgrades — with budget, spend, target date and milestones."} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {list.map((p) => {
@@ -609,7 +619,7 @@ export function ProjectsView({ projects, devices, suppliers, onSave, onDelete })
                 <div style={{ fontSize: 11.3, color: late ? "var(--danger)" : "var(--faint)", fontWeight: late ? 700 : 500 }}>
                   {p.target ? `${late ? "Was due" : "Target"} ${fmtDate(p.target)}` : "No target date"}{ms.length ? ` · ${ms.filter((m) => m.done).length}/${ms.length} milestones` : ""}{(p.snags || []).filter((x) => !x.done).length ? ` · ${(p.snags || []).filter((x) => !x.done).length} open snags` : ""}{p.supplierId ? ` · ${suppliers.find((s) => s.id === p.supplierId)?.name || ""}` : ""}
                 </div>
-                {pct !== null && (
+                {pct !== null && !ACTIVE_HIDE_MONEY && (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ height: 6, background: "var(--track)", borderRadius: 3, overflow: "hidden" }}><div style={{ width: `${Math.min(100, pct)}%`, height: "100%", background: pct > 100 ? "#C53030" : "#2F855A" }} /></div>
                     <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{gbp(p.spent || 0)} of {gbp(p.budget)} ({pct}%)</div>
@@ -650,7 +660,7 @@ export function ProjectModal({ existing, devices, suppliers, onClose, onSave, on
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <Field label="Project name"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Replace AHU 3" /></Field>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{PROJECT_STATUSES.map((s) => <ToggleButton key={s.key} active={status === s.key} onClick={() => setStatus(s.key)}>{s.label}</ToggleButton>)}</div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: ACTIVE_HIDE_MONEY ? "none" : "flex", gap: 8 }}>
           <Field label={`Budget (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" value={budget} onChange={(e) => setBudget(e.target.value)} /></Field>
           <Field label={`Spent (${ACTIVE_CURRENCY_CODE})${costs.length ? " — from the cost log" : ""}`}><TextInput type="number" min="0" value={costs.length ? String(costs.reduce((t, c) => t + (Number(c.amount) || 0), 0)) : spent} disabled={!!costs.length} onChange={(e) => setSpent(e.target.value)} /></Field>
         </div>
@@ -689,7 +699,7 @@ export function ProjectModal({ existing, devices, suppliers, onClose, onSave, on
             {snags.length > 0 && <button type="button" onClick={() => openPrintReport(`Snagging list — ${name}`, `${snags.filter((x) => !x.done).length} open of ${snags.length}`, tableHtml(["#", "Snag", "Where", "Raised", "Cleared"], snags.map((sg, i) => [String(i + 1), escapeHtml(sg.text), escapeHtml(sg.area || ""), fmtDate(sg.raised), sg.done ? `<span class="ok">${sg.clearedAt ? fmtDate(sg.clearedAt) : "Yes"}</span>` : "☐"])))} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Print snagging list</button>}
           </div>
         </Field>
-        <Field label={`Cost log (${costs.length})`}>
+        {!ACTIVE_HIDE_MONEY && <Field label={`Cost log (${costs.length})`}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {costs.map((c, i) => <div key={i} style={{ display: "flex", gap: 6, fontSize: 12.3, background: "var(--card-hi)", borderRadius: 7, padding: "5px 8px" }}><span style={{ color: "var(--faint)" }}>{fmtDate(c.date)}</span><span style={{ flex: 1 }}>{c.desc}</span><b>{gbp(c.amount)}</b><button type="button" onClick={() => setCosts((p) => p.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={12} color="#A3ABB4" /></button></div>)}
             <div style={{ display: "flex", gap: 5 }}>
@@ -699,7 +709,7 @@ export function ProjectModal({ existing, devices, suppliers, onClose, onSave, on
               <button type="button" onClick={() => { if (!costDraft.amount) return; setCosts((p) => [...p, { ...costDraft, amount: Number(costDraft.amount) }]); setCostDraft((p) => ({ ...p, desc: "", amount: "" })); }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "0 10px", fontSize: 12.5, fontWeight: 650, color: "var(--accent)", cursor: "pointer", fontFamily: "inherit" }}>Add</button>
             </div>
           </div>
-        </Field>
+        </Field>}
         <Field label="Milestones">
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {milestones.map((m, i) => (
@@ -882,27 +892,29 @@ function LabourMaterials({ work, onUpdate, spares = [], onUseSpare }) {
   const [spareId, setSpareId] = useState(""); const [spareQty, setSpareQty] = useState("1");
   const lines = work.lines || []; const parts = work.partsUsed || [];
   const total = lines.reduce((t, l) => t + (Number(l.qty) || 0) * (Number(l.rate) || 0), 0) + parts.reduce((t, p) => t + (Number(p.qty) || 0) * (Number(p.unitCost) || 0), 0);
-  if (!open) return ACTIVE_CAN_EDIT ? <button type="button" onClick={() => setOpen(true)} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>+ Record labour, materials or spares used</button> : null;
+  const HM = ACTIVE_HIDE_MONEY;   // engineers: spare parts from stock only — labour and materials costs are added by the office
+  if (HM && !(spares.length > 0 && onUseSpare) && !parts.length) return null;
+  if (!open) return ACTIVE_CAN_EDIT ? <button type="button" onClick={() => setOpen(true)} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{HM ? "+ Record spare parts used" : "+ Record labour, materials or spares used"}</button> : null;
   return (
     <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700 }}><span>Labour & materials</span><span>{gbp(total)}</span></div>
-      {lines.map((l, i) => (
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700 }}><span>{HM ? "Spare parts used" : "Labour & materials"}</span>{!HM && <span>{gbp(total)}</span>}</div>
+      {!HM && lines.map((l, i) => (
         <div key={i} style={{ display: "flex", gap: 6, fontSize: 12.3, alignItems: "center" }}>
           <span style={{ flex: 1 }}>{l.type === "labour" ? "👷" : "📦"} {l.desc || (l.type === "labour" ? "Labour" : "Materials")} — {l.qty} {l.type === "labour" ? "h" : "×"} {gbp(l.rate)}</span>
           <b>{gbp((Number(l.qty) || 0) * (Number(l.rate) || 0))}</b>
           {ACTIVE_CAN_EDIT && <button type="button" onClick={() => onUpdate({ lines: lines.filter((_, j) => j !== i) })} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={12} color="#A3ABB4" /></button>}
         </div>
       ))}
-      {parts.map((p, i) => <div key={`p${i}`} style={{ fontSize: 12.3, display: "flex", gap: 6 }}><span style={{ flex: 1 }}>🔧 {p.qty} × {p.name} (from stock)</span><b>{gbp((Number(p.qty) || 0) * (Number(p.unitCost) || 0))}</b></div>)}
+      {parts.map((p, i) => <div key={`p${i}`} style={{ fontSize: 12.3, display: "flex", gap: 6 }}><span style={{ flex: 1 }}>🔧 {p.qty} × {p.name} (from stock)</span>{!HM && <b>{gbp((Number(p.qty) || 0) * (Number(p.unitCost) || 0))}</b>}</div>)}
       {ACTIVE_CAN_EDIT && (
         <>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {!HM && <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             <select aria-label="Labour or materials" value={d.type} onChange={(e) => setD((p) => ({ ...p, type: e.target.value }))} style={{ ...inputStyle, width: 100, fontSize: 12 }}><option value="labour">Labour</option><option value="material">Materials</option></select>
             <TextInput value={d.desc} onChange={(e) => setD((p) => ({ ...p, desc: e.target.value }))} placeholder="What" aria-label="What was done or used" style={{ flex: "1 1 160px", minWidth: 0 }} />
             <TextInput type="number" min="0" step="0.25" value={d.qty} onChange={(e) => setD((p) => ({ ...p, qty: e.target.value }))} placeholder={d.type === "labour" ? "hrs" : "qty"} aria-label={d.type === "labour" ? "Hours" : "Quantity"} style={{ width: 58 }} />
             <TextInput type="number" min="0" step="0.01" value={d.rate} onChange={(e) => setD((p) => ({ ...p, rate: e.target.value }))} placeholder="£ each" aria-label="Price each" style={{ width: 84 }} />
             <button type="button" onClick={() => { if (!d.qty || !d.rate) return; onUpdate({ lines: [...lines, { ...d, qty: Number(d.qty), rate: Number(d.rate) }] }); setD({ type: d.type, desc: "", qty: "", rate: d.rate }); }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Add</button>
-          </div>
+          </div>}
           {spares.length > 0 && onUseSpare && (
             <div style={{ display: "flex", gap: 5 }}>
               <select aria-label="Spare part from stock" value={spareId} onChange={(e) => setSpareId(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 12 }}><option value="">Use a spare part from stock…</option>{spares.map((sp) => <option key={sp.id} value={sp.id}>{sp.name} ({sp.qty} in stock)</option>)}</select>
@@ -910,7 +922,7 @@ function LabourMaterials({ work, onUpdate, spares = [], onUseSpare }) {
               <button type="button" disabled={!spareId} onClick={() => { if (!spareId) return; if (onUseSpare(spareId, Number(spareQty)) !== false) { setSpareId(""); setSpareQty("1"); } }} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "0 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use</button>
             </div>
           )}
-          {total > 0 && Number(work.finalCost) !== Math.round(total * 100) / 100 && <button type="button" onClick={() => onUpdate({ finalCost: Math.round(total * 100) / 100 })} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--ok)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use {gbp(total)} as the final cost</button>}
+          {!HM && total > 0 && Number(work.finalCost) !== Math.round(total * 100) / 100 && <button type="button" onClick={() => onUpdate({ finalCost: Math.round(total * 100) / 100 })} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--ok)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use {gbp(total)} as the final cost</button>}
         </>
       )}
     </div>

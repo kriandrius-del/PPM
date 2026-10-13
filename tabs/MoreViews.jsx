@@ -5,7 +5,7 @@ import { placeFields } from "../features/assets/places.js";
 import { addDays, addMonths, appBaseUrl, orgParam, checklistLabel, compressImage, currentBooking, daysUntil, escapeHtml, fmtDate, qrImageUrl, uid } from "../lib/utils.js";
 import { buildCleaningSchedule, buildWalkroundReport, openPrintReport, tableHtml } from "../lib/reports.js";
 import { ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
-import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
+import { ACTIVE_HIDE_MONEY, ACTIVE_CAN_EDIT } from "../lib/globals.js";
 import { Building2, CalendarCheck, CalendarClock, Camera, Car, CheckCircle2, CheckSquare, ClipboardCheck, Copy, FlaskConical, LayoutGrid, ListChecks, ListPlus, Mail, MapPin, Phone, PhoneCall, Plus, Power, Printer, QrCode, Siren, Sparkles, Square, Star, Trash2, Upload, X, ZapOff } from "lucide-react";
 import { ACTION_SOURCES, CLEANING_FREQ, COSHH_HAZARDS, EQUIPMENT_TYPES, ISOLATION_KINDS, KEY_DATE_TYPES, SHUTDOWN_TYPES, SPACE_USES } from "../lib/constants.js";
 import { FEEDBACK_TOPICS } from "../components/PublicPages.jsx";
@@ -119,7 +119,7 @@ export function SpacesView({ spaces, buildings = [], devices = [], onSave, onDel
         {spaces.length > 0 && <ExportButton label="CSV" filename="spaces.csv" rows={[["Space", "Building", "Floor", "Use", "Area m²", "Capacity", "Services", "Notes"], ...spaces.map((s) => [s.name, bName(s.buildingId), floorName(s), s.use || "", s.areaM2 || "", s.capacity || "", count(s), s.notes || ""])]} />}
       </div>
       {spaces.length === 0 ? (
-        <EmptyState icon={LayoutGrid} title="No spaces yet" body="List your rooms and areas with their floor area and use. Services in each area are counted automatically, and total floor area gives you cost per m² on the Budget page." />
+        <EmptyState icon={LayoutGrid} title="No spaces yet" body={`List your rooms and areas with their floor area and use. Services in each area are counted automatically${ACTIVE_HIDE_MONEY ? "." : ", and total floor area gives you cost per m² on the Budget page."}`} />
       ) : Object.entries(byBuilding).sort((a, b) => (a[0] === "Not in a building") - (b[0] === "Not in a building") || a[0].localeCompare(b[0], undefined, { numeric: true })).map(([bl, blist]) => {
         const floors = {}; blist.forEach((s) => { const k = floorName(s) || "No floor set"; (floors[k] = floors[k] || { level: floorLevel(s), list: [] }).list.push(s); });
         return (
@@ -634,7 +634,7 @@ export function PeopleDirectoryModal({ locations, onClose }) {
   return (
     <Modal title={`People directory (${all.length})`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <TextInput autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, role, site or skill (e.g. F-Gas)" />
+        <TextInput autoFocus={typeof window !== "undefined" && !window.matchMedia?.("(pointer: coarse)").matches} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, role, site or skill (e.g. F-Gas)" />
         {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)", textAlign: "center", padding: 12 }}>{all.length ? "No one matches." : "Add people to each site under Edit site."}</div>}
         {list.map((p) => (
           <div key={`${p.site}-${p.id}`} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--card-hi)", borderRadius: 10, padding: "8px 10px" }}>

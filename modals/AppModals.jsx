@@ -6,7 +6,7 @@ import { ROLES, INVITE_ROLES, normaliseRole } from "../app/permissions.js";
 import { ACCENTS, ALERT_GROUPS, APP_VERSION, BUILTIN_TEMPLATES, COLOR_CHOICES, CURRENCIES, HELP_TOPICS, HOME_CARDS, INCIDENT_TYPES, MONTH_LABELS, SITE_TYPES, STAFF_ROLES, START_TABS, STATUTORY_ITEMS, WHATS_NEW } from "../lib/constants.js";
 import SETUP_SQL from "../supabase-setup.sql?raw";
 import { TeamPanel } from "../components/CloudGate.jsx";
-import { ACTIVE_CAN_EDIT, BUILTIN_CATEGORY_META, CATEGORY_ICONS, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
+import { ACTIVE_HIDE_MONEY, ACTIVE_CAN_EDIT, BUILTIN_CATEGORY_META, CATEGORY_ICONS, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
 import { buildAssetAge, buildAssetRegister, buildCarbonReport, buildChecklistFailures, buildCommittedSpend, buildComplianceReport, buildConditionReport, buildContractCalendar, buildContractorHours, buildFlushingRecord, buildIncidentTrend, buildJobSheet, buildLifecycleReport, buildManagementReport, buildMissedVisits, buildMonthCalendar, buildNextYearProposal, buildOverspendSignoffs, buildPlannedVsActual, buildPortfolioReport, buildPriceRiseSchedule, buildReactiveVsPlanned, buildRecharges, buildRepeatFaults, buildRequestsByPerson, buildResponseTimes, buildSlaReport, buildSpaceCondition, buildSpendReport, buildStatutoryCalendar, buildSupplierCategoryMatrix, buildSupplierCompliance, buildSupplierKpis, buildSupplierLeague, buildSupplierReport, buildSupplierSpend, buildSupplierYoY, buildTco, buildVatSummary, buildVisitsBySupplierMonth, buildWaitingOn, buildWallPlanner, buildWorksAgeing, buildWorstAssets, buildYearReview, downloadWorkbook, openPrintReport } from "../lib/reports.js";
 import { addDays, compressImage, countryCodeFor, daysUntil, downloadBlob, findPostcode, fmtDate, gbp, placeFromCoords, placeFromPostcode, relativeDays, replacementYear, searchPlaces, uid } from "../lib/utils.js";
 import { AccountingExport } from "../tabs/BudgetTab.jsx";
@@ -346,7 +346,7 @@ export function GlobalSearchModal({ extra = {}, onGoTab, devices, services, work
         {res && total === 0 && <div style={{ fontSize: 13, color: "var(--faint)", textAlign: "center", padding: "20px 0" }}>No matches for "{q}".</div>}
         {res && section("Services", res.devices.map((d) => row(`d-${d.id}`, d.name, [d.assetTag, d.manufacturer, d.model, d.serialNumber && `S/N ${d.serialNumber}`].filter(Boolean).join(" · "), () => onOpenDevice(d.id))))}
         {res && section("Logged visits", res.visits.map((v) => row(`v-${v.id}`, `${deviceById[v.deviceId]?.name || "Service"} — ${v.name || "Visit"}`, [fmtDate(v.date), v.technician, v.poNumber && `PO ${v.poNumber}`].filter(Boolean).join(" · "), () => onOpenVisit(v))))}
-        {res && section("Works", res.works.map((w) => row(`w-${w.id}`, w.description, [deviceById[w.deviceId]?.name, w.status, w.quoteAmount ? gbp(w.quoteAmount) : null].filter(Boolean).join(" · "), () => onOpenWork(w))))}
+        {res && section("Works", res.works.map((w) => row(`w-${w.id}`, w.description, [deviceById[w.deviceId]?.name, w.status, w.quoteAmount && !ACTIVE_HIDE_MONEY ? gbp(w.quoteAmount) : null].filter(Boolean).join(" · "), () => onOpenWork(w))))}
         {res && section("Other records", res.other.map((o) => row(o.k, o.title, o.sub, () => onGoTab?.(o.tab))))}
         {res && section("Suppliers", res.suppliers.map((s) => row(`s-${s.id}`, s.name, [s.managerName, s.managerEmail, s.contractRef].filter(Boolean).join(" · "), () => onOpenSupplier(s))))}
       </div>

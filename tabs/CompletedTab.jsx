@@ -4,6 +4,7 @@ import { FileCheck, Search, ChevronRight, Gauge, ChevronDown } from "lucide-reac
 import { EmptyState, ExportButton, TextInput, ToggleButton } from "../components/ui.jsx";
 import { COMPLIANCE_GRACE_DAYS } from "../lib/constants.js";
 import { computeCompliance, fmtDate, formatCustomValues, gbp } from "../lib/utils.js";
+import { ACTIVE_HIDE_MONEY } from "../lib/globals.js";
 
 /* ---------------------------------------------------------
    Certificates Tab
@@ -14,6 +15,8 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
   const [dateTo, setDateTo] = useState("");
   const [year, setYear] = useState("all");    // "all" or "2026"…
   const [limit, setLimit] = useState(50);     // newest 50 first; "Show all" shows the rest
+  const [costToAdd, setCostToAdd] = useState(false);   // visits an engineer logged, waiting for the office to add the cost
+  const pendingCost = (s) => s.costPending && !Number(s.cost) && !s.skipped && !s.aborted;
 
   if (services.length === 0) return (
     <div>
@@ -24,6 +27,7 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
 
   const years = [...new Set(services.map((s) => String(s.date || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse();
   const filtered = services.filter((s) => {
+    if (costToAdd && !pendingCost(s)) return false;
     if (year !== "all" && !String(s.date || "").startsWith(year)) return false;
     if (dateFrom && (!s.date || s.date < dateFrom)) return false;
     if (dateTo && (!s.date || s.date > dateTo)) return false;
@@ -55,10 +59,11 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
           <button onClick={() => { setDateFrom(""); setDateTo(""); }} style={{ background: "var(--card-hi)", border: "none", borderRadius: 8, padding: "9px 11px", fontSize: 12, fontWeight: 650, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Clear</button>
         )}
       </div>
-      {years.length > 1 && (
+      {(years.length > 1 || (!ACTIVE_HIDE_MONEY && services.some(pendingCost))) && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <ToggleButton active={year === "all"} onClick={() => { setYear("all"); setLimit(50); }}>All years ({services.length})</ToggleButton>
-          {years.map((y) => <ToggleButton key={y} active={year === y} onClick={() => { setYear(y); setLimit(50); }}>{y} ({services.filter((s) => String(s.date || "").startsWith(y)).length})</ToggleButton>)}
+          {years.length > 1 && <ToggleButton active={year === "all"} onClick={() => { setYear("all"); setLimit(50); }}>All years ({services.length})</ToggleButton>}
+          {years.length > 1 && years.map((y) => <ToggleButton key={y} active={year === y} onClick={() => { setYear(y); setLimit(50); }}>{y} ({services.filter((s) => String(s.date || "").startsWith(y)).length})</ToggleButton>)}
+          {!ACTIVE_HIDE_MONEY && services.some(pendingCost) && <ToggleButton active={costToAdd} title="Visits logged by an engineer — engineers don't enter costs, so the office adds them" onClick={() => { setCostToAdd((v) => !v); setLimit(50); }}>Cost to add ({services.filter(pendingCost).length})</ToggleButton>}
         </div>
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -78,7 +83,7 @@ export function CertificatesTab({ services, deviceById, supplierById, onEdit, de
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 650, fontSize: 14 }}>{s.name || (dev ? dev.name : "Service")}{(s.aborted || s.skipped) && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 10, padding: "1px 7px" }}>{s.aborted ? "Not completed" : "Skipped"}</span>}</div>
               <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{dev ? dev.name : "Unknown service"}{supplier ? ` · ${supplier.name}` : ""}</div>
-              <div style={{ fontSize: 12, color: "var(--faint)" }}>{fmtDate(s.date)} · {s.technician || "No technician noted"}{s.cost ? ` · ${gbp(s.cost)}` : ""}{s.poNumber ? ` · PO ${s.poNumber}` : ""}</div>
+              <div style={{ fontSize: 12, color: "var(--faint)" }}>{fmtDate(s.date)} · {s.technician || "No technician noted"}{s.cost && !ACTIVE_HIDE_MONEY ? ` · ${gbp(s.cost)}` : ""}{s.poNumber && !ACTIVE_HIDE_MONEY ? ` · PO ${s.poNumber}` : ""}{!ACTIVE_HIDE_MONEY && pendingCost(s) ? " · cost to add" : ""}</div>
               {s.custom && Object.keys(s.custom).length > 0 && (
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{formatCustomValues("visit", s.custom)}</div>
               )}

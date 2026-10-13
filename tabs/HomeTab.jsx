@@ -3,9 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRightLeft, ArrowUpRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, ClipboardList, Clock, Cloud, CloudOff, CloudSun, Contact, Flame, HardHat, History, Inbox, ListTodo, LogIn, LogOut, Mail, Megaphone, Monitor, Pencil, Phone, PhoneCall, Pin, Plus, PoundSterling, Printer, RefreshCw, Rocket, ScrollText, Siren, Square, StickyNote, Sun, UserCheck, UserPlus, Wallet, Wrench, X } from "lucide-react";
 import { ConfirmDeleteButton, ExportButton, Field, Modal, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { DEFAULT_EMERGENCY, REPEAT_OPTIONS, STATUTORY_ITEMS } from "../lib/constants.js";
-import { ACTIVE_CAN_EDIT } from "../lib/globals.js";
+import { ACTIVE_CAN_EDIT, ACTIVE_HIDE_MONEY } from "../lib/globals.js";
 import { openPrintReport, tableHtml } from "../lib/reports.js";
-import { appBaseUrl, orgParam, cachedWeather, computeCompliance, currentBooking, daysUntil, escapeHtml, fmtDate, gbp, matchStatutory, qrImageUrl, relativeDays, searchPlaces, uid, workSla } from "../lib/utils.js";
+import { maskMoney, appBaseUrl, orgParam, cachedWeather, computeCompliance, currentBooking, daysUntil, escapeHtml, fmtDate, gbp, matchStatutory, qrImageUrl, relativeDays, searchPlaces, uid, workSla } from "../lib/utils.js";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { OnCallCard, printBadge } from "./MoreViews.jsx";
 
@@ -62,7 +62,7 @@ export function HomeTab({ monthBudget = null, onSnoozeReminder, waitingOnMe = []
     );
   })();
   const myDevices = myName ? devices.filter((d) => d.assignee === myName && d.nextServiceDate && daysUntil(d.nextServiceDate) <= 14).sort((a, b) => a.nextServiceDate.localeCompare(b.nextServiceDate)) : [];
-  const show = (k) => !hiddenCards.includes(k);
+  const show = (k) => !hiddenCards.includes(k) && !(ACTIVE_HIDE_MONEY && k === "spend");   // no money cards for engineers
   const setupSteps = setup ? [
     ["Add your suppliers", setup.suppliers > 0, "suppliers"], ["Add services (or import a spreadsheet)", setup.devices > 0, "devices"],
     ["Set a budget or plan", setup.budgets > 0, "budget"], ["Log your first visit", setup.visits > 0, "devices"],
@@ -314,9 +314,9 @@ export function HomeTab({ monthBudget = null, onSnoozeReminder, waitingOnMe = []
         {show("activity") && (
           <section className="bcard c2" aria-label="Recent activity">
             <Label icon={History}>Recent activity</Label>
-            {activity.length === 0 ? <div className="bsub">No activity yet.</div> : activity.slice(0, 5).map((a) => (
+            {activity.length === 0 ? <div className="bsub">No activity yet.</div> : activity.filter((a) => !(ACTIVE_HIDE_MONEY && /\b(PO|purchase orders?|invoices?|budgets?|quotes?|spend)\b|PO-\d/i.test(String(a.text || "")))).slice(0, 5).map((a) => (
               <div key={a.id}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{a.text}</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{maskMoney(a.text)}</div>
                 <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{a.by} · {relativeDays(a.at)}</div>
               </div>
             ))}

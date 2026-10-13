@@ -7,7 +7,7 @@ export const ROLES = {
   admin: { label: "System administrator", short: "Admin", desc: "Full control, including the team and settings." },
   manager: { label: "FM manager", short: "FM manager", desc: "Runs the site: operations, assets, suppliers, compliance and finance." },
   coordinator: { label: "Facilities coordinator", short: "Coordinator", desc: "Jobs, contractors, schedules, visitors and safety records. Can't change budgets, POs or invoices." },
-  engineer: { label: "Engineer", short: "Engineer", desc: "Logs visits, updates jobs, readings, checks and incidents. Can't add or delete assets, or change budgets, suppliers or settings." },
+  engineer: { label: "Engineer", short: "Engineer", desc: "Logs visits, updates jobs, readings, checks and incidents. Sees no prices — the office adds them. Can't add or delete assets, or change budgets, suppliers or settings." },
   finance: { label: "Finance", short: "Finance", desc: "Budgets, purchase orders and invoices, and approves quotes over the limit." },
   director: { label: "Senior management", short: "Director", desc: "Dashboards and reports across sites. Read-only." },
   viewer: { label: "Viewer", short: "Viewer", desc: "Can look at everything, can't change anything." },
@@ -115,6 +115,32 @@ export function worksRefusal(oldList, newList, { approver = false, limit = 0 } =
   return "";
 }
 
+// ---------- money: engineers see none and type none (Phase 1 decision, round 30.4) ----------
+// The office (coordinators and up, finance) adds quotes, costs and prices. In the lists engineers write to, a record an
+// engineer adds leaves the money fields empty, and an engineer can't change them on existing records. The database
+// checks the same thing (ppm_list_guard). Note: this hides money on screen and blocks changes; the amounts are still
+// in the data the app downloads, until proper per-field tables arrive in Phases 2–3.
+export const MONEY_HIDDEN_ROLES = ["engineer"];
+export const seesMoney = (role) => !MONEY_HIDDEN_ROLES.includes(normaliseRole(role));
+export const MONEY_FIELDS = {
+  "org:works": ["quoteAmount", "finalCost", "quotes", "lines", "approvedAmount"],
+  "org:services": ["cost", "costBreakdown"],
+  "org:spares": ["unitCost"],
+};
+const blankMoney = (v) => v === undefined || v === null || v === "" || v === 0 || (Array.isArray(v) && v.length === 0) || (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0);
+export function moneyRefusal(role, key, oldList, newList) {
+  const r = normaliseRole(role); const fields = MONEY_FIELDS[key];
+  if (seesMoney(r) || !fields) return "";
+  const a = Array.isArray(oldList) ? oldList : []; const b = Array.isArray(newList) ? newList : [];
+  const old = new Map(a.filter((x) => x && x.id != null).map((x) => [String(x.id), x]));
+  for (const x of b) {
+    if (!x || typeof x !== "object") continue;
+    const o = old.get(String(x.id));
+    if (fields.some((f) => (o ? JSON.stringify(x[f]) !== JSON.stringify(o[f]) : !blankMoney(x[f])))) return `Your role (${ROLES[r].label}) can't add or change prices or costs — the office adds them.`;
+  }
+  return "";
+}
+
 // Settings fields: money ones (finance and up), day-to-day ones (engineers and up), the backup date (anyone working),
 // everything else coordinators and up.
 export const SETTINGS_MONEY = ["approvalThreshold", "poApprovalLimit", "budgetSettings", "costCodes", "planHorizon"];
@@ -145,12 +171,15 @@ export function canWriteSettings(role, fields) {
 export function writeRefusal(role, key, oldStr, newStr, ctx = {}) {
   const r = normaliseRole(role);
   if (!canWrite(r, key)) return `Your role (${ROLES[r].label}) can't change ${KEY_LABELS[key] || "this"}.`;
-  if (key === "org:devices" || key === "org:works") {
+  if (key === "org:devices" || key === "org:works" || MONEY_FIELDS[key]) {
     let a = [], b = [];
     try { a = oldStr ? JSON.parse(oldStr) : []; } catch (e) { a = []; }
     try { b = newStr ? JSON.parse(newStr) : []; } catch (e) { b = []; }
     if (key === "org:devices") return assetRefusal(r, a, b);
-    return worksRefusal(a, b, { approver: isApprover(r, ctx.canApprove), limit: ctx.limit });
+    const money = moneyRefusal(r, key, a, b);
+    if (money) return money;
+    if (key === "org:works") return worksRefusal(a, b, { approver: isApprover(r, ctx.canApprove), limit: ctx.limit });
+    return "";
   }
   if (key === "org:settings") {
     let a = {}, b = {};
@@ -179,6 +208,7 @@ export function hasFieldRules(role, key) {
   const r = normaliseRole(role);
   if (key === "org:settings") return !FULL.includes(r);
   if (key === "org:devices") return r === "engineer";
+  if (MONEY_FIELDS[key]) return !seesMoney(r);
   return false;
 }
 export const KEY_LABELS = {

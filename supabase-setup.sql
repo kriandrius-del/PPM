@@ -1,6 +1,6 @@
 -- =====================================================================
 --  PPM Service Book — Supabase database setup (secure, multi-company)
---  Round 30.2. Paste this whole file into Supabase → SQL Editor → Run.
+--  Round 30.4. Paste this whole file into Supabase → SQL Editor → Run.
 --  Safe to run again (it updates what's already there).
 --
 --  What it does
@@ -10,6 +10,7 @@
 --     (budgets, POs, invoices, quote approvals), senior management and viewer (read-only).
 --     Which lists each role may change is decided here, by ppm_write_roles() — not by the app.
 --   • Engineers work on the assets that exist: they can't add, delete or restructure them (ppm_list_guard).
+--   • Engineers don't add or change prices or costs on jobs, visits or spare parts — the office does (ppm_list_guard).
 --   • Approving quotes over the approval limit is a separate permission ("Approves quotes"): finance always,
 --     anyone else only when an admin gives it to them. Editing jobs never gives it (ppm_can_approve, ppm_list_guard).
 --   • Photos and certificates go to private file storage (bucket "ppm-media").
@@ -492,6 +493,7 @@ begin
     v_sup := ppm_private.item(v_org, 'org:suppliers', 'portalToken', p_ref);
     v_st := ppm_private.get(v_org, 'org:settings');
     v_works := coalesce((select jsonb_agg(jsonb_build_object('id', w -> 'id', 'description', w -> 'description', 'deviceId', w -> 'deviceId', 'priority', w -> 'priority',
+                                                       'locationId', w -> 'locationId', 'buildingId', w -> 'buildingId', 'floorId', w -> 'floorId', 'spaceId', w -> 'spaceId', 'placeName', w -> 'placeName',
                                                        'dateRaised', w -> 'dateRaised', 'status', w -> 'status', 'supplierAck', w -> 'supplierAck', 'eta', w -> 'eta',
                                                        'attendedAt', w -> 'attendedAt', 'heldSince', w -> 'heldSince', 'heldDays', w -> 'heldDays', 'completedAt', w -> 'completedAt',
                                                        'supplierDone', case when w ? 'supplierDone' then (w -> 'supplierDone') - 'photos' - 'signature' end) order by i)
@@ -506,7 +508,13 @@ begin
                            where exists (select 1 from jsonb_array_elements(v_works) w where w ->> 'deviceId' = d ->> 'id')), '[]'::jsonb),
       'locations', coalesce((select jsonb_agg(jsonb_build_object('id', l -> 'id', 'name', l -> 'name')) from jsonb_array_elements(ppm_private.arr(v_org, 'org:locations')) l
                              where exists (select 1 from jsonb_array_elements(ppm_private.arr(v_org, 'org:devices')) d
-                                           where d ->> 'locationId' = l ->> 'id' and exists (select 1 from jsonb_array_elements(v_works) w where w ->> 'deviceId' = d ->> 'id'))), '[]'::jsonb),
+                                           where d ->> 'locationId' = l ->> 'id' and exists (select 1 from jsonb_array_elements(v_works) w where w ->> 'deviceId' = d ->> 'id'))
+                                or exists (select 1 from jsonb_array_elements(v_works) w where w ->> 'locationId' = l ->> 'id')), '[]'::jsonb),
+      -- jobs on a room or building with no asset (round 30.4): just the names of the places those jobs are on
+      'buildings', coalesce((select jsonb_agg(jsonb_build_object('id', b -> 'id', 'name', b -> 'name', 'floors', b -> 'floors')) from jsonb_array_elements(ppm_private.arr(v_org, 'org:buildings')) b
+                             where exists (select 1 from jsonb_array_elements(v_works) w where w ->> 'buildingId' = b ->> 'id')), '[]'::jsonb),
+      'spaces', coalesce((select jsonb_agg(jsonb_build_object('id', x -> 'id', 'name', x -> 'name', 'buildingId', x -> 'buildingId', 'floorId', x -> 'floorId', 'locationId', x -> 'locationId')) from jsonb_array_elements(ppm_private.arr(v_org, 'org:spaces')) x
+                          where exists (select 1 from jsonb_array_elements(v_works) w where w ->> 'spaceId' = x ->> 'id')), '[]'::jsonb),
       'sla', jsonb_build_object('days', coalesce(v_st -> 'slaDays', '{}'::jsonb), 'workingDays', coalesce(v_st -> 'slaWorkingDays', 'false'::jsonb))
     );
 
@@ -763,18 +771,34 @@ drop trigger if exists kv_store_freeze on public.kv_store;
 --   assets (org:devices): engineers can't add, delete or restructure assets — only the fields their work touches
 --   jobs (org:works): only approvers may give approval; a quote over the company's approval limit can't go ahead
 --   without approval; a quote raised after approval needs approving again
+--   money (jobs, visits, spares): engineers add and change no prices or costs — the office does (round 30.4)
 create or replace function public.ppm_list_guard() returns trigger
 language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_role text; v_old jsonb; v_new jsonb; v_bad text; v_limit numeric; v_approver boolean; v_msg text;
+declare v_role text; v_old jsonb; v_new jsonb; v_bad text; v_limit numeric; v_approver boolean; v_msg text; v_mf text[];
   v_fields text[] := array['lastServiceDate', 'nextServiceDate', 'rescheduleLog', 'abortLog', 'usageReadings', 'statusOverride',
                            'changeLog', 'downtime', 'notesLog', 'booking', 'chaseLog'];
 begin
-  if new.scope <> 'shared' or auth.uid() is null or new.key not in ('org:devices', 'org:works') then return new; end if;
+  if new.scope <> 'shared' or auth.uid() is null or new.key not in ('org:devices', 'org:works', 'org:services', 'org:spares') then return new; end if;
   v_role := public.ppm_role(new.org_id);
   if v_role is null then return new; end if;   -- not a member: the access rules refuse it anyway
   v_old := case when tg_op = 'UPDATE' then ppm_private.j(old.value) else null end;
   v_new := ppm_private.j(new.value);
   if v_old is null or jsonb_typeof(v_old) <> 'array' then v_old := '[]'::jsonb; end if;
+
+  -- money: an engineer's new records leave prices and costs empty, and an engineer can't change them on existing ones
+  if v_role = 'engineer' and new.key in ('org:works', 'org:services', 'org:spares') then
+    if v_new is null or jsonb_typeof(v_new) <> 'array' then raise exception 'Your role (Engineer) can''t change that list like that.' using errcode = '42501'; end if;
+    v_mf := case new.key when 'org:works' then array['quoteAmount', 'finalCost', 'quotes', 'lines', 'approvedAmount']
+                         when 'org:services' then array['cost', 'costBreakdown'] else array['unitCost'] end;
+    if exists (select 1 from jsonb_array_elements(v_new) n
+               left join lateral (select x from jsonb_array_elements(v_old) x where x ->> 'id' = n ->> 'id' limit 1) ox(o) on true
+               cross join unnest(v_mf) f
+               where jsonb_typeof(n) = 'object'
+                 and ((o is not null and (n -> f) is distinct from (o -> f))
+                   or (o is null and (n -> f) is not null and (n -> f) not in ('null'::jsonb, '""'::jsonb, '0'::jsonb, '[]'::jsonb, '{}'::jsonb)))) then
+      raise exception 'Your role (Engineer) can''t add or change prices or costs — the office adds them.' using errcode = '42501'; end if;
+  end if;
+  if new.key in ('org:services', 'org:spares') then return new; end if;
 
   if new.key = 'org:devices' then
     if v_role <> 'engineer' then return new; end if;

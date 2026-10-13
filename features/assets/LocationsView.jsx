@@ -1,10 +1,11 @@
 // Assets → Locations: Portfolio → Site → Building → Floor → Room → Asset, with what matters at each level.
 import { useMemo, useState } from "react";
-import { Building2, DoorOpen, Layers, MapPin, Plus, Pencil, Boxes, Wand2, Trash2 } from "lucide-react";
+import { Building2, DoorOpen, Layers, MapPin, Plus, Pencil, Boxes, Wand2, Trash2, Wrench } from "lucide-react";
 import { Modal, Field, TextInput, TextArea, PrimaryButton } from "../../components/ui.jsx";
 import { Breadcrumb, Btn, Card, Empty, Kpi, Pill, Row } from "../../components/ds.jsx";
 import { SpaceModal } from "../../tabs/MoreViews.jsx";
 import { assetStatus, assetsUnder, portfolioOf, siteTree } from "./places.js";
+import { ACTIVE_HIDE_MONEY } from "../../lib/globals.js";
 import { daysUntil, gbp, uid } from "../../lib/utils.js";
 
 function BuildingModal({ existing, onClose, onSave, onDelete, canDelete }) {
@@ -79,7 +80,7 @@ function MoveAssetsModal({ target, assets, placeText, onClose, onMove }) {
   );
 }
 
-export function LocationsView({ org, countries = [], sites = [], siteId, buildings = [], spaces = [], devices = [], works = [], services = [], spendByDevice = {}, canEdit, canManageAssets = false, onAddAsset, onMoveAssets, onChooseSite, onOpenAsset, onSaveBuilding, onDeleteBuilding, onSaveSpace, onDeleteSpace, onOrganise }) {
+export function LocationsView({ org, countries = [], sites = [], siteId, buildings = [], spaces = [], devices = [], works = [], services = [], spendByDevice = {}, canEdit, canManageAssets = false, onAddAsset, onMoveAssets, onRaiseJob, onOpenJob, onChooseSite, onOpenAsset, onSaveBuilding, onDeleteBuilding, onSaveSpace, onDeleteSpace, onOrganise }) {
   const [path, setPath] = useState({ level: "site" });   // level: portfolio | site | building | floor | room | loose | unplaced
   const [editB, setEditB] = useState(null); const [editR, setEditR] = useState(null); const [organise, setOrganise] = useState(false); const [moving, setMoving] = useState(null);
   const site = sites.find((s) => s.id === siteId);
@@ -90,7 +91,17 @@ export function LocationsView({ org, countries = [], sites = [], siteId, buildin
   const node = path.level === "building" ? bNode : path.level === "floor" ? fNode : path.level === "room" ? rNode : null;
   const assets = path.level === "site" ? tree.assets : path.level === "unplaced" ? tree.unplaced : path.level === "loose" ? tree.looseRooms.flatMap((r) => r.assets) : assetsUnder(node);
   const ids = new Set(assets.map((a) => a.id));
-  const openWorks = works.filter((w) => ids.has(w.deviceId) && !["completed", "rejected"].includes(w.status));
+  // open jobs here: on the assets here, and jobs with no asset on this room, floor or building (round 30.4)
+  const placeJobHere = (w) => {
+    if (w.deviceId || w.locationId !== siteId) return false;
+    if (path.level === "site") return true;
+    if (path.level === "room") return !!rNode && w.spaceId === rNode.id;
+    if (path.level === "floor") return !!bNode && !!fNode && w.buildingId === bNode.id && (fNode.virtual ? !w.floorId : w.floorId === fNode.id);
+    if (path.level === "building") return !!bNode && w.buildingId === bNode.id;
+    if (path.level === "loose") return !!w.spaceId && tree.looseRooms.some((r) => r.id === w.spaceId);
+    return false;
+  };
+  const openWorks = works.filter((w) => (ids.has(w.deviceId) || placeJobHere(w)) && !["completed", "rejected"].includes(w.status));
   const overdue = assets.filter((a) => a.nextServiceDate && daysUntil(a.nextServiceDate) < 0);
   const status = (a) => assetStatus(a, { works, services });
   const attention = assets.filter((a) => ["attention", "failed", "offline"].includes(status(a).key));
@@ -112,7 +123,7 @@ export function LocationsView({ org, countries = [], sites = [], siteId, buildin
       <Kpi label="Need attention" value={attention.length} tone={attention.length ? "warn" : undefined} />
       <Kpi label="Maintenance overdue" value={overdue.length} tone={overdue.length ? "danger" : undefined} />
       <Kpi label="Open jobs" value={openWorks.length} />
-      <Kpi label={`Spend ${new Date().getFullYear()}`} value={gbp(spend)} />
+      {!ACTIVE_HIDE_MONEY && <Kpi label={`Spend ${new Date().getFullYear()}`} value={gbp(spend)} />}
     </div>
   );
   // Where "Add an asset here" / "Move assets here" put things, for the place being looked at.
@@ -121,11 +132,20 @@ export function LocationsView({ org, countries = [], sites = [], siteId, buildin
     : path.level === "building" && bNode ? { label: bNode.name, fields: { spaceId: null, buildingId: bNode.id, floorId: null } } : null;
   const placeText = (a) => { const r = tree.rooms.find((x) => x.id === roomForId(a)); const b = buildings.find((x) => x.id === (r ? r.buildingId : a.buildingId)); const f = b && (b.floors || []).find((x) => x.id === (r ? r.floorId : a.floorId)); return [b?.name, f?.name, r?.name].filter(Boolean).join(" › "); };
   const roomForId = (a) => (tree.buildings.flatMap((b) => b.floors.flatMap((f) => f.rooms)).concat(tree.looseRooms).find((r) => r.assets.some((x) => x.id === a.id)) || {}).id;
-  const placeActions = here && canManageAssets && (onAddAsset || onMoveAssets) ? (
+  const placeActions = here && ((canManageAssets && (onAddAsset || onMoveAssets)) || onRaiseJob) ? (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      {onAddAsset && <Btn size="sm" icon={Plus} onClick={() => onAddAsset({ ...here.fields, area: here.area || "" })}>Add an asset here</Btn>}
-      {onMoveAssets && <Btn size="sm" icon={Boxes} onClick={() => setMoving(here)}>Move assets here</Btn>}
+      {onRaiseJob && <Btn size="sm" icon={Wrench} onClick={() => onRaiseJob(here.fields)}>Raise a job here</Btn>}
+      {canManageAssets && onAddAsset && <Btn size="sm" icon={Plus} onClick={() => onAddAsset({ ...here.fields, area: here.area || "" })}>Add an asset here</Btn>}
+      {canManageAssets && onMoveAssets && <Btn size="sm" icon={Boxes} onClick={() => setMoving(here)}>Move assets here</Btn>}
     </div>
+  ) : null;
+  // jobs on this place (no asset), listed under its assets
+  const placeJobs = works.filter((w) => placeJobHere(w) && !["completed", "rejected"].includes(w.status));
+  const placeJobRows = placeJobs.length > 0 && path.level !== "site" ? (
+    <>
+      <div className="fm-section-title"><div className="fm-h2">Jobs on {path.level === "room" && rNode ? rNode.name : path.level === "floor" && fNode ? fNode.name : bNode?.name || "this place"} (no asset)</div></div>
+      <div className="fm-list">{placeJobs.map((w) => <Row key={w.id} tone={w.priority === "high" ? "danger" : "warn"} title={w.description} sub={[String(w.status || "").replace("_", " "), w.dateRaised].filter(Boolean).join(" · ")} onClick={onOpenJob ? () => onOpenJob(w) : undefined} />)}</div>
+    </>
   ) : null;
   const assetRows = (list) => list.length ? (
     <div className="fm-list">{list.slice(0, 200).map((a) => { const st = status(a); return <Row key={a.id} tone={st.tone} title={a.name} sub={[a.assetTag, st.label, st.reasons[0]].filter(Boolean).join(" · ")} right={<Pill tone={st.tone}>{st.label}</Pill>} onClick={() => onOpenAsset(a.id)} />; })}</div>
@@ -186,7 +206,7 @@ export function LocationsView({ org, countries = [], sites = [], siteId, buildin
         {summary}
         <div className="fm-section-title"><div className="fm-h2">Assets in {rNode.name}</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{placeActions}{canEdit && <Btn size="sm" icon={Pencil} onClick={() => setEditR({ existing: rNode.room })}>Edit room</Btn>}</div></div>
         {assetRows(rNode.assets)}
-        {openWorks.length > 0 && <><div className="fm-section-title"><div className="fm-h2">Open jobs</div></div><div className="fm-list">{openWorks.map((w) => <Row key={w.id} tone={w.priority === "high" ? "danger" : "warn"} title={w.description} sub={devices.find((d) => d.id === w.deviceId)?.name} />)}</div></>}
+        {openWorks.length > 0 && <><div className="fm-section-title"><div className="fm-h2">Open jobs</div></div><div className="fm-list">{openWorks.map((w) => <Row key={w.id} tone={w.priority === "high" ? "danger" : "warn"} title={w.description} sub={devices.find((d) => d.id === w.deviceId)?.name || "On the room — no asset"} onClick={onOpenJob ? () => onOpenJob(w) : undefined} />)}</div></>}
       </>
     );
   } else if (path.level === "loose") {
@@ -203,6 +223,7 @@ export function LocationsView({ org, countries = [], sites = [], siteId, buildin
         <>
           <div className="fm-section-title"><div className="fm-h2">Assets</div>{placeActions}</div>
           {assetRows(assets)}
+          {placeJobRows}
         </>
       )}
       {editB && <BuildingModal existing={editB.id ? editB : null} canDelete={editB.id ? !spaces.some((s) => s.buildingId === editB.id) : false} onClose={() => setEditB(null)} onDelete={(id) => { onDeleteBuilding(id); setEditB(null); setPath({ level: "site" }); }} onSave={(b) => { onSaveBuilding(b); setEditB(null); }} />}

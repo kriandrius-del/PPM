@@ -38,9 +38,9 @@ export function SupplierPortal({ token }) {
     const sup = r?.supplier;
     if (!sup) { setState({ loading: false, sup: null }); return; }
     if (r.sla) set_ACTIVE_SLA({ ...SLA_DAYS, ...(r.sla.days || {}), workingDays: !!r.sla.workingDays });
-    const devices = r.devices || []; const locations = r.locations || [];
+    const devices = r.devices || []; const locations = r.locations || []; const buildings = r.buildings || []; const spaces = r.spaces || [];
     const mine = (r.works || []).filter((w) => !["completed", "rejected"].includes(w.status)).sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.priority || "medium"] - { high: 0, medium: 1, low: 2 }[b.priority || "medium"]) || String(a.dateRaised).localeCompare(String(b.dateRaised)));
-    setState({ loading: false, sup, works: mine, devices, locations });
+    setState({ loading: false, sup, works: mine, devices, locations, buildings, spaces });
   }
   useEffect(() => { refresh(); }, [token]);
   async function update(id, name, patch, comment) {
@@ -50,8 +50,10 @@ export function SupplierPortal({ token }) {
   if (state.loading) return <Shell title="Your jobs"><div style={{ textAlign: "center", padding: 30 }}><Loader2 size={20} /></div></Shell>;
   if (state.error) return <Shell title="Your jobs"><div style={card}>{state.error}</div></Shell>;
   if (!state.sup) return <Shell title="Link not recognised"><div style={card}>This job link has expired or been replaced. Please ask the facilities team for a new one.</div></Shell>;
-  const { sup, works, devices, locations } = state;
+  const { sup, works, devices, locations, buildings = [], spaces = [] } = state;
   const dev = (id) => devices.find((d) => d.id === id); const loc = (d) => locations.find((l) => l.id === d?.locationId);
+  // a job with no asset is on a room or building: "Annexe › Floor 2 › Kitchen"
+  const placeOfJob = (w) => { const r = spaces.find((x) => x.id === w.spaceId); const b = buildings.find((x) => x.id === (r?.buildingId || w.buildingId)); const f = (b?.floors || []).find((x) => x.id === (r?.floorId || w.floorId)); return [b?.name, f?.name, r?.name].filter(Boolean).join(" › "); };
   return (
     <Shell title={`${sup.name} — jobs`} sub={`${works.length} open job${works.length === 1 ? "" : "s"} · tap a job to update it`} icon={Wrench}>
       {works.length === 0 && <div style={card}>No open jobs for you right now. Thank you!</div>}
@@ -61,7 +63,7 @@ export function SupplierPortal({ token }) {
           <div key={w.id} style={{ ...card, borderLeft: `4px solid ${w.priority === "high" ? "var(--danger)" : w.priority === "low" ? "var(--faint)" : "var(--warn)"}` }}>
             <button onClick={() => setOpenId(openId === w.id ? null : w.id)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}>
               <div style={{ fontSize: 15, fontWeight: 750 }}>{w.description}</div>
-              <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{d?.name || "Service"}{d?.area ? ` · ${d.area}` : ""} · {loc(d)?.name || ""}</div>
+              <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{d?.name || placeOfJob(w) || w.placeName || "Service"}{d?.area ? ` · ${d.area}` : ""} · {loc(d || w)?.name || ""}</div>
               <div style={{ fontSize: 12, marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <span>Ref <b>{w.id.slice(-6).toUpperCase()}</b></span>
                 <span style={{ fontWeight: 700, color: w.priority === "high" ? "var(--danger)" : "var(--text-2)" }}>{(w.priority || "medium").toUpperCase()}</span>

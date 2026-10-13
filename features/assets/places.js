@@ -109,3 +109,16 @@ export function assetStatus(d, { works = [], services = [] } = {}) {
   if (fails) reasons.push(`Last visit: ${fails} check${fails === 1 ? "" : "s"} failed`);
   return reasons.length ? mk("attention", reasons) : mk("operational", []);
 }
+
+// ---------- jobs on a place (round 30.4) ----------
+// A job is raised against an asset, or — a Phase 1 decision — on a room, floor or building with no asset
+// (deviceId empty; locationId + buildingId/floorId/spaceId say where).
+export const isPlaceJob = (w) => !!w && !w.deviceId && !!(w.spaceId || w.buildingId);
+export function jobSite(w, deviceById = {}) { return deviceById[w?.deviceId]?.locationId || w?.locationId || null; }
+// What a job is for: its asset's name, or where it is ("Annexe › Floor 2 › Kitchen").
+export function jobWhat(w, deviceById = {}, { buildings = [], spaces = [] } = {}) {
+  const d = deviceById[w?.deviceId];
+  if (d) return d.name;
+  if (w?.deviceId) return "Unknown asset";
+  return placeLabel(placeOf(w, { buildings, spaces })) || w?.placeName || "No asset";
+}

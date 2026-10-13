@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, Ban, BookOpen, Camera, CheckCircle2, CheckSquare, ChevronDown, ClipboardList, Copy, Download, FileSpreadsheet, HardHat, ImagePlus, KeyRound, Link2, Loader2, Mail, MapPin, PauseCircle, Pencil, Plus, Printer, RefreshCw, ShieldCheck, SkipForward, Square, Star, StickyNote, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { Badge, CategoryOptions, ConfirmDeleteButton, CustomFieldInputs, ExportButton, Field, Modal, PhotoStrip, PrimaryButton, Select, SignOffSection, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { CHECKLIST_PRESETS, CONDITION_GRADES, CRITICALITY, FREQ_HINTS, IMPORT_FIELDS, JOB_TEMPLATES, LATE_REASONS, MONTH_NAMES, PERMIT_TYPES, SKIP_REASONS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
-import { ACTIVE_BRAND, ACTIVE_CAN_APPROVE, ACTIVE_CAN_EDIT, ACTIVE_CAN_MANAGE_ASSETS, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
+import { ACTIVE_HIDE_MONEY, ACTIVE_BRAND, ACTIVE_CAN_APPROVE, ACTIVE_CAN_EDIT, ACTIVE_CAN_MANAGE_ASSETS, ACTIVE_CURRENCY_CODE, ACTIVE_TEMPLATES, ACTIVE_USERS, AREA_SUGGESTIONS_CACHE, CATEGORY_KEYS, CATEGORY_META, PARENT_CANDIDATES_CACHE, TAG_SUGGESTIONS_CACHE } from "../lib/globals.js";
 import { buildAssetRecord, buildBlankChecklist, openPrintReport, tableHtml } from "../lib/reports.js";
 import { addDays, addMonths, appBaseUrl, availability, checklistLabel, compressImage, currentDowntime, daysUntil, downloadBlob, dueStatus, escapeHtml, fmtDate, formatCustomValues, gbp, missingRequiredFields, parseDelimited, parseReading, replacementYear, toCSV, toISO, uid } from "../lib/utils.js";
 import { TEMPLATE_EXAMPLE_PREFIX, buildServicesTemplate, readSpreadsheetRows } from "../lib/excelTemplate.js";
@@ -93,11 +93,11 @@ export function DeviceHistoryModal({ summary = null, plannedLines = [], budgetIn
               <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.3 }}>
                   <span>Visits logged <b>{done.length}</b></span>
-                  {total > 0 && <span>All-time cost <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(total)}</b></span>}
-                  {costed.length > 0 && <span>Average <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(total / costed.length)}</b></span>}
+                  {total > 0 && !ACTIVE_HIDE_MONEY && <span>All-time cost <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(total)}</b></span>}
+                  {costed.length > 0 && !ACTIVE_HIDE_MONEY && <span>Average <b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(total / costed.length)}</b></span>}
                   {done[done.length - 1]?.date && <span style={{ color: "var(--faint)" }}>since {fmtDate(done[done.length - 1].date)}</span>}
                 </div>
-                {trend.length >= 2 && (
+                {trend.length >= 2 && !ACTIVE_HIDE_MONEY && (
                   <div title="Cost of the last visits, oldest to newest" style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 34 }}>
                     {trend.map((v) => <div key={v.id} title={`${fmtDate(v.date)}: ${gbp(v.cost)}`} style={{ flex: 1, maxWidth: 26, height: `${Math.max(8, (Number(v.cost) / mx) * 100)}%`, background: Number(v.cost) > (Number(device.budgetPerVisit) || Infinity) ? "var(--danger)" : "var(--accent)", borderRadius: "3px 3px 0 0", opacity: 0.85 }} />)}
                     <span style={{ fontSize: 10.5, color: "var(--faint)", marginLeft: 4 }}>last {trend.length} visit costs</span>
@@ -107,14 +107,14 @@ export function DeviceHistoryModal({ summary = null, plannedLines = [], budgetIn
               </div>
             );
           })()}
-          {Number(device.upliftPct) > 0 && Number(device.upliftMonth) > 0 && (() => { const t0 = new Date().toISOString().slice(0, 10); let r = `${t0.slice(0, 4)}-${String(device.upliftMonth).padStart(2, "0")}-01`; if (r <= t0) r = `${Number(t0.slice(0, 4)) + 1}-${String(device.upliftMonth).padStart(2, "0")}-01`; return <div style={{ fontSize: 12.3, background: "var(--card-hi)", borderRadius: 10, padding: "7px 11px" }}>Annual price rise <b>+{device.upliftPct}%</b> · next on <b>{fmtDate(r)}</b>: {gbp(device.budgetPerVisit)} → <b>{gbp(Number(device.budgetPerVisit) * (1 + Number(device.upliftPct) / 100))}</b> a visit</div>; })()}
-          {plannedLines.length > 0 && (
+          {!ACTIVE_HIDE_MONEY && Number(device.upliftPct) > 0 && Number(device.upliftMonth) > 0 && (() => { const t0 = new Date().toISOString().slice(0, 10); let r = `${t0.slice(0, 4)}-${String(device.upliftMonth).padStart(2, "0")}-01`; if (r <= t0) r = `${Number(t0.slice(0, 4)) + 1}-${String(device.upliftMonth).padStart(2, "0")}-01`; return <div style={{ fontSize: 12.3, background: "var(--card-hi)", borderRadius: 10, padding: "7px 11px" }}>Annual price rise <b>+{device.upliftPct}%</b> · next on <b>{fmtDate(r)}</b>: {gbp(device.budgetPerVisit)} → <b>{gbp(Number(device.budgetPerVisit) * (1 + Number(device.upliftPct) / 100))}</b> a visit</div>; })()}
+          {plannedLines.length > 0 && !ACTIVE_HIDE_MONEY && (
             <details style={{ background: "var(--card-hi)", borderRadius: 10, padding: "8px 11px" }}>
               <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Planned visits in the budget ({plannedLines.length})</summary>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>{plannedLines.slice(0, 12).map((l) => <div key={l.id} style={{ display: "flex", gap: 8, fontSize: 12 }}><span style={{ flex: 1 }}>{fmtDate(l.date)}{l.plannedFor ? <span style={{ color: "var(--accent)", fontWeight: 650 }}> · booked (planned {fmtDate(l.plannedFor)})</span> : null}</span><b style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(l.amount)}</b></div>)}{plannedLines.length > 12 && <div style={{ fontSize: 11, color: "var(--faint)" }}>…and {plannedLines.length - 12} more</div>}</div>
             </details>
           )}
-          {budgetInfo && (budgetInfo.perVisit > 0 || budgetInfo.spent > 0) && (
+          {budgetInfo && !ACTIVE_HIDE_MONEY && (budgetInfo.perVisit > 0 || budgetInfo.spent > 0) && (
             <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 4 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 700 }}>Budget this year</span>
@@ -136,7 +136,7 @@ export function DeviceHistoryModal({ summary = null, plannedLines = [], budgetIn
           {Number(device.usageInterval) > 0 && <UsageCard device={device} onRecord={onRecordUsage} />}
           {onMerge && <button onClick={onMerge} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Duplicate of another service? Merge it…</button>}
           {services.filter((v) => v.certUrl).length > 0 && <div style={{ fontSize: 12 }}>{services.filter((v) => v.certUrl).slice(0, 3).map((v) => <a key={v.id} href={v.certUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", color: "var(--accent)", fontWeight: 600 }}>📄 Certificate — {fmtDate(v.date)}</a>)}</div>}
-          <CostHistory device={device} services={services} works={works} />
+          {!ACTIVE_HIDE_MONEY && <CostHistory device={device} services={services} works={works} />}
           <NotesLog notes={device.notesLog || []} onAdd={onAddNote} onDelete={onDeleteNote} />
         </div>
       )}
@@ -175,7 +175,7 @@ export function DeviceHistoryModal({ summary = null, plannedLines = [], budgetIn
         )}
       </div>
 
-      <div style={{ marginBottom: 18 }}>
+      {!ACTIVE_HIDE_MONEY && <div style={{ marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)" }}>Visit budgets</span>
           {ACTIVE_CAN_EDIT && ACTIVE_CAN_MANAGE_ASSETS && (
@@ -210,7 +210,7 @@ export function DeviceHistoryModal({ summary = null, plannedLines = [], budgetIn
             <RefreshCw size={12} /> Sync to Budget Plan
           </button>
         )}
-      </div>
+      </div>}
 
       <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Visit history</div>
       {sorted.length === 0 ? (
@@ -224,7 +224,7 @@ export function DeviceHistoryModal({ summary = null, plannedLines = [], budgetIn
             }}>
               <div>
                 <div style={{ fontWeight: 650, fontSize: 13.5 }}>{s.name || "Service"}</div>
-                <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{fmtDate(s.date)}{s.cost ? ` · ${gbp(s.cost)}` : ""}{s.arrived && s.left ? ` · on site ${s.arrived}–${s.left}` : ""}{s.verifiedBy ? " · ✓ verified" : ""}{s.certToFollow && !s.certificatePhoto && !s.certUrl ? " · certificate awaited" : ""}{s.skipped ? " · skipped" : s.aborted ? " · not completed" : ""}{(s.updatedBy || s.loggedBy) ? ` · ${s.updatedBy || s.loggedBy}` : ""}</div>
+                <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{fmtDate(s.date)}{s.cost && !ACTIVE_HIDE_MONEY ? ` · ${gbp(s.cost)}` : ""}{s.arrived && s.left ? ` · on site ${s.arrived}–${s.left}` : ""}{s.verifiedBy ? " · ✓ verified" : ""}{s.certToFollow && !s.certificatePhoto && !s.certUrl ? " · certificate awaited" : ""}{s.skipped ? " · skipped" : s.aborted ? " · not completed" : ""}{(s.updatedBy || s.loggedBy) ? ` · ${s.updatedBy || s.loggedBy}` : ""}</div>
               </div>
               <Pencil size={14} color="#8A94A0" />
             </button>
@@ -864,7 +864,9 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
     onSave({
       id: existing?.id, deviceId: device.id, name: name.trim() || defaultName, date,
       technician: technician.trim(), supplierId: supplierId || null,
-      notes: notes.trim(), cost: cost ? Number(cost) : 0, costBreakdown: breakdown && Object.values(breakdown).some((x) => Number(x)) ? Object.fromEntries(Object.entries(breakdown).map(([k, v]) => [k, Number(v) || 0])) : undefined, nextDueOverride: !isEdit && nextOverride ? nextOverride : undefined, certificatePhoto: photo, photos: visitPhotos.length ? visitPhotos : undefined, partsUsed: partsUsed.filter((p) => Number(p.qty) > 0).length ? partsUsed.filter((p) => Number(p.qty) > 0).map((p) => ({ ...p, qty: Number(p.qty) })) : undefined,
+      notes: notes.trim(), cost: cost ? Number(cost) : 0, costBreakdown: breakdown && Object.values(breakdown).some((x) => Number(x)) ? Object.fromEntries(Object.entries(breakdown).map(([k, v]) => [k, Number(v) || 0])) : undefined,
+      // engineers don't see or enter costs: keep what's there, and flag a new visit for the office to add its cost
+      ...(ACTIVE_HIDE_MONEY ? { cost: existing ? existing.cost : 0, costBreakdown: existing ? existing.costBreakdown : undefined, costPending: existing ? existing.costPending : true } : { costPending: cost ? undefined : existing?.costPending }), nextDueOverride: !isEdit && nextOverride ? nextOverride : undefined, certificatePhoto: photo, photos: visitPhotos.length ? visitPhotos : undefined, partsUsed: partsUsed.filter((p) => Number(p.qty) > 0).length ? partsUsed.filter((p) => Number(p.qty) > 0).map((p) => ({ ...p, qty: Number(p.qty) })) : undefined,
       overspendApprovedBy: overspendBy.trim() || undefined, checklistResults: checkResults.length ? checkResults : undefined,
       poNumber: visitPo.trim(),
       custom: Object.keys(visitCustom).length ? visitCustom : undefined,
@@ -889,7 +891,7 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
       `Service: ${device?.name}${device?.assetTag ? ` (#${device.assetTag})` : ""}`, `Visit: ${name}`, `Date: ${fmtDate(date)}`,
       technician && `Technician: ${technician}`, sup && `Supplier: ${sup.name}`,
       checkResults.some((r) => r.result) && `Checklist: ${checkResults.filter((r) => r.result === "pass").length} pass, ${fails.length} fail${fails.length ? ` — ${fails.map((r) => r.item + (r.note ? ` (${r.note})` : "")).join("; ")}` : ""}`,
-      cost && `Cost: ${gbp(Number(cost))}`, visitPo && `PO: ${visitPo}`,
+      cost && !ACTIVE_HIDE_MONEY && `Cost: ${gbp(Number(cost))}`, visitPo && !ACTIVE_HIDE_MONEY && `PO: ${visitPo}`,
       (ramsReceived || permitRef) && `Safety: ${[ramsReceived && "RAMS received", permitRef && `permit ${permitRef}`].filter(Boolean).join(", ")}`,
       lateReason && `Late — reason: ${lateReason}`, notes && `Notes: ${notes}`,
     ].filter(Boolean);
@@ -911,20 +913,21 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name} ({CATEGORY_META[s.category]?.label})</option>)}
           </Select>
         </Field>
-        <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" /></Field>
-        {(() => { const ref = Number(planLine?.amount) || Number(device?.budgetPerVisit) || 0; const over = overspendPct > 0 && ref > 0 && Number(cost) > ref * (1 + overspendPct / 100); if (!over) return null; return (
+        {ACTIVE_HIDE_MONEY ? <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: -4 }}>The cost of the visit is added by the office.</div>
+          : <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" /></Field>}
+        {(() => { const ref = Number(planLine?.amount) || Number(device?.budgetPerVisit) || 0; const over = overspendPct > 0 && ref > 0 && Number(cost) > ref * (1 + overspendPct / 100); if (!over || ACTIVE_HIDE_MONEY) return null; return (
           <div style={{ background: "var(--warn-soft)", borderRadius: 9, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 12.3, fontWeight: 650 }}>{Math.round((Number(cost) / ref - 1) * 100)}% over this visit's budget ({gbp(ref)}) — your site needs sign-off above {overspendPct}%.</div>
             <TextInput value={overspendBy} onChange={(e) => setOverspendBy(e.target.value)} placeholder="Approved by (name)" />
           </div>
         ); })()}
-        {planLine && <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--muted)", marginTop: -6 }}>
+        {planLine && !ACTIVE_HIDE_MONEY && <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--muted)", marginTop: -6 }}>
           <span>Budget for this visit: <b>{gbp(planLine.amount)}</b> (planned {fmtDate(planLine.plannedFor || planLine.date)}{planLine.plannedFor ? `, booked ${fmtDate(planLine.date)}` : ""})</span>
           {!cost && <button type="button" onClick={() => setCost(String(planLine.amount))} style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 7, padding: "3px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Use {gbp(planLine.amount)}</button>}
         </div>}
-        {!existing && Number(cost) > 0 && Number(lastVisit?.cost) > 0 && Number(cost) > Number(lastVisit.cost) * 1.5 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--warn)", marginTop: -6 }}>That's {Math.round((Number(cost) / Number(lastVisit.cost) - 1) * 100)}% more than last visit ({gbp(lastVisit.cost)} on {fmtDate(lastVisit.date)}) — worth checking the invoice.</div>}
-        {Number(cost) > 0 && Number(device?.budgetPerVisit) > 0 && Number(cost) > Number(device.budgetPerVisit) * 1.2 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--warn)", marginTop: -6 }}>That's {Math.round((Number(cost) / Number(device.budgetPerVisit) - 1) * 100)}% over the {gbp(device.budgetPerVisit)} budgeted per visit — add a note explaining why.</div>}
-        {breakdown ? (
+        {!existing && !ACTIVE_HIDE_MONEY && Number(cost) > 0 && Number(lastVisit?.cost) > 0 && Number(cost) > Number(lastVisit.cost) * 1.5 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--warn)", marginTop: -6 }}>That's {Math.round((Number(cost) / Number(lastVisit.cost) - 1) * 100)}% more than last visit ({gbp(lastVisit.cost)} on {fmtDate(lastVisit.date)}) — worth checking the invoice.</div>}
+        {!ACTIVE_HIDE_MONEY && Number(cost) > 0 && Number(device?.budgetPerVisit) > 0 && Number(cost) > Number(device.budgetPerVisit) * 1.2 && <div style={{ fontSize: 12, fontWeight: 650, color: "var(--warn)", marginTop: -6 }}>That's {Math.round((Number(cost) / Number(device.budgetPerVisit) - 1) * 100)}% over the {gbp(device.budgetPerVisit)} budgeted per visit — add a note explaining why.</div>}
+        {ACTIVE_HIDE_MONEY ? null : breakdown ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, background: "var(--card-hi)", borderRadius: 9, padding: 8 }}>
             {[["labour", "Labour"], ["parts", "Parts"], ["callout", "Call-out"], ["other", "Other"]].map(([k, l]) => (
               <label key={k} style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600 }}>{l}<TextInput type="number" min="0" step="0.01" value={breakdown[k] ?? ""} onChange={(e) => setPart(k, e.target.value)} style={{ width: "100%", padding: "5px 7px" }} /></label>
@@ -934,7 +937,7 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
         ) : (
           <button type="button" onClick={() => setBreakdown({ labour: "", parts: "", callout: "", other: "" })} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", marginTop: -6 }}>Split cost into labour / parts / call-out</button>
         )}
-        {nearestVisitBudget ? (
+        {ACTIVE_HIDE_MONEY ? null : nearestVisitBudget ? (
           <div style={{ fontSize: 11.5, color: "var(--warn)", background: "var(--warn-soft)", border: "1px solid #E6D9BC", borderRadius: 8, padding: "7px 10px" }}>
             Nearest visit budget: {gbp(nearestVisitBudget.amount)} (set for {fmtDate(nearestVisitBudget.date)}{nearestVisitBudget.note ? ` — ${nearestVisitBudget.note}` : ""})
           </div>
@@ -950,7 +953,7 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
         </div>
         {arrived && left && left > arrived && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: -6 }}>Time on site: {(() => { const [ah, am] = arrived.split(":").map(Number); const [lh, lm] = left.split(":").map(Number); const mins = lh * 60 + lm - (ah * 60 + am); return `${Math.floor(mins / 60)}h ${mins % 60}m`; })()}</div>}
         {!isEdit && lastVisit && (
-          <button type="button" onClick={() => { if (lastVisit.technician) setTechnician(lastVisit.technician); if (lastVisit.supplierId) setSupplierId(lastVisit.supplierId); if (lastVisit.cost && !cost) setCost(String(lastVisit.cost)); if (lastVisit.name) setName(lastVisit.name); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>
+          <button type="button" onClick={() => { if (lastVisit.technician) setTechnician(lastVisit.technician); if (lastVisit.supplierId) setSupplierId(lastVisit.supplierId); if (lastVisit.cost && !cost && !ACTIVE_HIDE_MONEY) setCost(String(lastVisit.cost)); if (lastVisit.name) setName(lastVisit.name); }} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "var(--accent)", fontSize: 12, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>
             ↺ Copy details from last visit ({fmtDate(lastVisit.date)}{lastVisit.technician ? `, ${lastVisit.technician}` : ""})
           </button>
         )}
@@ -988,7 +991,7 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
         {(() => {
           const budget = Number(nearestVisitBudget?.amount || device?.budgetPerVisit) || 0;
           const c = Number(cost) || 0;
-          if (!budget || c <= budget * 1.1) return null;
+          if (!budget || c <= budget * 1.1 || ACTIVE_HIDE_MONEY) return null;
           return <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>
             {gbp(c - budget)} over the {gbp(budget)} visit budget (+{Math.round(((c - budget) / budget) * 100)}%). Please say why in the notes — it will show in the Budget tab variance.
           </div>;
@@ -1126,7 +1129,7 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
         )}
         <CustomFieldInputs appliesTo="visit" category={device?.serviceCategory} values={visitCustom} onChange={setVisitCustom} />
         {visitFieldErr && <div style={{ fontSize: 12, color: "var(--danger)" }}>{visitFieldErr}</div>}
-        <Field label="PO / work order number (optional)"><TextInput value={visitPo} onChange={(e) => setVisitPo(e.target.value)} placeholder="e.g. PO-40213" /></Field>
+        {!ACTIVE_HIDE_MONEY && <Field label="PO / work order number (optional)"><TextInput value={visitPo} onChange={(e) => setVisitPo(e.target.value)} placeholder="e.g. PO-40213" /></Field>}
         <Field label="Notes"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Work performed, parts replaced, readings…" /></Field>
         <Field label="Certificate photo">
           <label style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "var(--muted)", fontSize: 13, background: photo ? "transparent" : "#FAFBFC" }}>
@@ -1166,17 +1169,23 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
 /* ---------------------------------------------------------
    Add Extra Work Modal
 --------------------------------------------------------- */
-export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemplates = null, onSaveJobTemplates, openWorks = [], prefill = null, devices, suppliers = [], defaultDeviceId, onClose, onSave }) {
-  const [deviceId, setDeviceId] = useState(defaultDeviceId || devices[0]?.id);
-  // Narrow the asset list by building / floor / room; the list itself is grouped by where each asset is.
-  const [where, setWhere] = useState({ buildingId: "", floorId: "", spaceId: "" });
+// PLACE: a job on a room, floor or building with no asset (Phase 1 decision, round 30.4).
+const PLACE = "__place";
+export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemplates = null, onSaveJobTemplates, openWorks = [], prefill = null, devices, suppliers = [], defaultDeviceId, defaultPlace = null, onClose, onSave }) {
+  const hasPlaces = buildings.some((b) => b.locationId === siteId) || spaces.some((x) => x.locationId === siteId);
+  const [deviceId, setDeviceId] = useState(defaultDeviceId === PLACE ? (hasPlaces ? PLACE : devices[0]?.id) : defaultDeviceId || devices[0]?.id || (hasPlaces ? PLACE : undefined));
+  const onPlace = deviceId === PLACE;
+  const [placeErr, setPlaceErr] = useState("");
+  // Narrow the asset list by building / floor / room (or, for a job with no asset, say where it is); the list is grouped by where each asset is.
+  const [where, setWhere] = useState({ buildingId: defaultPlace?.buildingId || "", floorId: defaultPlace?.floorId || "", spaceId: defaultPlace?.spaceId || "" });
   const placeTxt = (d) => placeLabel(placeOf(d, { buildings, spaces })) || "Not in a building or room";
   const inWhere = (d) => { if (!where.buildingId && !where.spaceId) return true; const p = placeOf(d, { buildings, spaces }); if (where.spaceId) return p.room?.id === where.spaceId; if (where.floorId) return p.building?.id === where.buildingId && p.floor?.id === where.floorId; return p.building?.id === where.buildingId; };
   const shown = devices.filter(inWhere);
   const groups = {}; shown.forEach((d) => { const k = placeTxt(d); (groups[k] = groups[k] || []).push(d); });
   const groupKeys = Object.keys(groups).sort((a, b) => (a === "Not in a building or room") - (b === "Not in a building or room") || a.localeCompare(b, undefined, { numeric: true }));
   function chooseWhere(w) {
-    setWhere(w);
+    setWhere(w); setPlaceErr("");
+    if (onPlace) return;   // a job on the place itself: no asset to pick
     const next = devices.filter((d) => { if (!w.buildingId && !w.spaceId) return true; const p = placeOf(d, { buildings, spaces }); if (w.spaceId) return p.room?.id === w.spaceId; if (w.floorId) return p.building?.id === w.buildingId && p.floor?.id === w.floorId; return p.building?.id === w.buildingId; });
     if (!next.some((d) => d.id === deviceId)) { const d = next[0]; setDeviceId(d?.id || ""); if (d?.supplierId) setSupplierId(d.supplierId); }
   }
@@ -1184,11 +1193,12 @@ export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemp
   const [poNumber, setPoNumber] = useState("");
   const [workCustom, setWorkCustom] = useState({});
   const [workFieldErr, setWorkFieldErr] = useState("");
-  const [supplierId, setSupplierId] = useState(() => devices.find((d) => d.id === (defaultDeviceId || devices[0]?.id))?.supplierId || "");
+  const [supplierId, setSupplierId] = useState(() => devices.find((d) => d.id === (defaultDeviceId || devices[0]?.id))?.supplierId || "");   // empty for a job on a place
   const [description, setDescription] = useState(prefill?.description || "");
   const [quoteAmount, setQuoteAmount] = useState("");
   const [dateRaised, setDateRaised] = useState(() => new Date().toISOString().slice(0, 10));
-  const [status, setStatus] = useState("quoted");
+  // with no quote yet (engineers never add one; a job on a room usually has none) it starts as a new request
+  const [status, setStatus] = useState(ACTIVE_HIDE_MONEY || defaultDeviceId === PLACE ? "requested" : "quoted");
   const [budgetType, setBudgetType] = useState("budgeted");
   const [category, setCategory] = useState(prefill?.category || "");
   const [warranty, setWarranty] = useState(false);
@@ -1211,24 +1221,28 @@ export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemp
   function submit() {
     { const miss = missingRequiredFields("work", devices.find((d) => d.id === deviceId)?.serviceCategory, workCustom); if (miss.length) { setWorkFieldErr(`Please fill in: ${miss.join(", ")}`); return; } }
     if (!deviceId || !description.trim()) return;
-    if (suppliers.find((s) => s.id === supplierId)?.status === "blocked" && !window.confirm("This supplier is marked 'Do not use'. Raise the work anyway?")) return;
-    onSave({ warranty: warranty && underWarranty ? true : undefined, category: category || null, deviceId, description: description.trim(), quoteAmount: quoteAmount ? Number(quoteAmount) : 0, dateRaised, status, budgetType, photos, priority, supplierId: supplierId || null, comments: [], poNumber: poNumber.trim(), custom: Object.keys(workCustom).length ? workCustom : undefined });
+    if (onPlace && !where.buildingId && !where.spaceId) { setPlaceErr("Choose the building, and the floor or room if you know it, where the job is."); return; }
+    if (!onPlace && suppliers.find((s) => s.id === supplierId)?.status === "blocked" && !window.confirm("This supplier is marked 'Do not use'. Raise the work anyway?")) return;
+    const placeBits = onPlace ? { deviceId: null, locationId: siteId, ...placeFields(where, spaces), placeName: placeLabel(placeOf({ locationId: siteId, ...placeFields(where, spaces) }, { buildings, spaces })), supplierId: null } : {};
+    onSave({ warranty: warranty && underWarranty ? true : undefined, category: category || null, deviceId, description: description.trim(), quoteAmount: quoteAmount ? Number(quoteAmount) : 0, dateRaised, status, budgetType, photos, priority, supplierId: supplierId || null, comments: [], poNumber: poNumber.trim(), custom: Object.keys(workCustom).length ? workCustom : undefined, ...placeBits });
   }
   return (
     <Modal title="Add extra work" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {(() => { const dup = openWorks.filter((w) => w.deviceId === deviceId); return dup.length ? <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>This service already has {dup.length} open job{dup.length === 1 ? "" : "s"}: {dup.slice(0, 2).map((w) => `"${String(w.description).slice(0, 40)}" (${w.status.replace("_", " ")})`).join(", ")}. Check it isn't the same problem.</div> : null; })()}
+        {(() => { const dup = onPlace ? openWorks.filter((w) => !w.deviceId && (where.spaceId ? w.spaceId === where.spaceId : where.buildingId && w.buildingId === where.buildingId && !w.spaceId && (w.floorId || "") === (where.floorId || ""))) : openWorks.filter((w) => w.deviceId === deviceId); return dup.length ? <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 600 }}>{onPlace ? "There's already" : "This service already has"} {dup.length} open job{dup.length === 1 ? "" : "s"}{onPlace ? " here" : ""}: {dup.slice(0, 2).map((w) => `"${String(w.description).slice(0, 40)}" (${w.status.replace("_", " ")})`).join(", ")}. Check it isn't the same problem.</div> : null; })()}
         {suppliers.find((s) => s.id === supplierId)?.status === "blocked" && <div style={{ fontSize: 12, color: "var(--danger)", background: "var(--danger-soft)", borderRadius: 8, padding: "8px 10px", fontWeight: 700 }}>This supplier is marked "Do not use".</div>}
-        {(buildings.some((b) => b.locationId === siteId) || spaces.some((x) => x.locationId === siteId)) && (
-          <PlacePicker siteId={siteId} buildings={buildings} spaces={spaces} value={where} onChange={chooseWhere} label="Where (narrows the list below)" anyLabel="— Any building —" hint={false} />
+        {hasPlaces && (
+          <PlacePicker siteId={siteId} buildings={buildings} spaces={spaces} value={where} onChange={chooseWhere} label={onPlace ? "Where is the job?" : "Where (narrows the list below)"} anyLabel={onPlace ? "— Choose a building —" : "— Any building —"} hint={false} />
         )}
+        {placeErr && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: -6 }}>{placeErr}</div>}
         <Field label="Asset or service the job is for">
-          <Select value={deviceId || ""} onChange={(e) => { setDeviceId(e.target.value); const d = devices.find((x) => x.id === e.target.value); if (d?.supplierId) setSupplierId(d.supplierId); if (!prefill?.priority && d?.criticality === "critical") setPriority("high"); }}>
-            {!shown.length && <option value="">No assets here yet</option>}
+          <Select value={deviceId || ""} onChange={(e) => { setDeviceId(e.target.value); setPlaceErr(""); if (e.target.value === PLACE) { setSupplierId(""); if (status === "quoted" && !quoteAmount) setStatus("requested"); return; } const d = devices.find((x) => x.id === e.target.value); if (d?.supplierId) setSupplierId(d.supplierId); if (!prefill?.priority && d?.criticality === "critical") setPriority("high"); }}>
+            {hasPlaces && <option value={PLACE}>No particular asset — the room or building itself</option>}
+            {!shown.length && !hasPlaces && <option value="">No assets here yet</option>}
             {groupKeys.length === 1 ? groups[groupKeys[0]].map((d) => <option key={d.id} value={d.id}>{d.name}</option>)
               : groupKeys.map((k) => <optgroup key={k} label={k}>{groups[k].map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</optgroup>)}
           </Select>
-          <span style={{ fontSize: 11.5, color: "var(--faint)", fontWeight: 400 }}>{shown.length ? "Jobs are raised against an asset or service, so its history, supplier and costs stay together. Not listed? Add it first in Assets." : "No assets in this place yet — add one in Assets → Locations (Add an asset here), or choose another place."}</span>
+          <span style={{ fontSize: 11.5, color: "var(--faint)", fontWeight: 400 }}>{onPlace ? "For a problem with the room or building itself — a leak, a door, a light fitting. Choose where above; a supplier is assigned on the job later, when it's quoted." : shown.length ? "Choose the asset if the job is on one, so its history and supplier stay together. Not listed? Add it first in Assets." : "No assets in this place yet — add one in Assets → Locations (Add an asset here), or choose another place."}</span>
         </Field>
         {!prefill?.description && (
           <Field label="Common jobs (tap to fill in)">
@@ -1249,7 +1263,7 @@ export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemp
           </div>
         )}
         <Field label="Trade (optional)">
-          <Select value={category} onChange={(e) => { const c = e.target.value; setCategory(c); if (c && !supplierId) { const m = suppliers.filter((s2) => (s2.trades || []).includes(c) && s2.status !== "blocked"); if (m.length === 1) setSupplierId(m[0].id); } }}><option value="">—</option>{WORK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
+          <Select value={category} onChange={(e) => { const c = e.target.value; setCategory(c); if (c && !supplierId && !onPlace) { const m = suppliers.filter((s2) => (s2.trades || []).includes(c) && s2.status !== "blocked"); if (m.length === 1) setSupplierId(m[0].id); } }}><option value="">—</option>{WORK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
         </Field>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Priority">
@@ -1257,7 +1271,7 @@ export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemp
               {WORK_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
             </Select>
           </Field>
-          <Field label="Assigned supplier">
+          {onPlace ? <Field label="Assigned supplier"><div style={{ fontSize: 12.5, color: "var(--muted)", paddingTop: 8 }}>None yet — assign one on the job when it's quoted.</div></Field> : <Field label="Assigned supplier">
             <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
               <option value="">— Unassigned —</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1269,14 +1283,14 @@ export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemp
                 {suppliers.filter((s2) => (s2.trades || []).includes(category) && s2.status !== "blocked").map((s2) => <button key={s2.id} type="button" onClick={() => setSupplierId(s2.id)} style={{ background: s2.id === supplierId ? "var(--accent)" : "var(--card-hi)", color: s2.id === supplierId ? "var(--on-accent)" : "var(--text-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "3px 9px", fontSize: 11.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>{s2.name}</button>)}
               </div>
             )}
-          </Field>
+          </Field>}
         </div>
-        <Field label="PO / work order number (optional)"><TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="e.g. PO-40213" /></Field>
+        {!ACTIVE_HIDE_MONEY && <Field label="PO / work order number (optional)"><TextInput value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="e.g. PO-40213" /></Field>}
         <CustomFieldInputs appliesTo="work" category={devices.find((d) => d.id === deviceId)?.serviceCategory} values={workCustom} onChange={setWorkCustom} />
         {workFieldErr && <div style={{ fontSize: 12, color: "var(--danger)" }}>{workFieldErr}</div>}
         <Field label="Description"><TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What extra work is being quoted or done?" /></Field>
         <div style={{ display: "flex", gap: 10 }}>
-          <Field label={`Quote amount (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={quoteAmount} onChange={(e) => setQuoteAmount(e.target.value)} placeholder="0.00" /></Field>
+          {!ACTIVE_HIDE_MONEY && <Field label={`Quote amount (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={quoteAmount} onChange={(e) => setQuoteAmount(e.target.value)} placeholder="0.00" /></Field>}
           <Field label="Date raised"><TextInput type="date" value={dateRaised} onChange={(e) => setDateRaised(e.target.value)} /></Field>
         </div>
         <Field label="Status">
@@ -1284,12 +1298,12 @@ export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemp
             {WORK_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </Select>
         </Field>
-        <Field label="Budget type">
+        {ACTIVE_HIDE_MONEY ? <div style={{ fontSize: 11.5, color: "var(--faint)" }}>The office adds the quote and any costs.</div> : <Field label="Budget type">
           <Select value={budgetType} onChange={(e) => setBudgetType(e.target.value)}>
             {WORK_BUDGET_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
           </Select>
           <span style={{ fontSize: 11, color: "var(--faint)" }}>{WORK_BUDGET_TYPES.find((t) => t.key === budgetType)?.hint}</span>
-        </Field>
+        </Field>}
         <Field label="Photos">
           <label style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: "var(--muted)", fontSize: 13, background: "#FAFBFC" }}>
             {busy ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Camera size={16} />}

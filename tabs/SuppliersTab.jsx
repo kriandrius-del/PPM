@@ -3,7 +3,7 @@ import { useState } from "react";
 import { CheckCircle2, Copy, FileSpreadsheet, FileWarning, Gauge, Link2, Mail, Merge, MessageCircle, MessageSquare, Pencil, Phone, Plus, Printer, Star, Trash2, Upload, Users as UsersIcon, X } from "lucide-react";
 import { CategoryOptions, ConfirmDeleteButton, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SubCategoryField, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { CONTACT_TYPES, ONBOARDING_ITEMS, RENEWAL_STEPS, SUPPLIER_STATUSES, WORK_CATEGORIES } from "../lib/constants.js";
-import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
+import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_HIDE_MONEY, CATEGORY_KEYS, CATEGORY_META } from "../lib/globals.js";
 import { computeCompliance, daysUntil, fmtDate, gbp, isMirrored, parseDelimited, supplierStats, toISO, uid, workSla } from "../lib/utils.js";
 import { buildSupplierPack, openPrintReport } from "../lib/reports.js";
 import { xlsxToText } from "../lib/excelTemplate.js";
@@ -34,7 +34,7 @@ export function SuppliersTab({ onApplyUplift, onPortal, onBulkEmail, onImport, p
         <div style={{ display: "flex", gap: 8 }}>
           <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search suppliers…" style={{ flex: 1, minWidth: 0 }} />
           <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...inputStyle, width: 130, fontSize: 12.5 }}>
-            <option value="name">Name A–Z</option><option value="value">Contract value</option><option value="rating">Rating</option><option value="end">Contract end</option>
+            <option value="name">Name A–Z</option>{!ACTIVE_HIDE_MONEY && <option value="value">Contract value</option>}<option value="rating">Rating</option><option value="end">Contract end</option>
           </select>
         </div>
       )}
@@ -48,10 +48,10 @@ export function SuppliersTab({ onApplyUplift, onPortal, onBulkEmail, onImport, p
       {suppliers.length > 0 && (
         <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Contract value per year</div><div style={{ fontSize: 17, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(totalAnnual)}</div></div>
+            {!ACTIVE_HIDE_MONEY && <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Contract value per year</div><div style={{ fontSize: 17, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(totalAnnual)}</div></div>}
             <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Contracts ending in 90 days</div><div style={{ fontSize: 17, fontWeight: 750, color: ending90.length ? "var(--warn)" : "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{ending90.length}</div></div>
           </div>
-          {top.length > 0 && <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Largest: {top.map((x) => `${x.name} ${gbp(annual(x))}`).join(" · ")}</div>}
+          {top.length > 0 && !ACTIVE_HIDE_MONEY && <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Largest: {top.map((x) => `${x.name} ${gbp(annual(x))}`).join(" · ")}</div>}
           {ending90.length > 0 && <div style={{ fontSize: 11.5, color: "var(--warn)", fontWeight: 650 }}>Ending: {ending90.map((x) => `${x.name} (${fmtDate(x.contractEnd)})`).join(" · ")}</div>}
         </div>
       )}
@@ -69,7 +69,7 @@ export function SuppliersTab({ onApplyUplift, onPortal, onBulkEmail, onImport, p
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {list.map((s) => (
                 <div key={s.id} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <button onClick={() => onEdit(s)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", flex: 1, minWidth: 0 }}>
+                  <button onClick={() => (ACTIVE_CAN_EDIT ? onEdit(s) : setScoreFor(s))} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 650, fontSize: 14 }}>{s.name}{s.subCategory ? ` · ${s.subCategory}` : ""}</div>
                     <div style={{ fontSize: 12, color: "var(--faint)", marginTop: 2 }}>{s.contact || "No contact on file"}</div>
                     <div style={{ fontSize: 12, color: s.managerEmail ? "var(--accent)" : "#C05621", marginTop: 2, fontWeight: 600 }}>
@@ -105,13 +105,13 @@ export function SuppliersTab({ onApplyUplift, onPortal, onBulkEmail, onImport, p
                       const lyTotal = services.filter((v) => String(v.date).startsWith(ly) && v.date <= cut && (v.supplierId === s.id || (!v.supplierId && devices.find((d) => d.id === v.deviceId)?.supplierId === s.id))).reduce((t, v) => t + (Number(v.cost) || 0), 0) + works.filter((w) => w.supplierId === s.id && String(w.dateRaised).startsWith(ly) && w.dateRaised <= cut && ["approved", "in_progress", "completed"].includes(w.status)).reduce((t, w) => t + (Number(w.finalCost ?? w.quoteAmount) || 0), 0) + contract;
                       const nextB = devices.filter((d) => d.supplierId === s.id && d.booking?.date && d.booking.date >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.booking.date.localeCompare(b.booking.date))[0];
                       return <>
-                        {total > 0 && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>Spend {yr}: <b>{gbp(total)}</b>{wk ? ` (works ${gbp(wk)})` : ""}{lyTotal > 0 ? <span style={{ color: total > lyTotal * 1.1 ? "var(--danger)" : total < lyTotal * 0.9 ? "var(--ok)" : "var(--muted)" }}> · {total >= lyTotal ? "▲" : "▼"} {Math.abs(Math.round(((total - lyTotal) / lyTotal) * 100))}% vs this time last year</span> : null}</div>}
-                        {(() => { const y = String(new Date().getFullYear()); const ls = budgetLines.filter((l) => l.supplierId === s.id && String(l.date).startsWith(y) && l.status !== "skipped"); if (!ls.length) return null; const plan = ls.reduce((a, l) => a + (Number(l.amount) || 0), 0); const done = ls.filter((l) => l.actualAmount != null || l.actualServiceId).reduce((a, l) => a + (Number(l.actualAmount) || 0), 0); return <div style={{ fontSize: 11.5, marginTop: 2, color: "var(--muted)" }}>{y}: <b style={{ color: "var(--text)" }}>{gbp(done)}</b> spent of <b style={{ color: "var(--text)" }}>{gbp(plan)}</b> planned</div>; })()}
+                        {total > 0 && !ACTIVE_HIDE_MONEY && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>Spend {yr}: <b>{gbp(total)}</b>{wk ? ` (works ${gbp(wk)})` : ""}{lyTotal > 0 ? <span style={{ color: total > lyTotal * 1.1 ? "var(--danger)" : total < lyTotal * 0.9 ? "var(--ok)" : "var(--muted)" }}> · {total >= lyTotal ? "▲" : "▼"} {Math.abs(Math.round(((total - lyTotal) / lyTotal) * 100))}% vs this time last year</span> : null}</div>}
+                        {!ACTIVE_HIDE_MONEY && (() => { const y = String(new Date().getFullYear()); const ls = budgetLines.filter((l) => l.supplierId === s.id && String(l.date).startsWith(y) && l.status !== "skipped"); if (!ls.length) return null; const plan = ls.reduce((a, l) => a + (Number(l.amount) || 0), 0); const done = ls.filter((l) => l.actualAmount != null || l.actualServiceId).reduce((a, l) => a + (Number(l.actualAmount) || 0), 0); return <div style={{ fontSize: 11.5, marginTop: 2, color: "var(--muted)" }}>{y}: <b style={{ color: "var(--text)" }}>{gbp(done)}</b> spent of <b style={{ color: "var(--text)" }}>{gbp(plan)}</b> planned</div>; })()}
                         {(() => { const op = works.filter((w) => w.supplierId === s.id && !["completed", "rejected"].includes(w.status)); const late = op.filter((w) => workSla(w)?.breached).length; return op.length ? <div style={{ fontSize: 11.5, marginTop: 2, color: late ? "var(--danger)" : "var(--muted)", fontWeight: late ? 650 : 500 }}>{op.length} open job{op.length === 1 ? "" : "s"}{late ? ` · ${late} past target` : ""}</div> : null; })()}
                         {nextB && <div style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 2 }}>Next booked: {fmtDate(nextB.booking.date)}{nextB.booking.time ? ` ${nextB.booking.time}` : ""} · {nextB.name}</div>}
                       </>;
                     })()}
-                    {s.rates && (s.rates.hourly != null || s.rates.callout != null) && (
+                    {s.rates && !ACTIVE_HIDE_MONEY && (s.rates.hourly != null || s.rates.callout != null) && (
                       <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>{[s.rates.hourly != null && `${gbp(s.rates.hourly)}/hr`, s.rates.callout != null && `call-out ${gbp(s.rates.callout)}`, s.rates.outOfHours != null && `OOH ${gbp(s.rates.outOfHours)}/hr`, s.rates.materialsMarkup != null && `materials +${s.rates.materialsMarkup}%`].filter(Boolean).join(" · ")}</div>
                     )}
                     {(s.contactLog || []).length > 0 && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>Last contact {fmtDate(s.contactLog[0].date)} — {CONTACT_TYPES[s.contactLog[0].type] || ""}: {String(s.contactLog[0].summary).slice(0, 60)}</div>}
@@ -131,9 +131,9 @@ export function SuppliersTab({ onApplyUplift, onPortal, onBulkEmail, onImport, p
                       const avg = rated.reduce((t, v) => t + v.rating, 0) / rated.length;
                       return <div style={{ fontSize: 12, fontWeight: 700, color: avg >= 4 ? "var(--ok)" : avg >= 3 ? "var(--warn)" : "var(--danger)", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}><Star size={12} fill="currentColor" /> {avg.toFixed(1)} <span style={{ color: "var(--faint)", fontWeight: 600 }}>from {rated.length} rated visit{rated.length === 1 ? "" : "s"}</span></div>;
                     })()}
-                    <div style={{ fontSize: 12.5, marginTop: 4, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace" }}>
+                    {!ACTIVE_HIDE_MONEY && <div style={{ fontSize: 12.5, marginTop: 4, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace" }}>
                       {gbp(s.costAmount)} / {s.costFrequency === "annual" ? "yr" : "mo"}
-                    </div>
+                    </div>}
                   </button>
                   <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                     {ACTIVE_CAN_EDIT && (
@@ -358,8 +358,8 @@ export function SupplierScorecardModal({ onApplyUplift, supplier, devices, servi
     ["Score", st.score === null ? "—" : st.score, tone(st.score)],
     ["On time", st.comp.pct === null ? "—" : `${st.comp.pct}%`, tone(st.comp.pct)],
     ["Checks passed", st.checks ? `${Math.round((st.checks - st.fails) / st.checks * 100)}%` : "—", tone(st.checks ? Math.round((st.checks - st.fails) / st.checks * 100) : null)],
-    ["Avg vs budget", st.avgVar === null ? "—" : `${st.avgVar > 0 ? "+" : ""}${gbp(st.avgVar)}`, st.avgVar === null ? "#8A94A0" : st.avgVar <= 0 ? "#2F855A" : "#C53030"],
-  ];
+    !ACTIVE_HIDE_MONEY && ["Avg vs budget", st.avgVar === null ? "—" : `${st.avgVar > 0 ? "+" : ""}${gbp(st.avgVar)}`, st.avgVar === null ? "#8A94A0" : st.avgVar <= 0 ? "#2F855A" : "#C53030"],
+  ].filter(Boolean);
   return (
     <Modal title={`${supplier.name} — scorecard`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -376,14 +376,14 @@ export function SupplierScorecardModal({ onApplyUplift, supplier, devices, servi
         </div>
         <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.7 }}>
           {st.devs.length > 0 && <details style={{ marginBottom: 4 }}><summary style={{ cursor: "pointer", color: "var(--accent)", fontWeight: 650 }}>Services they cover ({st.devs.length})</summary><div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>{st.devs.map((d) => <span key={d.id} style={{ background: "var(--card-hi)", borderRadius: 10, padding: "2px 8px", fontSize: 11.5 }}>{d.name}{d.nextServiceDate ? ` · ${fmtDate(d.nextServiceDate)}` : ""}</span>)}</div></details>}
-          <div>Services assigned: <b>{st.devs.length}</b> · Visits logged: <b>{st.visits.length}</b> · Spend: <b>{gbp(st.spend)}</b></div>
-          {(() => { const pairs = services.filter((v) => Number(v.cost) > 0 && (v.supplierId === supplier.id || (!v.supplierId && st.devs.some((d) => d.id === v.deviceId)))).map((v) => { const ln = budgetLines.find((l) => l.actualServiceId === v.id); const ref = Number(ln?.amount) || Number(devices.find((d) => d.id === v.deviceId)?.budgetPerVisit) || 0; return ref > 0 ? Number(v.cost) / ref - 1 : null; }).filter((x) => x != null); if (pairs.length < 2) return null; const avg = pairs.reduce((a, b) => a + b, 0) / pairs.length; return <div>Visit cost vs budget: <b style={{ color: avg > 0.05 ? "var(--danger)" : avg < -0.05 ? "var(--ok)" : "inherit" }}>{avg >= 0 ? "+" : ""}{Math.round(avg * 100)}%</b> on average over {pairs.length} visits</div>; })()}
+          <div>Services assigned: <b>{st.devs.length}</b> · Visits logged: <b>{st.visits.length}</b>{!ACTIVE_HIDE_MONEY && <> · Spend: <b>{gbp(st.spend)}</b></>}</div>
+          {!ACTIVE_HIDE_MONEY && (() => { const pairs = services.filter((v) => Number(v.cost) > 0 && (v.supplierId === supplier.id || (!v.supplierId && st.devs.some((d) => d.id === v.deviceId)))).map((v) => { const ln = budgetLines.find((l) => l.actualServiceId === v.id); const ref = Number(ln?.amount) || Number(devices.find((d) => d.id === v.deviceId)?.budgetPerVisit) || 0; return ref > 0 ? Number(v.cost) / ref - 1 : null; }).filter((x) => x != null); if (pairs.length < 2) return null; const avg = pairs.reduce((a, b) => a + b, 0) / pairs.length; return <div>Visit cost vs budget: <b style={{ color: avg > 0.05 ? "var(--danger)" : avg < -0.05 ? "var(--ok)" : "inherit" }}>{avg >= 0 ? "+" : ""}{Math.round(avg * 100)}%</b> on average over {pairs.length} visits</div>; })()}
           {onApplyUplift && Number(supplier.upliftPct) > 0 && st.devs.some((d) => Number(d.budgetPerVisit) > 0) && ACTIVE_CAN_EDIT && <button onClick={() => onApplyUplift(supplier)} style={{ alignSelf: "flex-start", background: "var(--accent-soft)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", marginBottom: 4 }}>Apply their +{supplier.upliftPct}% price rise to {st.devs.filter((d) => Number(d.budgetPerVisit) > 0).length} service budgets</button>}
           <div>Planned visits: <b>{st.comp.totals.onTime}</b> on time, <b>{st.comp.totals.late}</b> late, <b style={{ color: st.comp.totals.missed ? "var(--danger)" : undefined }}>{st.comp.totals.missed}</b> missed</div>
           <div>Failed checks: <b>{st.fails}</b> · Extra jobs / requests: <b>{st.jobs.length}</b> · Times chased: <b>{st.chases}</b></div>
           {supplier.contractEnd && <div>Contract: {supplier.contractStart ? `${fmtDate(supplier.contractStart)} – ` : "ends "}{fmtDate(supplier.contractEnd)}{supplier.contractRef ? ` · ${supplier.contractRef}` : ""}</div>}
         </div>
-        <div>
+        {!ACTIVE_HIDE_MONEY && <div>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>Contract rate history</div>
           {(supplier.priceHistory || []).length === 0 ? <div style={{ fontSize: 12, color: "var(--faint)" }}>Current rate {gbp(supplier.costAmount)} / {supplier.costFrequency === "annual" ? "yr" : "mo"} — earlier rates are recorded here whenever you change it.</div> : (
             <div style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -391,8 +391,8 @@ export function SupplierScorecardModal({ onApplyUplift, supplier, devices, servi
               <div><b>{gbp(supplier.costAmount)} / {supplier.costFrequency === "annual" ? "yr" : "mo"}</b> <span style={{ color: "var(--faint)" }}>current</span></div>
             </div>
           )}
-        </div>
-        <div>
+        </div>}
+        {!ACTIVE_HIDE_MONEY && <div>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>Price history — visits &amp; recorded costs ({priceRows.length})</div>
           {priceRows.length === 0 ? <div style={{ fontSize: 12, color: "var(--faint)" }}>No costs recorded for {year}.</div> : (
             <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 220, overflowY: "auto" }}>
@@ -404,7 +404,7 @@ export function SupplierScorecardModal({ onApplyUplift, supplier, devices, servi
               ))}
             </div>
           )}
-        </div>
+        </div>}
         <div style={{ fontSize: 10.5, color: "var(--faint)" }}>Score weights on-time visits 50%, checklist pass rate 30% and staying within budget 20%, using whichever have data.</div>
       </div>
     </Modal>

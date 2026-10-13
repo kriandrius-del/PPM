@@ -4,7 +4,7 @@ import { Activity, AlertTriangle, Bell, Calendar, CalendarCheck, CalendarDays, C
 import { EmptyState, StatChip, ToggleButton } from "./components/ui.jsx";
 import { PRODUCT_NAME, PRODUCT_TAGLINE, STATUTORY_ITEMS } from "./lib/constants.js";
 import { ACCENTS, BUILTIN_TEMPLATES, DEFAULT_AUDIT_TEMPLATES, EQUIPMENT_TYPES, INCIDENT_TYPES, LOG_TEMPLATES, MONTH_LABELS, MONTH_NAMES, ONBOARDING_ITEMS, PKEYS, SKEYS, SLA_DAYS, WASTE_STREAMS, WATER_LIMITS, alertGroup } from "./lib/constants.js";
-import { ACTIVE_CAN_EDIT, AREA_SUGGESTIONS_CACHE, set_ACTIVE_CAN_APPROVE, set_ACTIVE_CAN_MANAGE_ASSETS, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_BRAND, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
+import { ACTIVE_CAN_EDIT, ACTIVE_HIDE_MONEY, AREA_SUGGESTIONS_CACHE, set_ACTIVE_HIDE_MONEY, set_ACTIVE_CAN_APPROVE, set_ACTIVE_CAN_MANAGE_ASSETS, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_BRAND, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
 import { LAST_LOCAL_WRITE, loadPersonal, loadShared, savePersonal, saveShared, set_SAVE_STATUS_LISTENER, peekShared, acceptShared } from "./lib/storage.js";
 import { addDays, addMonths, appBaseUrl, orgParam, cloudSession, cachedWeather, isDueThisMonth, isDueWithin30, isOverdueService, computeCompliance, currentBooking, currentDowntime, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, inBlackout, isMirrored, meterStats, replacementYear, shiftDate, siteWeatherSource, uid, workSla } from "./lib/utils.js";
 import { AddCountryModal, AddLocationModal, AlertsModal, DataHealthModal, DataModal, GlobalSearchModal, HelpModal, LocationPickerModal, ReportsModal, SettingsModal, ShortcutsModal, UserSwitchModal } from "./modals/AppModals.jsx";
@@ -27,7 +27,7 @@ import { budgetModel } from "./tabs/BudgetPlus.jsx";
 import { AppShell, liveState } from "./app/AppShell.jsx";
 import { AREA_BY_KEY, alertTarget, areasFor, canSeeArea, defaultSection, otherAreasFor, phoneAreas, resolveTarget, sectionLabel } from "./app/navigation.js";
 import { brandCssVars, brandFrom } from "./lib/brand.js";
-import { GO_AHEAD, ROLES, canEditSection, canManageAssets, canWrite, canWriteSettings, homeKind, isAdminRole, isApprover, isReadOnly, normaliseRole, worksRefusal } from "./app/permissions.js";
+import { GO_AHEAD, ROLES, seesMoney, canEditSection, canManageAssets, canWrite, canWriteSettings, homeKind, isAdminRole, isApprover, isReadOnly, normaliseRole, worksRefusal } from "./app/permissions.js";
 import { CommandCentre } from "./features/home/CommandCentre.jsx";
 import { computeSiteHealth } from "./features/health/siteHealth.js";
 import { HealthModal } from "./features/health/HealthPanel.jsx";
@@ -37,7 +37,7 @@ import { LocationsView } from "./features/assets/LocationsView.jsx";
 import { PlaceContext } from "./features/assets/PlacePicker.jsx";
 import { AssetRegister } from "./features/assets/AssetRegister.jsx";
 import { AssetSummary } from "./features/assets/AssetSummary.jsx";
-import { assetStatus, placeOf, portfolioOf } from "./features/assets/places.js";
+import { assetStatus, jobWhat, placeOf, portfolioOf } from "./features/assets/places.js";
 import { CommercialOverview, ContractsView } from "./features/commercial/CommercialViews.jsx";
 import { OnSiteView, TeamView } from "./features/people/PeopleViews.jsx";
 import { MoreMenu } from "./features/more/MoreMenu.jsx";
@@ -179,7 +179,8 @@ export function MainApp() {
   }
   const [serviceModal, setServiceModal] = useState(null); // { deviceId, record? } — record present = editing
   const [historyFor, setHistoryFor] = useState(null); // deviceId — service history list
-  const [addWorkFor, setAddWorkFor] = useState(null);
+  const [addWorkFor, setAddWorkFor] = useState(null);   // an asset id, or "__place" for a job on a room or building
+  const [workPlace, setWorkPlace] = useState(null);     // where a new job is, when raised from a place (Locations)
   const [workPrefill, setWorkPrefill] = useState(null);
   const [showHealth, setShowHealth] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -497,6 +498,8 @@ export function MainApp() {
   const currentUserRef = useRef(null); currentUserRef.current = currentUser?.name || null;
   // Your role: with logins, the one your admin gave you (the database enforces it); without, your profile's.
   const role = CLOUD ? normaliseRole(CLOUD.org.role) : normaliseRole(currentUser?.role || "admin");
+  // Engineers see no money (Phase 1 decision): set before anything below formats an amount.
+  const hideMoney = !seesMoney(role); set_ACTIVE_HIDE_MONEY(hideMoney);
   const readOnly = isReadOnly(role);
   // Two permissions that are separate from being able to edit a screen:
   const canManage = !readOnly && canManageAssets(role);   // add, delete and restructure assets
@@ -520,7 +523,8 @@ export function MainApp() {
   const locArchivedDevices = useMemo(() => locAllDevices.filter((d) => d.archived), [locAllDevices]);
   const locDeviceIds = useMemo(() => new Set(locAllDevices.map((d) => d.id)), [locAllDevices]);
   const locServices = useMemo(() => services.filter((s) => locDeviceIds.has(s.deviceId)), [services, locDeviceIds]);
-  const locWorks = useMemo(() => works.filter((w) => locDeviceIds.has(w.deviceId)), [works, locDeviceIds]);
+  // a site's jobs: those on its assets, and those on a room or building there with no asset (round 30.4)
+  const locWorks = useMemo(() => works.filter((w) => locDeviceIds.has(w.deviceId) || (!w.deviceId && w.locationId && w.locationId === selectedLocationId)), [works, locDeviceIds, selectedLocationId]);
   const locSuppliers = useMemo(() => suppliers.filter((s) => s.locationId === selectedLocationId), [suppliers, selectedLocationId]);
   const locBudgets = useMemo(() => budgets.filter((b) => b.locationId === selectedLocationId), [budgets, selectedLocationId]);
   const locBudgetLines = useMemo(() => budgetLines.filter((b) => b.locationId === selectedLocationId), [budgetLines, selectedLocationId]);
@@ -554,7 +558,7 @@ export function MainApp() {
       if (!cap) return;
       let spent = 0;
       locServices.forEach((s) => { if (catOf[s.deviceId] === cat && new Date(s.date).getFullYear() === yr) spent += Number(s.cost) || 0; });
-      locWorks.forEach((w) => { if (catOf[w.deviceId] === cat && w.budgetType !== "non_controllable" && ["approved", "in_progress", "completed"].includes(w.status) && new Date(w.dateRaised).getFullYear() === yr) spent += Number(w.quoteAmount) || 0; });
+      locWorks.forEach((w) => { if ((catOf[w.deviceId] || "maintenance") === cat && w.budgetType !== "non_controllable" && ["approved", "in_progress", "completed"].includes(w.status) && new Date(w.dateRaised).getFullYear() === yr) spent += Number(w.quoteAmount) || 0; });
       locBudgetLines.forEach((l) => { if (l.category === cat && l.actualAmount != null && !isMirrored(l) && new Date(l.date).getFullYear() === yr) spent += Number(l.actualAmount) || 0; });
       locSuppliers.forEach((s) => { if (s.category === cat) spent += s.costFrequency === "annual" ? Number(s.costAmount) || 0 : (Number(s.costAmount) || 0) * 12; });
       const pct = Math.round((spent / cap) * 100);
@@ -585,13 +589,13 @@ export function MainApp() {
       if (!w.quoteValidUntil || !["quoted", "requested"].includes(w.status)) return;
       const n = daysUntil(w.quoteValidUntil);
       if (n === null || n > 7) return;
-      out.push({ key: `qx-${w.id}`, tone: n < 0 ? "warn" : "info", title: n < 0 ? `Quote expired: ${devMap[w.deviceId]?.name || "work"}` : `Quote expires in ${n} day${n === 1 ? "" : "s"}: ${devMap[w.deviceId]?.name || "work"}`, detail: `${gbp(w.quoteAmount)} — ${w.description}`, tab: "works" });
+      out.push({ key: `qx-${w.id}`, tone: n < 0 ? "warn" : "info", title: n < 0 ? `Quote expired: ${jobWhat(w, devMap, { buildings, spaces })}` : `Quote expires in ${n} day${n === 1 ? "" : "s"}: ${jobWhat(w, devMap, { buildings, spaces })}`, detail: `${gbp(w.quoteAmount)} — ${w.description}`, tab: "works" });
     });
     // Reactive works past their target completion date.
     locWorks.forEach((w) => {
       const sla = workSla(w);
       if (!sla || sla.done || !sla.breached) return;
-      out.push({ key: `sla-${w.id}`, tone: w.priority === "high" ? "danger" : "warn", title: `Work overdue: ${devMap[w.deviceId]?.name || "service"}`, detail: `${w.description} · target was ${fmtDate(sla.deadline)}`, tab: "works" });
+      out.push({ key: `sla-${w.id}`, tone: w.priority === "high" ? "danger" : "warn", title: `Work overdue: ${jobWhat(w, devMap, { buildings, spaces })}`, detail: `${w.description} · target was ${fmtDate(sla.deadline)}`, tab: "works" });
     });
     // Asset lifecycle: flag assets reaching the end of their expected life.
     locDevices.forEach((d) => {
@@ -886,7 +890,8 @@ export function MainApp() {
   }, [alerts, locMeters, locReadings, locSpares, locKeys, locReminders, locSuppliers, locIncidents, locProjects, faultsByDevice, locDevices, locServices, locPermits, locInvoices, locPOs, locOutlets, locWaterReadings, locTraining, locDrills, settings.siteDocs, settings.logDefs, logEntries, asbestos, settings.auditTemplates, settings.nextDrill, settings.requiredCourses, locAudits, actions, spaces, weatherTick, locations, coshh, equipment, visitSubmissions, keyDates, locPOs, locInvoices, locWaste, carPark, shutdowns, locOutlets, isolations]);
   const hiddenGroups = display.hiddenAlertGroups || [];
   // Only notifications about areas this role has (an engineer isn't told about invoices to approve).
-  const roleAlerts = useMemo(() => allAlerts.filter((a) => canSeeArea(role, String(alertTarget(a)).split(".")[0])), [allAlerts, role]);
+  // only alerts for the areas this role has; no quote or money alerts for roles that don't see money
+  const roleAlerts = useMemo(() => allAlerts.filter((a) => canSeeArea(role, String(alertTarget(a)).split(".")[0]) && !(hideMoney && /^(ap-|oq-|qx-|qa-|qd-|bud|po|iv|inv)/.test(String(a.key)))), [allAlerts, role, hideMoney]);
   const visibleAlerts = useMemo(() => roleAlerts.filter((a) => !(snoozed[a.key] && snoozed[a.key] >= todayISO)).filter((a) => a.tone === "danger" || !hiddenGroups.includes(alertGroup(a.key))), [allAlerts, snoozed, todayISO, hiddenGroups.join(",")]);
   const snoozedCount = roleAlerts.length - visibleAlerts.length;
   // Remember the last services opened on this device (for "Recently opened" on Home).
@@ -1167,7 +1172,10 @@ export function MainApp() {
   function saveCostCodes(list) { persist.settings({ ...settings, costCodes: list }); }
   function saveRecyclingTarget(v) { persist.settings({ ...settings, recyclingTarget: { ...(settings.recyclingTarget || {}), [selectedLocationId]: v === "" ? null : Number(v) } }); }
   function savePoLimit(v) { persist.settings({ ...settings, poApprovalLimit: v === "" ? null : Number(v) }); }
-  function duplicateWork(w) { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }
+  function duplicateWork(w) { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); if (w.deviceId) setAddWorkFor(w.deviceId); else { setWorkPlace({ buildingId: w.buildingId || "", floorId: w.floorId || "", spaceId: w.spaceId || "" }); setAddWorkFor("__place"); } }
+  // a job on a room, floor or building with no asset (Phase 1 decision, round 30.4)
+  function raiseJobAt(place) { setWorkPrefill(null); setWorkPlace(place || null); setAddWorkFor("__place"); }
+  const siteHasPlaces = buildings.some((b) => b.locationId === selectedLocationId) || spaces.some((x) => x.locationId === selectedLocationId);
   function invoiceFromWork(w) {
     const number = window.prompt(`Invoice number for "${String(w.description).slice(0, 40)}" (${gbp(w.finalCost ?? w.quoteAmount)}):`, ""); if (number === null) return;
     const po = w.poNumber ? purchaseOrders.find((x) => x.number === w.poNumber) : null;   // link the job's PO, so the invoice shows against it
@@ -1177,7 +1185,7 @@ export function MainApp() {
   function poFromWork(w) {
     const nums = purchaseOrders.map((p) => Number(String(p.number).match(/(\d+)\s*$/)?.[1])).filter((n) => !isNaN(n));
     const number = `PO-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, "0")}`;
-    poOps.save({ number, supplierId: w.supplierId || null, description: `${deviceById[w.deviceId]?.name || ""}: ${w.description}`, value: Number(w.quoteAmount) || 0, date: new Date().toISOString().slice(0, 10), status: settings.poApprovalLimit != null && Number(w.quoteAmount) > settings.poApprovalLimit ? "awaiting" : "open" });
+    poOps.save({ number, supplierId: w.supplierId || null, description: `${jobWhat(w, deviceById, { buildings, spaces })}: ${w.description}`, value: Number(w.quoteAmount) || 0, date: new Date().toISOString().slice(0, 10), status: settings.poApprovalLimit != null && Number(w.quoteAmount) > settings.poApprovalLimit ? "awaiting" : "open" });
     updateWork(w.id, { poNumber: number });
     showToast(`${number} raised`, settings.poApprovalLimit != null && Number(w.quoteAmount) > settings.poApprovalLimit ? "Over the approval limit — waiting for approval" : "Linked to the job");
   }
@@ -1260,7 +1268,7 @@ export function MainApp() {
   function convertWorkToProject(work) {
     const dev = deviceById[work.deviceId];
     const pid = uid();
-    persist.projects([{ id: pid, locationId: selectedLocationId, name: `${dev?.name ? `${dev.name}: ` : ""}${String(work.description).slice(0, 60)}`, status: "idea", budget: Number(work.quoteAmount) || 0, spent: 0, deviceIds: work.deviceId ? [work.deviceId] : [], supplierId: work.supplierId || null, notes: `From reactive work raised ${fmtDate(work.dateRaised)}:\n${work.description}`, milestones: [], by: currentUser?.name, at: new Date().toISOString() }, ...projects]);
+    persist.projects([{ id: pid, locationId: selectedLocationId, name: `${dev?.name ? `${dev.name}: ` : work.placeName ? `${work.placeName}: ` : ""}${String(work.description).slice(0, 60)}`, status: "idea", budget: Number(work.quoteAmount) || 0, spent: 0, deviceIds: work.deviceId ? [work.deviceId] : [], supplierId: work.supplierId || null, notes: `From reactive work raised ${fmtDate(work.dateRaised)}:\n${work.description}`, milestones: [], by: currentUser?.name, at: new Date().toISOString() }, ...projects]);
     persist.works(works.map((w) => w.id === work.id ? { ...w, projectId: pid, comments: [...(w.comments || []), { text: "Turned into a project", by: currentUser?.name || "Unknown", at: new Date().toISOString() }] } : w));
     setWorksView("projects");
     showToast("Project created from work", dev?.name);
@@ -1657,8 +1665,8 @@ export function MainApp() {
       const dev = deviceById[id]; if (!dev) return;
       names.push(dev.name);
       const visitId = uid();
-      const cost = useBudgetCost ? Number(dev.budgetPerVisit) || 0 : 0;
-      nextServices = [{ id: visitId, deviceId: id, name: `${(CATEGORY_META[dev.serviceCategory] || CATEGORY_META.maintenance).label} visit`, date, technician, supplierId: dev.supplierId || null, notes, cost, loggedBy: currentUser?.name, loggedAt: now, bulk: true }, ...nextServices];
+      const cost = useBudgetCost && !hideMoney ? Number(dev.budgetPerVisit) || 0 : 0;
+      nextServices = [{ id: visitId, deviceId: id, name: `${(CATEGORY_META[dev.serviceCategory] || CATEGORY_META.maintenance).label} visit`, date, technician, supplierId: dev.supplierId || null, notes, cost, ...(hideMoney ? { costPending: true } : {}), loggedBy: currentUser?.name, loggedAt: now, bulk: true }, ...nextServices];
       const due = dev.nextServiceDate || date;
       const twoWeeksBefore = addDays(date, -14);
       const anchor = due > twoWeeksBefore ? due : twoWeeksBefore;
@@ -1719,6 +1727,7 @@ export function MainApp() {
   const [pendingJobFor, setPendingJobFor] = useState(null);
   function startJob() {
     if (locDevices.length) { setAddWorkFor(locDevices[0].id); return; }
+    if (siteHasPlaces) { raiseJobAt(null); return; }   // no assets yet, but rooms or buildings: the job can be on one of those
     if (!selectedLocationId) { showToast("Choose a site first"); setShowLocationPicker(true); return; }
     if (!canManage) { showToast("This site has no assets yet", "Ask an FM manager or coordinator to add them, then you can raise jobs."); return; }
     if (!window.confirm("This site has no services yet, and jobs are raised against a service.\n\nCreate a \"General building\" service so you can raise jobs now? (You can add proper services later.)")) { setTab("devices"); return; }
@@ -2071,8 +2080,8 @@ export function MainApp() {
     const incidentId = workPrefill?.incidentId || null;
     persist.works([{ ...work, id, incidentId, loggedBy: currentUser?.name, loggedAt: new Date().toISOString() }, ...works]);
     if (incidentId) persist.incidents(incidents.map((i) => i.id === incidentId ? { ...i, workId: id } : i));
-    setAddWorkFor(null); setWorkPrefill(null);
-    showToast("Extra work added", `${deviceById[work.deviceId]?.name || ""} — ${String(work.description || "").slice(0, 60)}`);
+    setAddWorkFor(null); setWorkPrefill(null); setWorkPlace(null);
+    showToast("Extra work added", `${jobWhat(work, deviceById, { buildings, spaces })} — ${String(work.description || "").slice(0, 60)}`);
   }
   function updateWorkStatus(id, status) { updateWork(id, { status }); }
   function convertWorkToPlanLine(work) {
@@ -2094,6 +2103,7 @@ export function MainApp() {
       subCategory: dev?.subCategory || "", locationId: dev?.locationId || selectedLocationId, supplierId: work.supplierId || dev?.supplierId || null,
       checklist: [], serviceIntervalMonths: null, nextServiceDate: new Date().toISOString().slice(0, 10), lastServiceDate: null,
       budgetPerVisit: Number(work.quoteAmount) || 0, sourceWorkId: work.id,
+      ...(dev ? {} : { buildingId: work.buildingId || null, floorId: work.floorId || null, spaceId: work.spaceId || null }),   // a job on a room or building: the new service sits there
     }]);
     queuePlanCheck([newId]);
     persist.works(works.map((w) => w.id === work.id ? { ...w, convertedTo: [...(w.convertedTo || []), { type: "service", id: newId, at: new Date().toISOString(), by: currentUser?.name }] } : w));
@@ -2214,8 +2224,8 @@ export function MainApp() {
     const extra = patch.status === "completed" && w.status !== "completed" ? { completedAt: today } : patch.status && patch.status !== "completed" ? { completedAt: null } : {};
     const next = withApprovalRules(w, { ...w, ...patch, ...extra, ...holdChange(w, patch.status, today) });
     const problem = approvalProblem(w, next);
-    if (problem) { showToast("Not changed", problem); return false; }
-    if (patch.status === undefined && next.status === "quoted" && w.status !== "quoted") showToast("Quote needs approving", `${gbp(next.quoteAmount)} is over what was approved or the ${gbp(approvalLimit)} limit`);
+    if (problem) { tellUser("Not changed", problem); return false; }
+    if (patch.status === undefined && next.status === "quoted" && w.status !== "quoted") showToast("Quote needs approving", hideMoney ? "It's over the approval limit, so it waits for approval." : `${gbp(next.quoteAmount)} is over what was approved or the ${gbp(approvalLimit)} limit`, true);
     persist.works(works.map((x) => (x.id === id ? next : x)));
     return true;
   }
@@ -2226,7 +2236,7 @@ export function MainApp() {
     if (w.status === "on_hold" && w.heldSince) return { heldSince: null, heldDays: (Number(w.heldDays) || 0) + Math.max(0, Math.round((new Date(today) - new Date(w.heldSince)) / 86400000)) };
     return {};
   }
-  function deleteWork(id) { const w = works.find((x) => x.id === id); if (w) toTrash({ type: "work", name: `${deviceById[w.deviceId]?.name || "Work"} — ${String(w.description).slice(0, 50)}`, payload: { work: w } }); withUndo(() => { persist.works(works.filter((x) => x.id !== id)); showToast("Extra work deleted", w?.description?.slice(0, 60)); }); }
+  function deleteWork(id) { const w = works.find((x) => x.id === id); if (w) toTrash({ type: "work", name: `${jobWhat(w, deviceById, { buildings, spaces })} — ${String(w.description).slice(0, 50)}`, payload: { work: w } }); withUndo(() => { persist.works(works.filter((x) => x.id !== id)); showToast("Extra work deleted", w?.description?.slice(0, 60)); }); }
   function saveSupplier(supplier) {
     if (supplier.id) {
       persist.suppliers(suppliers.map((s) => s.id === supplier.id ? { ...s, ...supplier } : s));
@@ -2504,8 +2514,8 @@ export function MainApp() {
     [invToApprove, "invoices to approve", (i) => i.amount, goFinance],
   ].filter(([l]) => l.length).map(([l, label, f, go]) => ({ label: l.length === 1 ? label.replace(/^quotes/, "quote").replace(/^purchase orders/, "purchase order").replace(/^invoices/, "invoice") : label, n: l.length, amount: sum(l, f), go }));
   const approvalItems = [
-    ...quotesToApprove.map((w) => ({ key: `qa-${w.id}`, tone: "warn", title: `Approve quote: ${w.description}`, sub: `${deviceById[w.deviceId]?.name || ""}${supplierById[w.supplierId] ? ` · ${supplierById[w.supplierId].name}` : ""} · over your ${gbp(approvalThreshold)} limit`, amount: w.quoteAmount, go: () => openJob(w.id) })),
-    ...quotesToDecide.map((w) => ({ key: `qd-${w.id}`, tone: "info", title: `Quote: ${w.description}`, sub: [deviceById[w.deviceId]?.name, supplierById[w.supplierId]?.name].filter(Boolean).join(" · "), amount: w.quoteAmount, go: () => openJob(w.id) })),
+    ...quotesToApprove.map((w) => ({ key: `qa-${w.id}`, tone: "warn", title: `Approve quote: ${w.description}`, sub: `${jobWhat(w, deviceById, { buildings, spaces })}${supplierById[w.supplierId] ? ` · ${supplierById[w.supplierId].name}` : ""} · over your ${gbp(approvalThreshold)} limit`, amount: w.quoteAmount, go: () => openJob(w.id) })),
+    ...quotesToDecide.map((w) => ({ key: `qd-${w.id}`, tone: "info", title: `Quote: ${w.description}`, sub: [jobWhat(w, deviceById, { buildings, spaces }), supplierById[w.supplierId]?.name].filter(Boolean).join(" · "), amount: w.quoteAmount, go: () => openJob(w.id) })),
     ...posAwaiting.map((p) => ({ key: `po-${p.id}`, tone: "warn", title: `Approve PO ${p.number}`, sub: [p.description, supplierById[p.supplierId]?.name].filter(Boolean).join(" · "), amount: p.value, go: goFinance })),
     ...invToApprove.map((i) => ({ key: `in-${i.id}`, tone: "warn", title: `Approve invoice ${i.number}`, sub: [supplierById[i.supplierId]?.name, i.date && fmtDate(i.date)].filter(Boolean).join(" · "), amount: i.amount, go: goFinance })),
   ];
@@ -2715,7 +2725,7 @@ export function MainApp() {
                 expectedToday={todayItems.bookings} onSignOutAll={signOutAll} locationId={selectedLocationId}
                 complianceMonthAgo={complianceMonthAgo}
                 onTvMode={() => setShowTv(true)} onEmergencySheet={printEmergencySheet} onTodaySheet={printTodaySheet} onSnoozeReminder={snoozeReminder}
-                monthBudget={(() => { const ym = new Date().toISOString().slice(0, 7); const planned = locBudgetLines.filter((l) => String(l.date).startsWith(ym) && l.status !== "skipped").reduce((a, l) => a + (Number(l.amount) || 0), 0); const spent = locServices.filter((v) => String(v.date).startsWith(ym)).reduce((a, v) => a + (Number(v.cost) || 0), 0) + locWorks.filter((w) => w.status === "completed" && !w.warranty && String(w.completedAt || "").startsWith(ym)).reduce((a, w) => a + (Number(w.finalCost ?? w.quoteAmount) || 0), 0); return { planned, spent, label: new Date().toLocaleDateString("en-GB", { month: "long" }) + " budget", go: () => setTab("budget") }; })()}
+                monthBudget={hideMoney ? null : (() => { const ym = new Date().toISOString().slice(0, 7); const planned = locBudgetLines.filter((l) => String(l.date).startsWith(ym) && l.status !== "skipped").reduce((a, l) => a + (Number(l.amount) || 0), 0); const spent = locServices.filter((v) => String(v.date).startsWith(ym)).reduce((a, v) => a + (Number(v.cost) || 0), 0) + locWorks.filter((w) => w.status === "completed" && !w.warranty && String(w.completedAt || "").startsWith(ym)).reduce((a, w) => a + (Number(w.finalCost ?? w.quoteAmount) || 0), 0); return { planned, spent, label: new Date().toLocaleDateString("en-GB", { month: "long" }) + " budget", go: () => setTab("budget") }; })()}
                 handover={(settings.handover || []).filter((h) => h.locationId === selectedLocationId)} onAddHandover={ACTIVE_CAN_EDIT ? addHandover : null}
                 waitingOnMe={[
                   [locPOs.filter((p) => p.status === "awaiting").length, "POs to approve", () => { setTab("budget"); saveNav({ budgetView: "finance" }); }],
@@ -2724,7 +2734,7 @@ export function MainApp() {
                   [locWorks.filter((w) => w.supplierDone && w.status !== "completed").length, "Jobs the supplier says are done", () => setTab("works")],
                   [locWorks.filter((w) => w.status === "requested" && w.source === "request").length, "New requests to review", () => setTab("works")],
                   [visitSubmissions.filter((x) => x.locationId === selectedLocationId).length, "Engineer reports to accept", () => setShowSubmissions(true)],
-                ].filter(([n]) => n > 0).map(([n, label, go]) => ({ n, label, go }))}
+                ].filter(([n, label]) => n > 0 && !(hideMoney && /^(POs|Invoices|Quotes)/.test(label))).map(([n, label, go]) => ({ n, label, go }))}
                 doneToday={{ visits: locServices.filter((v) => v.date === todayISO && !v.skipped).length, jobs: locWorks.filter((w) => w.status === "completed" && String(w.completedAt || "").startsWith(todayISO)).length, readings: locReadings.filter((r) => r.date === todayISO).length, checks: logEntries.filter((e) => e.locationId === selectedLocationId && e.date === todayISO).length }}
                 recentServices={recentIds.map((id) => deviceById[id]).filter((d) => d && d.locationId === selectedLocationId && !d.archived).slice(0, 5)} onOpenService={(id) => setHistoryFor(id)}
                 expected={(settings.expectedVisitors || []).filter((x) => x.locationId === selectedLocationId && x.date >= todayISO).sort((a, b) => a.date.localeCompare(b.date))} onAddExpected={addExpected} onRemoveExpected={removeExpected} onArriveExpected={arriveExpected}
@@ -2806,6 +2816,7 @@ export function MainApp() {
           spendByDevice={(() => { const yr = String(new Date().getFullYear()); const m = {}; locServices.forEach((v) => { if (String(v.date).startsWith(yr)) m[v.deviceId] = (m[v.deviceId] || 0) + (Number(v.cost) || 0); }); locWorks.forEach((w) => { if (w.status === "completed" && !w.warranty && String(w.completedAt || w.dateRaised).startsWith(yr)) m[w.deviceId] = (m[w.deviceId] || 0) + (Number(w.finalCost ?? w.quoteAmount) || 0); }); return m; })()}
           onChooseSite={(id) => { const l = locations.find((x) => x.id === id); if (l) chooseLocation(l.countryId, l.id); }} onOpenAsset={(id) => setHistoryFor(id)}
           canManageAssets={canManage && !readOnly} onAddAsset={(place) => setDeviceModal({ prefill: { locationId: selectedLocationId, ...place } })} onMoveAssets={moveAssetsTo}
+          onRaiseJob={canWrite(role, SKEYS.works) && !readOnly ? (place) => raiseJobAt({ buildingId: place.buildingId || "", floorId: place.floorId || "", spaceId: place.spaceId || "" }) : null} onOpenJob={(w) => openJob(w.id)}
           onSaveBuilding={buildingOps.save} onDeleteBuilding={buildingOps.remove} onSaveSpace={saveSpace} onDeleteSpace={spaceOps.remove} onOrganise={organiseIntoRooms} />
       );
       case "assets.register": return (
@@ -3048,8 +3059,8 @@ export function MainApp() {
           onUpdateVisitBudget={updateVisitBudget} onDeleteVisitBudget={deleteVisitBudget}
           onSyncBudget={() => syncDeviceToBudgetPlan(historyFor)} />
       )}
-      {addWorkFor && locDevices.length > 0 && (
-        <AddWorkModal siteId={selectedLocationId} buildings={buildings} spaces={spaces} jobTemplates={settings.jobTemplates || null} onSaveJobTemplates={saveJobTemplates} openWorks={locWorks.filter((w) => !["completed", "rejected"].includes(w.status))} prefill={workPrefill} devices={locDevices} suppliers={locSuppliers} defaultDeviceId={addWorkFor} onClose={() => { setAddWorkFor(null); setWorkPrefill(null); }} onSave={addWork} />
+      {addWorkFor && (locDevices.length > 0 || siteHasPlaces) && (
+        <AddWorkModal defaultPlace={workPlace} siteId={selectedLocationId} buildings={buildings} spaces={spaces} jobTemplates={settings.jobTemplates || null} onSaveJobTemplates={saveJobTemplates} openWorks={locWorks.filter((w) => !["completed", "rejected"].includes(w.status))} prefill={workPrefill} devices={locDevices} suppliers={locSuppliers} defaultDeviceId={addWorkFor} onClose={() => { setAddWorkFor(null); setWorkPrefill(null); setWorkPlace(null); }} onSave={addWork} />
       )}
       {quickLog && (
         <QuickLogModal devices={locDevices} suppliers={locSuppliers} initialDeviceId={quickLog.deviceId} currentUserName={currentUser?.name}

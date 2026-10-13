@@ -1,4 +1,4 @@
-# Going live with logins — round 30.3
+# Going live with logins — round 30.4
 
 > **Phase 1 is in review.** Review it on a separate test copy first: the Phase 1 review checklist has the steps. Only follow this guide for your live app once Phase 1 is approved.
 
@@ -106,6 +106,8 @@ Things to know about roles:
   - Only someone with the permission can change the approval limit.
   - A new role starts without the permission. The database applies a change straight away; the person's screens update the next time they open or refresh the app.
 - **Assets are shaped by managers.** Owners, admins, FM managers and coordinators add, delete and restructure assets. Engineers work on the ones that exist.
+- **Engineers see no prices.** Engineers don't see or type quotes, costs, budgets, spend or prices anywhere (screens, exports, printouts); the office adds them. The database refuses an engineer's change to a price or cost. Visits an engineer logs show **Cost to add** in Visit history until the office fills it in.
+- **Jobs can be on a room or building.** Raise a job → **No particular asset — the room or building itself**, then choose where. The supplier is assigned on the job later, when it's quoted.
 - **Each person gets their own version of the app.** Home and the menu change with the role. For example, an engineer gets big Scan / Log / Report buttons, and finance gets the approval queue.
 - **The database decides per list.** An engineer can't change a budget even by calling the database directly. Within a list it can't tell one record from another, so an engineer who may log visits may also edit other visits. Per-record rules come with the move to proper tables (see ROADMAP.md).
 - **Contractors don't need a login.** Send them their job link: People → Suppliers & contractors → **Send a job link**. They only ever see their own jobs.

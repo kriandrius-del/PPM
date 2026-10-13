@@ -6,7 +6,7 @@ import { Activity, BellRing, BookOpen, CalendarClock, Camera, Car, CheckCircle2,
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ConfirmDeleteButton, ConfirmTextDelete, EmptyState, ExportButton, Field, MetricBlock, Modal, PhotoStrip, PrimaryButton, Select, TextArea, TextInput, ToggleButton, inputStyle } from "../components/ui.jsx";
 import { DEFAULT_CO2, INCIDENT_TYPES, INVESTIGATION_STEPS, METER_TYPES, MONTH_LABELS, PERMIT_PRECAUTIONS, PERMIT_TYPES, WASTE_STREAMS } from "../lib/constants.js";
-import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE } from "../lib/globals.js";
+import { ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_HIDE_MONEY } from "../lib/globals.js";
 import { buildBlankAudit, buildKeyRegister, openPrintReport, printPermit, tableHtml } from "../lib/reports.js";
 import { appBaseUrl, orgParam, compressImage, daysUntil, escapeHtml, fmtDate, gbp, meterStats, parseDelimited, qrImageUrl, scoreTone, toISO, uid } from "../lib/utils.js";
 import { xlsxToText } from "../lib/excelTemplate.js";
@@ -48,7 +48,7 @@ export function MetersTab({ locationName = "", onImportReadings, meters, reading
       </div>
       {(ytd.co2 > 0 || ytd.priced) && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          {ytd.priced && <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Energy & water cost {yr}</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(ytd.cost)}</div></div>}
+          {ytd.priced && !ACTIVE_HIDE_MONEY && <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>Energy & water cost {yr}</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(ytd.cost)}</div></div>}
           <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "9px 11px" }}><div style={{ fontSize: 11, color: "var(--ok)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><LeafIcon size={11} /> Carbon {yr}</div><div style={{ fontSize: 16, fontWeight: 750, fontFamily: "'IBM Plex Mono', monospace" }}>{ytd.co2 >= 1000 ? `${(ytd.co2 / 1000).toFixed(2)} t` : `${Math.round(ytd.co2)} kg`} CO₂e</div></div>
         </div>
       )}
@@ -74,7 +74,7 @@ export function MetersTab({ locationName = "", onImportReadings, meters, reading
               </div>
               {st.lastP && (m.tariff || (m.co2Factor ?? DEFAULT_CO2[m.type])) ? (
                 <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6, fontWeight: 600 }}>
-                  Last period: {m.tariff ? `${gbp(st.lastP.used * Number(m.tariff))} · ` : ""}{fmt(st.lastP.used * Number(m.co2Factor ?? DEFAULT_CO2[m.type] ?? 0))} kg CO₂e
+                  Last period: {m.tariff && !ACTIVE_HIDE_MONEY ? `${gbp(st.lastP.used * Number(m.tariff))} · ` : ""}{fmt(st.lastP.used * Number(m.co2Factor ?? DEFAULT_CO2[m.type] ?? 0))} kg CO₂e
                 </div>
               ) : null}
               {Number(m.annualTarget) > 0 && (() => {
@@ -168,7 +168,7 @@ export function MeterModal({ existing, suppliers, onClose, onSave }) {
           <Field label={`Yearly target (${unit || "units"})`}><TextInput type="number" min="0" value={annualTarget} onChange={(e) => setAnnualTarget(e.target.value)} placeholder="optional" /></Field>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <Field label={`Price per ${unit || "unit"} (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" step="0.0001" min="0" value={tariff} onChange={(e) => setTariff(e.target.value)} placeholder="e.g. 0.245" /></Field>
+          {!ACTIVE_HIDE_MONEY && <Field label={`Price per ${unit || "unit"} (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" step="0.0001" min="0" value={tariff} onChange={(e) => setTariff(e.target.value)} placeholder="e.g. 0.245" /></Field>}
           <Field label={`kg CO₂e per ${unit || "unit"}`}><TextInput type="number" step="0.001" min="0" value={co2} onChange={(e) => setCo2(e.target.value)} /></Field>
         </div>
         <span style={{ fontSize: 10.5, color: "var(--faint)", marginTop: -6 }}>Carbon defaults are approximate UK factors (electricity 0.207 kg/kWh, gas 2.04 kg/m³, water 0.34 kg/m³) — update to your supplier's or the latest government figures.</span>
@@ -301,9 +301,9 @@ export function SparesView({ onRaisePO, onStockTake, spares, suppliers, devices,
       </div>
       {spares.length > 0 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
-          <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }}>{spares.length} items · stock value {gbp(value)}{lowList.length ? <b style={{ color: "var(--warn)" }}> · {lowList.length} low</b> : null}</span>
+          <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }}>{spares.length} items{ACTIVE_HIDE_MONEY ? "" : ` · stock value ${gbp(value)}`}{lowList.length ? <b style={{ color: "var(--warn)" }}> · {lowList.length} low</b> : null}</span>
           {ACTIVE_CAN_EDIT && onStockTake && <button onClick={() => setTaking(true)} style={{ background: "var(--card-hi)", color: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Stock take</button>}
-          {lowList.length > 0 && ACTIVE_CAN_EDIT && onRaisePO && <button onClick={() => onRaisePO(lowList)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Raise PO</button>}
+          {lowList.length > 0 && ACTIVE_CAN_EDIT && onRaisePO && !ACTIVE_HIDE_MONEY && <button onClick={() => onRaisePO(lowList)} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Raise PO</button>}
           {lowList.length > 0 && ACTIVE_CAN_EDIT && <button onClick={reorderEmail} style={{ background: "var(--warn-soft)", color: "var(--warn)", border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}><Mail size={12} /> Reorder</button>}
           <ExportButton label="CSV" filename="spares.csv" rows={[["Item", "Part no.", "Qty", "Unit", "Reorder at", "Store", "Unit cost", "Supplier"], ...spares.map((sp) => [sp.name, sp.partNo || "", sp.qty, sp.unit || "", sp.minQty ?? "", sp.store || "", sp.unitCost || "", suppliers.find((x) => x.id === sp.supplierId)?.name || ""])]} />
         </div>
@@ -367,7 +367,7 @@ export function SpareModal({ existing, suppliers, devices, onClose, onSave, onDe
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Order up to (optional)"><TextInput type="number" min="0" value={reorderQty} onChange={(e) => setReorderQty(e.target.value)} placeholder="e.g. 12" /></Field>
-          <Field label={`Unit cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} /></Field>
+          {!ACTIVE_HIDE_MONEY && <Field label={`Unit cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} /></Field>}
         </div>
         <Field label="Supplier">
           <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
@@ -382,7 +382,7 @@ export function SpareModal({ existing, suppliers, devices, onClose, onSave, onDe
             </div>
           </Field>
         )}
-        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), partNo: partNo.trim(), qty: existing ? existing.qty : Number(qty) || 0, unit: unit.trim(), minQty: minQty === "" ? null : Number(minQty), reorderQty: reorderQty === "" ? null : Number(reorderQty), store: store.trim(), unitCost: unitCost === "" ? null : Number(unitCost), supplierId: supplierId || null, deviceIds })}><CheckCircle2 size={15} /> Save</PrimaryButton>
+        <PrimaryButton onClick={() => name.trim() && onSave({ id: existing?.id, name: name.trim(), partNo: partNo.trim(), qty: existing ? existing.qty : Number(qty) || 0, unit: unit.trim(), minQty: minQty === "" ? null : Number(minQty), reorderQty: reorderQty === "" ? null : Number(reorderQty), store: store.trim(), unitCost: ACTIVE_HIDE_MONEY ? existing?.unitCost : unitCost === "" ? null : Number(unitCost), supplierId: supplierId || null, deviceIds })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this spare" onConfirm={() => onDelete(existing.id)} />}
         {existing?.log?.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -935,10 +935,10 @@ export function WasteView({ target = null, onSaveTarget, waste, suppliers, onSav
   const byStream = Object.keys(WASTE_STREAMS).map((k) => [k, ytd.filter((w) => w.stream === k).reduce((t, w) => t + (Number(w.weightKg) || 0), 0)]).filter(([, v]) => v > 0);
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: ACTIVE_HIDE_MONEY ? "1fr 1fr" : "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
         <MetricBlock label={`Waste ${yr}`} value={total >= 1000 ? `${(total / 1000).toFixed(2)} t` : `${Math.round(total)} kg`} />
         <MetricBlock label={target ? `Recycling (target ${target}%)` : "Recycling rate"} value={rate == null ? "—" : `${rate}%`} tone={rate == null ? undefined : target ? (rate >= target ? "ok" : "danger") : rate >= 60 ? "ok" : rate < 40 ? "danger" : undefined} />
-        <MetricBlock label="Cost" value={gbp(cost)} />
+        {!ACTIVE_HIDE_MONEY && <MetricBlock label="Cost" value={gbp(cost)} />}
       </div>
       {byStream.length > 0 && (
         <div style={{ display: "flex", height: 10, borderRadius: 5, overflow: "hidden", marginBottom: 4 }}>
@@ -1006,7 +1006,7 @@ export function WasteModal({ existing, suppliers, onClose, onSave, onDelete }) {
         {!supplierId && <Field label="Carrier name"><TextInput value={carrier} onChange={(e) => setCarrier(e.target.value)} /></Field>}
         <div style={{ display: "flex", gap: 8 }}>
           <Field label="Waste transfer note no."><TextInput value={wtn} onChange={(e) => setWtn(e.target.value)} /></Field>
-          <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
+          {!ACTIVE_HIDE_MONEY && <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>}
         </div>
         <PrimaryButton onClick={() => weightKg !== "" && onSave({ id: existing?.id, date, stream, weightKg: Number(weightKg), supplierId: supplierId || null, carrier: carrier.trim(), wtn: wtn.trim(), cost: cost === "" ? null : Number(cost) })}><CheckCircle2 size={15} /> Save</PrimaryButton>
         {existing && <ConfirmTextDelete label="Delete this record" onConfirm={() => onDelete(existing.id)} />}

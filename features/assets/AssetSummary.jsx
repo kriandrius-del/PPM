@@ -5,6 +5,7 @@ import { FileCheck, Gauge, Hammer, QrCode, ShieldCheck, Truck, Wrench, Flag } fr
 import { Breadcrumb, Btn, Kpi, Pill } from "../../components/ds.jsx";
 import { ASSET_STATUSES } from "./places.js";
 import { CRITICALITY, CONDITION_GRADES } from "../../lib/constants.js";
+import { ACTIVE_HIDE_MONEY } from "../../lib/globals.js";
 import { daysUntil, fmtDate, gbp } from "../../lib/utils.js";
 
 export function AssetSummary({ device, status, crumbs = [], supplier, stats = {}, compliance = [], meters = [], docs = [], canEdit, onLog, onJob, onQr, onSetStatus, onGoSupplier, onGoMeters }) {
@@ -33,7 +34,7 @@ export function AssetSummary({ device, status, crumbs = [], supplier, stats = {}
       <div className="fm-kpis">
         <Kpi label="Next maintenance" value={device.nextServiceDate ? new Date(device.nextServiceDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—"} tone={n !== null && n < 0 ? "danger" : undefined} sub={n === null ? "" : `${device.nextServiceDate.slice(0, 4)} · ${n < 0 ? `${-n} days overdue` : `in ${n} days`}`} />
         <Kpi label="Open jobs" value={stats.openJobs ?? 0} tone={stats.openJobs ? "warn" : undefined} />
-        <Kpi label={`Spend ${new Date().getFullYear()}`} value={gbp(stats.spentYear || 0)} sub={`${gbp(stats.spentLife || 0)} all time`} />
+        {!ACTIVE_HIDE_MONEY && <Kpi label={`Spend ${new Date().getFullYear()}`} value={gbp(stats.spentYear || 0)} sub={`${gbp(stats.spentLife || 0)} all time`} />}
         <Kpi label="Certificates" value={stats.certs ?? 0} sub={stats.lastCert ? `latest ${fmtDate(stats.lastCert)}` : "none on file"} />
       </div>
       <div className="fm-list">

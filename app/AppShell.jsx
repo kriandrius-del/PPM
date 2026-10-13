@@ -27,15 +27,33 @@ export function LiveChip({ state, onClick, compact = false }) {
 
 // While someone is typing on a touch screen, the bottom bar and the round + button step aside so the
 // on-screen keyboard never pushes them over the field being filled in.
+// Touch screens: while the on-screen keyboard is up, the bottom bar and + button step aside (html.fm-typing).
+// Only when someone taps into a field, or the keyboard is actually showing — a page that puts the cursor in a search
+// box by itself mustn't hide the navigation. When the keyboard goes away (even if the field keeps focus) they come back.
 function useTypingFlag() {
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia || !window.matchMedia("(pointer: coarse)").matches) return undefined;
     const editable = (t) => t && t.matches && t.matches("input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]), textarea, select, [contenteditable=true]");
-    let off = 0;
-    const onIn = (e) => { if (editable(e.target)) { clearTimeout(off); document.documentElement.classList.add("fm-typing"); } };
-    const onOut = (e) => { if (editable(e.target)) { clearTimeout(off); off = setTimeout(() => { if (!editable(document.activeElement)) document.documentElement.classList.remove("fm-typing"); }, 150); } };
+    const vv = window.visualViewport; const root = document.documentElement;
+    let maxH = Math.max(window.innerHeight, vv ? vv.height : 0); let lastW = window.innerWidth; let lastTouch = 0; let off = 0;
+    const keyboard = () => !!vv && vv.height < maxH - 150;
+    const set = (on) => root.classList.toggle("fm-typing", !!on);
+    const onTouch = () => { lastTouch = Date.now(); };
+    const onIn = (e) => { if (editable(e.target) && (Date.now() - lastTouch < 1500 || keyboard())) { clearTimeout(off); set(true); } };
+    const onOut = (e) => { if (editable(e.target)) { clearTimeout(off); off = setTimeout(() => { if (!editable(document.activeElement)) set(false); }, 150); } };
+    const onResize = () => {
+      if (window.innerWidth !== lastW) { lastW = window.innerWidth; maxH = window.innerHeight; }   // turned the device round
+      if (keyboard()) { if (editable(document.activeElement)) set(true); }
+      else { maxH = Math.max(maxH, window.innerHeight, vv ? vv.height : 0); if (root.classList.contains("fm-typing") && Date.now() - lastTouch > 1500) set(false); }
+    };
+    document.addEventListener("pointerdown", onTouch, true); document.addEventListener("touchstart", onTouch, true);
     document.addEventListener("focusin", onIn); document.addEventListener("focusout", onOut);
-    return () => { clearTimeout(off); document.removeEventListener("focusin", onIn); document.removeEventListener("focusout", onOut); document.documentElement.classList.remove("fm-typing"); };
+    vv?.addEventListener("resize", onResize); window.addEventListener("resize", onResize);
+    return () => {
+      clearTimeout(off); document.removeEventListener("pointerdown", onTouch, true); document.removeEventListener("touchstart", onTouch, true);
+      document.removeEventListener("focusin", onIn); document.removeEventListener("focusout", onOut);
+      vv?.removeEventListener("resize", onResize); window.removeEventListener("resize", onResize); root.classList.remove("fm-typing");
+    };
   }, []);
 }
 

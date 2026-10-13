@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { Calendar, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, Plus, Printer, Trash2 } from "lucide-react";
 import { CategoryBadge, EmptyState, Field, Modal, PrimaryButton, StatusDot, TextInput, ToggleButton } from "../components/ui.jsx";
 import { MONTH_LABELS, UK_BANK_HOLIDAYS, WEEKDAY_LABELS } from "../lib/constants.js";
-import { ACTIVE_CAN_EDIT, CATEGORY_META, emptyCatMap } from "../lib/globals.js";
+import { ACTIVE_CAN_EDIT, ACTIVE_HIDE_MONEY, CATEGORY_META, emptyCatMap } from "../lib/globals.js";
 import { downloadIcs } from "../lib/reports.js";
 import { addDays, currentBooking, dueStatus, fmtDate, gbp, getMonthGrid, inBlackout, toISODate, uid, weekStart } from "../lib/utils.js";
 import { BookingModal } from "./ServicesTab.jsx";
@@ -179,7 +179,7 @@ export function ScheduleCalendarTab({ onBook = null, onExportCalendar, onPrintLo
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Due dates in {new Date(cursorYear, cursorMonth, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })} ({monthDue.length}){(() => { const all = monthDue.map((x) => x.device || x).filter((d) => d && d.budgetPerVisit); const tot = all.reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); const booked = all.filter((d) => d.booking?.date).reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); return tot ? <span style={{ fontWeight: 500 }}> · {gbp(tot)} planned{booked ? `, ${gbp(booked)} booked` : ""}</span> : null; })()}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>Due dates in {new Date(cursorYear, cursorMonth, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })} ({monthDue.length}){(() => { const all = monthDue.map((x) => x.device || x).filter((d) => d && d.budgetPerVisit); const tot = all.reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); const booked = all.filter((d) => d.booking?.date).reduce((a, d) => a + (Number(d.budgetPerVisit) || 0), 0); return tot && !ACTIVE_HIDE_MONEY ? <span style={{ fontWeight: 500 }}> · {gbp(tot)} planned{booked ? `, ${gbp(booked)} booked` : ""}</span> : null; })()}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {monthDue.length === 0 && <div style={{ fontSize: 12.5, color: "var(--faint)" }}>Nothing due.</div>}
               {monthDue.map((d) => <DueRow key={d.id} device={d} onLogService={onLogService} onBook={onBook ? () => setBookFor(d) : undefined} onMove={ACTIVE_CAN_EDIT ? () => setMoving({ kind: "device", id: d.id, name: d.name, from: d.nextServiceDate }) : undefined} />)}
@@ -314,7 +314,7 @@ export function CompletedRow({ service, device, onEdit }) {
         <CheckCircle2 size={16} color="#2F855A" />
         <div>
           <div style={{ fontWeight: 650, fontSize: 13.5 }}>{service.name || (device ? device.name : "Service")}</div>
-          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{device ? device.name : "Unknown service"}{service.cost ? ` · ${gbp(service.cost)}` : ""}</div>
+          <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{device ? device.name : "Unknown service"}{service.cost && !ACTIVE_HIDE_MONEY ? ` · ${gbp(service.cost)}` : ""}</div>
         </div>
       </div>
       <ChevronRight size={15} color="#C0C6CC" />
@@ -416,7 +416,7 @@ export function CapacityView({ devices, tasks, visitBudgets, suppliers, services
                   {weeks.map((w) => { const k = `${r}|${w}`; const n = (grid[k] || []).length; return <td key={w}><button onClick={() => n && setOpenCell(openCell === k ? null : k)} style={{ ...cellStyle(n, n > limit), outline: openCell === k ? "2px solid #D97706" : "none" }}>{n || "·"}</button></td>; })}
                 </tr>
               ))}
-              {items.some((it) => it.amount > 0) && <tr><td style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", paddingTop: 6 }}>Planned £</td>{weeks.map((w) => { const v = items.filter((it) => weekStart(it.date) === w).reduce((a, it) => a + (it.amount || 0), 0); return <td key={w} style={{ fontSize: 10.5, textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", color: v ? "var(--text-2)" : "var(--faint)", paddingTop: 6 }}>{v ? gbp(v).replace(/\.00$/, "") : "—"}</td>; })}</tr>}
+              {!ACTIVE_HIDE_MONEY && items.some((it) => it.amount > 0) && <tr><td style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)", paddingTop: 6 }}>Planned £</td>{weeks.map((w) => { const v = items.filter((it) => weekStart(it.date) === w).reduce((a, it) => a + (it.amount || 0), 0); return <td key={w} style={{ fontSize: 10.5, textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", color: v ? "var(--text-2)" : "var(--faint)", paddingTop: 6 }}>{v ? gbp(v).replace(/\.00$/, "") : "—"}</td>; })}</tr>}
 </tbody>
             </table>
           </div>

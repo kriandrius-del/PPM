@@ -1,6 +1,16 @@
-# Feature map — round 30.3 (FMOS phase 1, review fixes)
+# Feature map — round 30.4 (FMOS phase 1, review decisions)
 
-**Status:** Phase 1 is in review. Round 30.3 fixes the snags from the first hands-on review; they need retesting, and the role, phone, QR and link checks are still to do. Phase 2 starts only after you approve Phase 1.
+**Status:** Phase 1 is in review. The owner retested and passed every 30.3 fix (13 Oct 2026). Round 30.4 builds the two decisions from the review; they need retesting. The owner's Roles & permissions and QR/link checks are deferred to the end of the project, before going live. Phase 2 starts only after Phase 1 is approved.
+
+**Round 30.4 changes** (the review's two decisions — no Phase 2 work):
+
+- **Engineers see no prices (decision d-eng-money):** for the engineer role, every amount shows as a dash and the money parts of each screen are left out — quotes, final costs, labour and materials prices, visit costs, budgets, spend, contract values, rates, POs and invoices, on screen, in search, notifications, CSV/Excel exports (money columns dropped) and printouts (amounts masked). Engineers don't type money either: no quote, cost, unit cost or PO fields; the office adds them.
+  - `ACTIVE_HIDE_MONEY` (lib/globals.js) is set from `seesMoney(role)` (app/permissions.js); `gbp()` returns "—"; `maskMoney()` masks amounts in free text (job comments, activity); `withoutMoneyColumns()` / `MONEY_HEADER` (lib/utils.js) drop money columns from `downloadCsv`, `buildStyledSheet` and `tableHtml`; `openPrintReport` masks the whole printout.
+  - The database enforces it: an engineer's new jobs, visits and spare parts leave `quoteAmount`, `finalCost`, `quotes`, `lines`, `approvedAmount` / `cost`, `costBreakdown` / `unitCost` empty, and an engineer can't change them (`ppm_list_guard`; app copy `MONEY_FIELDS` / `moneyRefusal`). Engineers still use spare parts on jobs and mark planned visits skipped.
+  - Visits an engineer logs are marked `costPending`; Visit history has a **Cost to add** filter for the office. New jobs with no quote start as **Requested**.
+  - Limit: the amounts are still in the data the app downloads to an engineer's device (hidden, not removed); per-field security comes with proper tables in Phases 2–3.
+- **Jobs on a room or building (decision d-job-no-asset):** Raise a job has **No particular asset — the room or building itself**; choose the building (and floor / room). The job has no asset (`deviceId` empty) and stores `locationId`, `buildingId`, `floorId`, `spaceId` and a `placeName`; the supplier is left empty and assigned on the job later. Locations has **Raise a job here** on every building, floor and room page and lists the jobs on each; jobs, search, alerts, reports, the supplier job link and budgets (counted under Maintenance) all handle them. Helpers: `isPlaceJob`, `jobSite`, `jobWhat` (features/assets/places.js).
+- **Smaller:** refusal reasons now show on screen for quote approval too; a read-only role opening a supplier gets its scorecard instead of an edit form.
 
 **Round 30.3 changes** (fixes from the Phase 1 review — no Phase 2 work):
 
@@ -72,6 +82,7 @@ What the app does, where each feature lives now, and where its code is. No featu
   - Rooms (`org:spaces`) gain `buildingId` and `floorId`.
   - Assets (`org:devices`) gain `spaceId` and an optional `statusOverride`.
   - Round 30.3: assets, meters (`org:meters`) and isolation points (`org:isolations`) can also carry `buildingId` / `floorId`; floor plans (`org:floorplans`) carry `buildingId` / `floorId`; shutdowns carry `typeOther`.
+  - Round 30.4: a job (`org:works`) may have no `deviceId`, with `locationId` + `buildingId` / `floorId` / `spaceId` + `placeName` instead; visits (`org:services`) may carry `costPending: true` (logged by an engineer, cost to be added by the office).
   - Personal `me:notif` holds which notifications you've read or marked done.
 - **Links:** an asset is in a room either through `spaceId` or because its Area text matches the room's name. **Assets → Locations → Organise into rooms** creates the rooms from Areas in one go.
 - **Roles:** the database decides who may change each list (`ppm_write_roles`), with a field-by-field rule for settings (`ppm_settings_check`). Saved rows can't be moved between lists, scopes or companies (`ppm_kv_freeze`).

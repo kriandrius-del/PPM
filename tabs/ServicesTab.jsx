@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, ArchiveRestore, ArrowUpDown, BookOpen, Calendar, CalendarCheck, CalendarPlus, Camera, CheckCircle2, CheckSquare, Copy, FileSpreadsheet, HardHat, LayoutGrid, List, Loader2, Mail, MapPin, MapPinned, MoreHorizontal, PauseCircle, Pencil, Pin, Printer, QrCode, Search, Send, ShieldAlert, ShieldCheck, Square, Tag, UserCheck, Users as UsersIcon, Wrench } from "lucide-react";
 import { Badge, CategoryBadge, ConfirmDeleteButton, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, Select, SignOffSection, TextArea, TextInput, ToggleButton } from "../components/ui.jsx";
-import { ACTIVE_CAN_EDIT, ACTIVE_CAN_MANAGE_ASSETS, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
+import { ACTIVE_HIDE_MONEY, ACTIVE_CAN_EDIT, ACTIVE_CAN_MANAGE_ASSETS, ACTIVE_CURRENCY_CODE, ACTIVE_USERS, CATEGORY_KEYS, CATEGORY_META, siteInfoText } from "../lib/globals.js";
 import { buildChaseEmail, printBulkStickers, printStickers } from "../lib/reports.js";
 import { addDays, addMonths, appBaseUrl, orgParam, compressImage, currentBooking, daysUntil, downloadBlob, dueStatus, fmtDate, gbp, isDueThisMonth, isDueWithin30, isOverdueService, loadJsQR, missingRequiredFields, qrImageUrl, relativeDays, replacementYear, uid } from "../lib/utils.js";
 import { CONDITION_GRADES, CRITICALITY, MONTH_NAMES } from "../lib/constants.js";
@@ -123,7 +123,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
           {(mineOnly || tagFilter || catFilter !== "all") && " Other filters are on too, so some may be hidden."}
         </div>
       )}
-      {dueFilter !== "archived" && (() => { const b = devices.filter((d) => annualCost(d) > 0); if (b.length < 2) return null; const tot = b.reduce((a, d) => a + annualCost(d), 0); return <div style={{ fontSize: 12, color: "var(--muted)", margin: "-4px 0 8px" }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(tot).replace(/\.00$/, "")}</b> a year across {b.length} budgeted service{b.length === 1 ? "" : "s"}{devices.length > b.length ? ` · ${devices.length - b.length} with no budget` : ""}</div>; })()}
+      {dueFilter !== "archived" && !ACTIVE_HIDE_MONEY && (() => { const b = devices.filter((d) => annualCost(d) > 0); if (b.length < 2) return null; const tot = b.reduce((a, d) => a + annualCost(d), 0); return <div style={{ fontSize: 12, color: "var(--muted)", margin: "-4px 0 8px" }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(tot).replace(/\.00$/, "")}</b> a year across {b.length} budgeted service{b.length === 1 ? "" : "s"}{devices.length > b.length ? ` · ${devices.length - b.length} with no budget` : ""}</div>; })()}
       {ACTIVE_CAN_EDIT && onBookTogether && dueFilter !== "archived" && (() => { const g = {}; devices.forEach((d) => { const n = daysUntil(d.nextServiceDate); if (d.supplierId && n !== null && n <= 45 && !currentBooking(d)) g[d.supplierId] = (g[d.supplierId] || 0) + 1; }); return Object.values(g).some((n) => n >= 2) ? (
         <button onClick={onBookTogether} style={{ width: "100%", marginTop: -6, marginBottom: 10, background: "var(--ok-soft)", color: "var(--ok)", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <CalendarCheck size={14} /> Book a supplier's due visits together on one day
@@ -151,8 +151,8 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
             <option value="supplier">Sort: supplier</option>
             <option value="area">Sort: area / room</option>
             <option value="criticality">Sort: most critical first</option>
-            <option value="cost">Sort: highest yearly budget first</option>
-            <option value="spent">Sort: most spent this year</option>
+            {!ACTIVE_HIDE_MONEY && <option value="cost">Sort: highest yearly budget first</option>}
+            {!ACTIVE_HIDE_MONEY && <option value="spent">Sort: most spent this year</option>}
             <option value="condition">Sort: worst condition first</option>
           </select>
         </label>
@@ -169,7 +169,7 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
         {catsPresent.length > 1 && (
           <select value={catFilter} onChange={(e) => onPrefs({ cat: e.target.value })} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, background: catFilter === "all" ? "var(--card)" : "var(--accent-soft)", fontSize: 12.5, padding: "7px 8px", fontFamily: "inherit", color: "var(--text)", outline: "none" }}>
             <option value="all">All categories</option>
-            <option value="__nobudget">No budget set ({devices.filter((d) => !(Number(d.budgetPerVisit) > 0)).length})</option>
+            {!ACTIVE_HIDE_MONEY && <option value="__nobudget">No budget set ({devices.filter((d) => !(Number(d.budgetPerVisit) > 0)).length})</option>}
             {catsPresent.map((k) => <option key={k} value={k}>{CATEGORY_META[k].label}</option>)}
           </select>
         )}
@@ -219,11 +219,11 @@ export function DevicesTab({ plannedLines = [], yearByDevice = {}, lastVisitByDe
                     <div style={{ fontSize: 12.5, color: "var(--faint)", display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
                       {d.assetTag && <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>#{d.assetTag}</span>}
                       {(() => { const lv = (lastVisitByDevice || {})[d.id]; const f = (lv?.checklistResults || []).filter((x) => x.result === "fail").length; return f ? <span style={{ color: "var(--danger)", fontWeight: 700 }}>{f} failed check{f === 1 ? "" : "s"} last visit</span> : null; })()}
-                      {(() => { const y = yearByDevice[d.id]; if (!y || !(y.planned + y.spent > 0)) return null; const over = y.spent > y.planned + y.spentPlanned && y.planned > 0; return <span title={`This year: ${gbp(y.spent)} spent, ${gbp(y.planned)} still planned`} style={{ fontFamily: "'IBM Plex Mono', monospace", color: over ? "var(--danger)" : "var(--muted)" }}>{gbp(y.spent).replace(/\.00$/, "")} spent · {gbp(y.planned).replace(/\.00$/, "")} to come</span>; })()}
-                      {Number(d.upliftPct) > 0 && Number(d.upliftMonth) > 0 && (() => { const t0 = new Date().toISOString().slice(0, 10); let r = `${t0.slice(0, 4)}-${String(d.upliftMonth).padStart(2, "0")}-01`; if (r <= t0) r = `${Number(t0.slice(0, 4)) + 1}-${String(d.upliftMonth).padStart(2, "0")}-01`; const n = daysUntil(r); return n <= 60 ? <span style={{ color: "var(--warn)", fontWeight: 650 }}>+{d.upliftPct}% from {fmtDate(r)}</span> : null; })()}
-                      {annualCost(d) > 0 && <span title="Budget per year (budget per visit × visits a year)" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(annualCost(d)).replace(/\.00$/, "")}/yr</span>}
+                      {(() => { const y = yearByDevice[d.id]; if (ACTIVE_HIDE_MONEY || !y || !(y.planned + y.spent > 0)) return null; const over = y.spent > y.planned + y.spentPlanned && y.planned > 0; return <span title={`This year: ${gbp(y.spent)} spent, ${gbp(y.planned)} still planned`} style={{ fontFamily: "'IBM Plex Mono', monospace", color: over ? "var(--danger)" : "var(--muted)" }}>{gbp(y.spent).replace(/\.00$/, "")} spent · {gbp(y.planned).replace(/\.00$/, "")} to come</span>; })()}
+                      {!ACTIVE_HIDE_MONEY && Number(d.upliftPct) > 0 && Number(d.upliftMonth) > 0 && (() => { const t0 = new Date().toISOString().slice(0, 10); let r = `${t0.slice(0, 4)}-${String(d.upliftMonth).padStart(2, "0")}-01`; if (r <= t0) r = `${Number(t0.slice(0, 4)) + 1}-${String(d.upliftMonth).padStart(2, "0")}-01`; const n = daysUntil(r); return n <= 60 ? <span style={{ color: "var(--warn)", fontWeight: 650 }}>+{d.upliftPct}% from {fmtDate(r)}</span> : null; })()}
+                      {annualCost(d) > 0 && !ACTIVE_HIDE_MONEY && <span title="Budget per year (budget per visit × visits a year)" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(annualCost(d)).replace(/\.00$/, "")}/yr</span>}
                       {d.category && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Tag size={11} />{d.category}</span>}
-                      {d.budgetPerVisit ? <span>{gbp(d.budgetPerVisit)}/visit budget</span> : null}
+                      {d.budgetPerVisit && !ACTIVE_HIDE_MONEY ? <span>{gbp(d.budgetPerVisit)}/visit budget</span> : null}
                     </div>
                     {(faultsByDevice[d.id] >= 3 || (d.pausedUntil && d.pausedUntil >= new Date().toISOString().slice(0, 10)) || d.certRequired || d.condition || (d.criticality && d.criticality !== "normal") || d.tags?.length > 0) && (
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
@@ -396,7 +396,7 @@ export function BulkLogModal({ devices, defaultTech, onClose, onSave }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [technician, setTechnician] = useState("");
   const [notes, setNotes] = useState("");
-  const [useBudgetCost, setUseBudgetCost] = useState(true);
+  const [useBudgetCost, setUseBudgetCost] = useState(!ACTIVE_HIDE_MONEY);
   const total = devices.reduce((t, d) => t + (Number(d.budgetPerVisit) || 0), 0);
   return (
     <Modal title={`Log ${devices.length} visit${devices.length === 1 ? "" : "s"}`} onClose={onClose}>
@@ -409,12 +409,12 @@ export function BulkLogModal({ devices, defaultTech, onClose, onSave }) {
           <Field label="Technician"><TextInput value={technician} onChange={(e) => setTechnician(e.target.value)} placeholder={defaultTech || "Name"} /></Field>
         </div>
         <Field label="Notes (applied to every visit)"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Weekly clean completed" /></Field>
-        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
+        {!ACTIVE_HIDE_MONEY && <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-2)", cursor: "pointer" }}>
           <input type="checkbox" checked={useBudgetCost} onChange={(e) => setUseBudgetCost(e.target.checked)} style={{ margin: 0 }} />
           Record each service's budget per visit as its cost{total ? ` (${gbp(total)} total)` : ""}
-        </label>
+        </label>}
         <div style={{ fontSize: 11, color: "var(--faint)" }}>Each service moves on to its next due date. Checklists, photos and signatures can be added afterwards by editing a visit.</div>
-        <PrimaryButton onClick={() => date && onSave({ date, technician: technician.trim(), notes: notes.trim(), useBudgetCost })}><CheckCircle2 size={15} /> Log {devices.length} visit{devices.length === 1 ? "" : "s"}</PrimaryButton>
+        <PrimaryButton onClick={() => date && onSave({ date, technician: technician.trim(), notes: notes.trim(), useBudgetCost: useBudgetCost && !ACTIVE_HIDE_MONEY })}><CheckCircle2 size={15} /> Log {devices.length} visit{devices.length === 1 ? "" : "s"}</PrimaryButton>
       </div>
     </Modal>
   );
@@ -693,7 +693,7 @@ export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUser
   const [err, setErr] = useState("");
   useEffect(() => {
     setChecks((device?.checklist || []).map((item) => ({ item, result: "", note: "" })));
-    setCost(device?.budgetPerVisit ? String(device.budgetPerVisit) : "");
+    setCost(device?.budgetPerVisit && !ACTIVE_HIDE_MONEY ? String(device.budgetPerVisit) : "");
   }, [deviceId]);
   async function handleFile(e) {
     const f = e.target.files?.[0]; if (!f) return;
@@ -707,7 +707,7 @@ export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUser
     onSave({
       deviceId: device.id, name: `${(CATEGORY_META[device.serviceCategory] || CATEGORY_META.maintenance).label} visit`,
       date: new Date().toISOString().slice(0, 10), technician: technician.trim(), supplierId: device.supplierId || "",
-      notes: notes.trim(), cost: cost ? Number(cost) : 0, certificatePhoto: photo, poNumber: "",
+      notes: notes.trim(), cost: cost && !ACTIVE_HIDE_MONEY ? Number(cost) : 0, costPending: ACTIVE_HIDE_MONEY ? true : undefined, certificatePhoto: photo, poNumber: "",
       checklistResults: checks.length ? checks : undefined,
       signatures: signatures.technician || signatures.site ? signatures : undefined, gps: gps || undefined, source: "quick-log",
       custom: Object.keys(custom).length ? custom : undefined,
@@ -752,7 +752,7 @@ export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUser
         </label>
         {photo && <label style={{ ...big, minHeight: 40, fontSize: 13, background: "var(--card-hi)", color: "var(--accent)" }}><Camera size={15} /> Retake<input type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} /></label>}
         <div style={{ display: "flex", gap: 10 }}>
-          <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" inputMode="decimal" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" style={{ fontSize: 20, padding: "12px 14px", fontWeight: 700 }} /></Field>
+          {!ACTIVE_HIDE_MONEY && <Field label={`Cost (${ACTIVE_CURRENCY_CODE})`}><TextInput type="number" inputMode="decimal" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" style={{ fontSize: 20, padding: "12px 14px", fontWeight: 700 }} /></Field>}
           <Field label="Technician"><TextInput value={technician} onChange={(e) => setTechnician(e.target.value)} placeholder="Name" style={{ fontSize: 15, padding: "12px 14px" }} /></Field>
         </div>
         {checks.length > 0 && (

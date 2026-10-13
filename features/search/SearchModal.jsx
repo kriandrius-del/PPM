@@ -6,6 +6,8 @@ import { Modal } from "../../components/ui.jsx";
 import { Pill, Row } from "../../components/ds.jsx";
 import { INCIDENT_TYPES } from "../../lib/constants.js";
 import { fmtDate, gbp } from "../../lib/utils.js";
+import { ACTIVE_HIDE_MONEY } from "../../lib/globals.js";
+const money = (v) => (Number(v) && !ACTIVE_HIDE_MONEY ? gbp(v) : "");   // no amounts for roles that don't see money
 import { placeOf, placeLabel } from "../assets/places.js";
 
 const GROUPS = [
@@ -30,9 +32,9 @@ export function SearchModal({ d, onClose, onOpenAsset, onOpenVisit, onOpenWork, 
     (d.locations || []).forEach((x) => { if (hit(x.name, x.address, x.portfolio)) R.places.push({ k: `s-${x.id}`, icon: MapPin, title: x.name, sub: `Site${x.address ? ` · ${x.address}` : ""}`, go: () => onChooseSite(x.id) }); });
     (d.buildings || []).forEach((x) => { if (hit(x.name, x.code)) R.places.push({ k: `b-${x.id}`, icon: Building2, title: x.name, sub: `Building · ${(x.floors || []).length} floors`, go: () => onGo("assets.locations") }); (x.floors || []).forEach((f) => { if (hit(`${x.name} ${f.name}`) && hit(f.name)) R.places.push({ k: `f-${f.id}`, icon: Building2, title: `${f.name}`, sub: `Floor · ${x.name}`, go: () => onGo("assets.locations") }); }); });
     (d.spaces || []).forEach((x) => { if (hit(x.name, x.floor, x.use)) R.places.push({ k: `r-${x.id}`, icon: DoorOpen, title: x.name, sub: ["Room", (d.buildings || []).find((b) => b.id === x.buildingId)?.name, x.floor, x.use].filter(Boolean).join(" · "), go: () => onGo("assets.locations") }); });
-    (d.works || []).forEach((w) => { if (hit(w.description, w.poNumber, w.ref, devById[w.deviceId]?.name, w.requestedBy)) R.work.push({ k: `w-${w.id}`, title: w.description, sub: [devById[w.deviceId]?.name, w.status.replace("_", " "), w.quoteAmount ? gbp(w.quoteAmount) : ""].filter(Boolean).join(" · "), go: () => onOpenWork(w) }); });
+    (d.works || []).forEach((w) => { const where = devById[w.deviceId]?.name || (w.deviceId ? "" : placeLabel(placeOf(w, { buildings: d.buildings || [], spaces: d.spaces || [] }))); if (hit(w.description, w.poNumber, w.ref, where, w.requestedBy)) R.work.push({ k: `w-${w.id}`, title: w.description, sub: [where, w.status.replace("_", " "), money(w.quoteAmount)].filter(Boolean).join(" · "), go: () => onOpenWork(w) }); });
     (d.projects || []).forEach((p) => { if (hit(p.name, p.notes)) R.work.push({ k: `p-${p.id}`, title: `Project: ${p.name}`, sub: p.status, go: () => onGo("ops.projects") }); });
-    (d.services || []).forEach((v) => { if (hit(v.name, v.notes, v.technician, v.poNumber, devById[v.deviceId]?.name)) R.maintenance.push({ k: `v-${v.id}`, title: `${devById[v.deviceId]?.name || v.name} — ${fmtDate(v.date)}`, sub: [v.technician, v.certificatePhoto ? "certificate" : "", v.cost ? gbp(v.cost) : ""].filter(Boolean).join(" · "), go: () => onOpenVisit(v), date: v.date }); });
+    (d.services || []).forEach((v) => { if (hit(v.name, v.notes, v.technician, v.poNumber, devById[v.deviceId]?.name)) R.maintenance.push({ k: `v-${v.id}`, title: `${devById[v.deviceId]?.name || v.name} — ${fmtDate(v.date)}`, sub: [v.technician, v.certificatePhoto ? "certificate" : "", money(v.cost)].filter(Boolean).join(" · "), go: () => onOpenVisit(v), date: v.date }); });
     R.maintenance.sort((a, b) => String(b.date).localeCompare(String(a.date)));
     (d.suppliers || []).forEach((s) => { if (hit(s.name, s.contact, s.managerName, s.managerEmail, s.contractRef, s.subCategory, s.accreditation, ...(s.trades || []))) R.suppliers.push({ k: `su-${s.id}`, title: s.name, sub: [s.subCategory, s.managerName, s.managerPhone].filter(Boolean).join(" · "), go: () => onOpenSupplier(s) }); (s.contacts || []).forEach((c, i) => { if (hit(c.name, c.role, c.phone, c.email)) R.suppliers.push({ k: `sc-${s.id}-${i}`, title: c.name, sub: [s.name, c.role, c.phone].filter(Boolean).join(" · "), go: () => onOpenSupplier(s) }); }); });
     [...(d.users || []).map((u) => ({ ...u, kind: "Team" })), ...(d.staff || []).map((u) => ({ ...u, kind: "Site staff" }))].forEach((p, i) => { if (hit(p.name, p.role, p.jobTitle, p.company, p.skills, p.phone, p.email)) R.people.push({ k: `pe-${i}-${p.id}`, title: p.name, sub: [p.kind, p.jobTitle || p.role, p.company, p.phone].filter(Boolean).join(" · "), go: () => onGo("people.team") }); });
@@ -79,8 +81,8 @@ export function SearchModal({ d, onClose, onOpenAsset, onOpenVisit, onOpenWork, 
             <Row icon={Boxes} title="Open asset record" sub={top.sub} onClick={top.go} />
             {connected.sup && <Row icon={Truck} title={connected.sup.name} sub="Supplier" onClick={() => onOpenSupplier(connected.sup)} />}
             {connected.jobs.map((w) => <Row key={w.id} icon={Hammer} tone={w.priority === "high" ? "danger" : "warn"} title={w.description} sub={`Open job · ${w.status.replace("_", " ")}`} onClick={() => onOpenWork(w)} />)}
-            {connected.visits[0] && <Row icon={Wrench} title={`Last visit ${fmtDate(connected.visits[0].date)}`} sub={[connected.visits[0].technician, connected.visits[0].cost ? gbp(connected.visits[0].cost) : ""].filter(Boolean).join(" · ")} onClick={() => onOpenVisit(connected.visits[0])} />}
-            <Row icon={FileText} title={`${connected.certs.length} certificate${connected.certs.length === 1 ? "" : "s"} · ${gbp(connected.cost)} spent this year`} sub={top.dev.nextServiceDate ? `Next maintenance ${fmtDate(top.dev.nextServiceDate)}` : ""} onClick={top.go} />
+            {connected.visits[0] && <Row icon={Wrench} title={`Last visit ${fmtDate(connected.visits[0].date)}`} sub={[connected.visits[0].technician, money(connected.visits[0].cost)].filter(Boolean).join(" · ")} onClick={() => onOpenVisit(connected.visits[0])} />}
+            <Row icon={FileText} title={`${connected.certs.length} certificate${connected.certs.length === 1 ? "" : "s"}${ACTIVE_HIDE_MONEY ? "" : ` · ${gbp(connected.cost)} spent this year`}`} sub={top.dev.nextServiceDate ? `Next maintenance ${fmtDate(top.dev.nextServiceDate)}` : ""} onClick={top.go} />
           </div>
         </div>
       )}
