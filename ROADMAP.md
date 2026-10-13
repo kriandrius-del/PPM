@@ -17,7 +17,7 @@
 
 Each later phase is small enough to ship and test on its own, keeping the app working throughout.
 
-> **Phase 1 is under review.** Round 30.3 fixed the snags from the first review; the fixes, roles, phone, QR and links are being retested. No Phase 2 work starts until Phase 1 is approved.
+> **Phase 1 is under review.** Round 30.3 fixed the snags from the first review, and the owner has retested them all (13 Oct 2026). The owner's own checks of **Roles & permissions** and **QR and link pages** are deferred to the end of the project, before going live — they stay "Not tested" until then. Two Phase 1 decisions from the review are still to build: hide all prices from engineers, and allow jobs on a room or building with no asset. No Phase 2 work starts until Phase 1 is approved.
 > The product name stays **Service Book** for now, and the commercial name will be decided later. It's one line: `PRODUCT_NAME` in `lib/constants.js`.
 
 ## Later — Company branding

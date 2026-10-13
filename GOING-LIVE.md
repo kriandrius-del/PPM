@@ -110,6 +110,15 @@ Things to know about roles:
 - **The database decides per list.** An engineer can't change a budget even by calling the database directly. Within a list it can't tell one record from another, so an engineer who may log visits may also edit other visits. Per-record rules come with the move to proper tables (see ROADMAP.md).
 - **Contractors don't need a login.** Send them their job link: People → Suppliers & contractors → **Send a job link**. They only ever see their own jobs.
 
+## Before going live — checks deferred from the Phase 1 review
+
+These were deferred on 13 Oct 2026 and must be done (and passed) before the app goes live:
+
+- **Roles & permissions** (checklist lines ROL-01 to ROL-18): sign in as each role and follow the role test plan in the Phase 1 review checklist.
+- **QR and link pages** (QR-01 to QR-05): scan a new sticker, an old sticker, the supplier job link, and the meter, check sheet, feedback and sign-in QR codes on a phone.
+
+On the review copy these need either a Vercel login on every device, or Vercel Authentication switched off for the review project (Settings → Deployment Protection). Neither needs a paid Vercel plan.
+
 ## Questions
 
 - **QR stickers we've already printed?** They keep working for your company (the one you moved the old data into). New stickers also include your company's id.
