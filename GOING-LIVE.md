@@ -1,4 +1,4 @@
-# Going live with logins — round 31.1
+# Going live with logins — round 31.2
 
 > **Phase 1 was approved on 14 Oct 2026.** Before following this guide for your live app, do the checks deferred from the review (see "Before going live" below) on the review copy, and make sure they pass.
 
@@ -10,7 +10,7 @@
 4. **Set people's roles.** Go to More → Team & access and give each person the role that fits (see "Roles" below).
 5. **Choose who approves quotes.** In the same list, tick **Approves quotes** for each person who may approve quotes over your approval limit. Finance always can and the owner starts with it; nobody else can until you tick them.
 
-The old app keeps working between steps 2 and 3, so there's no rush.
+Do steps 2 and 3 one straight after the other. From round 31.2, step 2 also moves jobs and visits into their own database tables, so between steps 2 and 3 the old app shows no jobs or visits and can't save them. Nothing is lost: the old lists are kept, out of sight, and the new app reads the tables. (Coming from round 31.1, as on the review copy, either order works: round 31.2 keeps using the old lists until the database update runs, then switches to the tables by itself, without a reload.)
 
 ---
 
@@ -111,6 +111,7 @@ Things to know about roles:
 - **Every job has the same stages** (Phase 2): the office (coordinators and up) accepts new jobs from engineers and QR codes, and checks finished work before it's closed; finance or an FM manager records the invoice or says none is needed. The database checks who does each of these.
 - **Needs a job:** failed checks and open safety actions are listed for the office, who raise a job or say none is needed. Failed visit checks no longer raise jobs on their own.
 - **Field mode:** scanning an asset's QR code gives engineers one screen to start a timed visit, log an inspection, report a problem, take a photo or read a meter.
+- **Prices are kept from engineers by the database:** job and visit prices, budgets, purchase orders, invoices, cost lines and savings never reach an engineer's phone. A few prices stored inside other records they need (an asset's planned visit cost and value, supplier rates, spare part prices, project budgets) still do, hidden on screen, until those records get their own tables in later phases.
 - **Each person gets their own version of the app.** Home and the menu change with the role. For example, an engineer gets big Scan / Log / Report buttons, and finance gets the approval queue.
 - **The database decides per list.** An engineer can't change a budget even by calling the database directly. Within a list it can't tell one record from another, so an engineer who may log visits may also edit other visits. Per-record rules come with the move to proper tables (see ROADMAP.md).
 - **Contractors don't need a login.** Send them their job link: People → Suppliers & contractors → **Send a job link**. They only ever see their own jobs.

@@ -1,6 +1,6 @@
 -- =====================================================================
 --  PPM Service Book — Supabase database setup (secure, multi-company)
---  Round 31.1 (Phase 2). Paste this whole file into Supabase → SQL Editor → Run.
+--  Round 31.2 (Phase 2). Paste this whole file into Supabase → SQL Editor → Run.
 --  Safe to run again (it updates what's already there).
 --
 --  What it does
@@ -13,6 +13,9 @@
 --   • Engineers don't add or change prices or costs on jobs, visits or spare parts — the office does (ppm_list_guard).
 --   • Every job has the same life (Phase 2). Only the office (coordinators and up) accepts new jobs and signs off
 --     their quality check; only finance or an FM manager says a job needs no invoice (ppm_list_guard).
+--   • Jobs and visits live in their own tables (Phase 2, round 31.2). Their prices are kept apart, and engineers can't
+--     read them — nor the budgets, purchase orders, invoices, cost lines or savings. The old job and visit lists are
+--     moved into the tables when this runs (ppm_read_list, ppm_save_list, ppm_private.lists_to_tables).
 --   • Approving quotes over the approval limit is a separate permission ("Approves quotes"): finance always,
 --     anyone else only when an admin gives it to them. Editing jobs never gives it (ppm_can_approve, ppm_list_guard).
 --   • Photos and certificates go to private file storage (bucket "ppm-media").
@@ -178,18 +181,21 @@ create policy ppm_members_read on public.ppm_members for select to authenticated
 create policy ppm_invites_read on public.ppm_invites for select to authenticated using (public.ppm_is_admin(org_id));
 -- (companies, members and invites are only changed through the functions below)
 
+-- (round 31.2) engineers don't read the money lists at all; jobs and visits aren't saved as lists any more (they live in
+-- their own tables, below), so an old copy of the app can't write them here
 create policy ppm_kv_read on public.kv_store for select to authenticated
-  using (org_id is not null and public.ppm_is_member(org_id) and (scope = 'shared' or scope = 'user:' || auth.uid()::text));
+  using (org_id is not null and public.ppm_is_member(org_id) and (scope = 'shared' or scope = 'user:' || auth.uid()::text)
+         and not (scope = 'shared' and key in ('org:budgets', 'org:purchaseOrders', 'org:invoices', 'org:costLines', 'org:savings') and public.ppm_role(org_id) = 'engineer'));
 create policy ppm_kv_add on public.kv_store for insert to authenticated
   with check (org_id is not null and (
-    (scope = 'shared' and public.ppm_can_write(org_id, key)) or
+    (scope = 'shared' and key not in ('org:works', 'org:services') and public.ppm_can_write(org_id, key)) or
     (scope = 'user:' || auth.uid()::text and public.ppm_is_member(org_id))));
 create policy ppm_kv_change on public.kv_store for update to authenticated
   using (org_id is not null and (
-    (scope = 'shared' and public.ppm_can_write(org_id, key)) or
+    (scope = 'shared' and key not in ('org:works', 'org:services') and public.ppm_can_write(org_id, key)) or
     (scope = 'user:' || auth.uid()::text and public.ppm_is_member(org_id))))
   with check (org_id is not null and (
-    (scope = 'shared' and public.ppm_can_write(org_id, key)) or
+    (scope = 'shared' and key not in ('org:works', 'org:services') and public.ppm_can_write(org_id, key)) or
     (scope = 'user:' || auth.uid()::text and public.ppm_is_member(org_id))));
 create policy ppm_kv_remove on public.kv_store for delete to authenticated
   using (org_id is not null and (
@@ -258,6 +264,7 @@ begin
     v_n := v_n + 1;
   end loop;
   update public.ppm_orgs set legacy = true where id = v_org;
+  perform ppm_private.lists_to_tables(v_org);   -- jobs and visits live in their own tables (round 31.2)
   return format('Moved %s lists into %s. Go back to the app and tap Reload.', v_n, v_name);
 end $$;
 
@@ -386,9 +393,12 @@ $$;
 create or replace function ppm_private.j(p text) returns jsonb language plpgsql immutable as $$
 begin return p::jsonb; exception when others then return null; end $$;
 create or replace function ppm_private.get(p_org uuid, p_key text) returns jsonb
-language sql stable security definer set search_path = public, pg_temp as $$
-  select ppm_private.j(value) from public.kv_store where org_id = p_org and key = p_key and scope = 'shared'
-$$;
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  -- jobs and visits live in tables (round 31.2): the whole list, prices included (these helpers are for the QR pages)
+  if p_key in ('org:works', 'org:services') then return ppm_private.compose(p_org, p_key, true); end if;
+  return (select ppm_private.j(value) from public.kv_store where org_id = p_org and key = p_key and scope = 'shared');
+end $$;
 create or replace function ppm_private.arr(p_org uuid, p_key text) returns jsonb
 language sql stable security definer set search_path = public, pg_temp as $$
   select case when jsonb_typeof(v) = 'array' then v else '[]'::jsonb end from (select ppm_private.get(p_org, p_key) as v) x
@@ -442,6 +452,12 @@ create or replace function ppm_private.prepend(p_org uuid, p_key text, p_rec jso
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare v jsonb; v_len int;
 begin
+  if p_key in ('org:works', 'org:services') then   -- a table list (round 31.2): one new row at the top
+    perform ppm_private.lock_list(p_org, p_key);
+    perform ppm_private.put_row(p_org, p_key, p_rec, ppm_private.max_pos(p_org, p_key) + 1, true);
+    perform ppm_private.bump(p_org, p_key);
+    return;
+  end if;
   perform 1 from public.kv_store where org_id = p_org and key = p_key and scope = 'shared' for update;
   select length(value) into v_len from public.kv_store where org_id = p_org and key = p_key and scope = 'shared';
   if coalesce(v_len, 0) > 25000000 then raise exception 'This list is full — please contact the site team directly.'; end if;
@@ -457,9 +473,11 @@ begin
   on conflict (org_id, key, scope) do update set value = excluded.value, updated_at = now();
 end $$;
 create or replace function ppm_private.put(p_org uuid, p_key text, p_val jsonb) returns void
-language sql security definer set search_path = public, pg_temp as $$
-  update public.kv_store set value = p_val::text, updated_at = now() where org_id = p_org and key = p_key and scope = 'shared'
-$$;
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if p_key in ('org:works', 'org:services') then perform ppm_private.put_list(p_org, p_key, p_val); return; end if;   -- table lists (round 31.2)
+  update public.kv_store set value = p_val::text, updated_at = now() where org_id = p_org and key = p_key and scope = 'shared';
+end $$;
 revoke all on all functions in schema ppm_private from public, anon, authenticated;
 
 -- ---------- what the QR pages may read (no login) ----------
@@ -617,7 +635,7 @@ begin
     if v_org is null then raise exception 'This job link has expired or been replaced.'; end if;
     v_sup := ppm_private.item(v_org, 'org:suppliers', 'portalToken', p_ref);
     v_wid := p_data ->> 'workId';
-    perform 1 from public.kv_store where org_id = v_org and key = 'org:works' and scope = 'shared' for update;
+    perform ppm_private.lock_list(v_org, 'org:works');
     v_w := ppm_private.item(v_org, 'org:works', 'id', v_wid);
     if v_w is null or v_w ->> 'supplierId' is distinct from v_sup ->> 'id' or coalesce(v_w ->> 'status', '') in ('completed', 'rejected') then
       raise exception 'This job isn''t open for you any more.';
@@ -777,23 +795,22 @@ drop trigger if exists kv_store_freeze on public.kv_store;
 --   money (jobs, visits, spares): engineers add and change no prices or costs — the office does (round 30.4)
 --   the job lifecycle (round 31): only the office accepts jobs (triage) and signs off their quality check; only
 --   finance and FM managers and up say a job needs no invoice
-create or replace function public.ppm_list_guard() returns trigger
-language plpgsql security definer set search_path = public, pg_temp as $$
+create or replace function ppm_private.list_problem(p_org uuid, p_role text, p_key text, p_old jsonb, p_new jsonb) returns text
+language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare v_role text; v_old jsonb; v_new jsonb; v_bad text; v_limit numeric; v_approver boolean; v_msg text; v_mf text[];
   v_fields text[] := array['lastServiceDate', 'nextServiceDate', 'rescheduleLog', 'abortLog', 'usageReadings', 'statusOverride',
                            'changeLog', 'downtime', 'notesLog', 'booking', 'chaseLog'];
 begin
-  if new.scope <> 'shared' or auth.uid() is null or new.key not in ('org:devices', 'org:works', 'org:services', 'org:spares') then return new; end if;
-  v_role := public.ppm_role(new.org_id);
-  if v_role is null then return new; end if;   -- not a member: the access rules refuse it anyway
-  v_old := case when tg_op = 'UPDATE' then ppm_private.j(old.value) else null end;
-  v_new := ppm_private.j(new.value);
+  if p_key not in ('org:devices', 'org:works', 'org:services', 'org:spares') then return null; end if;
+  v_role := p_role;
+  if v_role is null then return null; end if;   -- not a member: the access rules refuse it anyway
+  v_old := p_old; v_new := p_new;
   if v_old is null or jsonb_typeof(v_old) <> 'array' then v_old := '[]'::jsonb; end if;
 
   -- money: an engineer's new records leave prices and costs empty, and an engineer can't change them on existing ones
-  if v_role = 'engineer' and new.key in ('org:works', 'org:services', 'org:spares') then
-    if v_new is null or jsonb_typeof(v_new) <> 'array' then raise exception 'Your role (Engineer) can''t change that list like that.' using errcode = '42501'; end if;
-    v_mf := case new.key when 'org:works' then array['quoteAmount', 'finalCost', 'quotes', 'lines', 'approvedAmount']
+  if v_role = 'engineer' and p_key in ('org:works', 'org:services', 'org:spares') then
+    if v_new is null or jsonb_typeof(v_new) <> 'array' then return 'Your role (Engineer) can''t change that list like that.'; end if;
+    v_mf := case p_key when 'org:works' then array['quoteAmount', 'finalCost', 'quotes', 'lines', 'approvedAmount']
                          when 'org:services' then array['cost', 'costBreakdown'] else array['unitCost'] end;
     if exists (select 1 from jsonb_array_elements(v_new) n
                left join lateral (select x from jsonb_array_elements(v_old) x where x ->> 'id' = n ->> 'id' limit 1) ox(o) on true
@@ -801,32 +818,32 @@ begin
                where jsonb_typeof(n) = 'object'
                  and ((o is not null and (n -> f) is distinct from (o -> f))
                    or (o is null and (n -> f) is not null and (n -> f) not in ('null'::jsonb, '""'::jsonb, '0'::jsonb, '[]'::jsonb, '{}'::jsonb)))) then
-      raise exception 'Your role (Engineer) can''t add or change prices or costs — the office adds them.' using errcode = '42501'; end if;
+      return 'Your role (Engineer) can''t add or change prices or costs — the office adds them.'; end if;
   end if;
-  if new.key in ('org:services', 'org:spares') then return new; end if;
+  if p_key in ('org:services', 'org:spares') then return null; end if;
 
-  if new.key = 'org:devices' then
-    if v_role <> 'engineer' then return new; end if;
-    if v_new is null or jsonb_typeof(v_new) <> 'array' then raise exception 'Your role (Engineer) can''t change the asset list like that.' using errcode = '42501'; end if;
+  if p_key = 'org:devices' then
+    if v_role <> 'engineer' then return null; end if;
+    if v_new is null or jsonb_typeof(v_new) <> 'array' then return 'Your role (Engineer) can''t change the asset list like that.'; end if;
     if exists (select 1 from jsonb_array_elements(v_new) n where not exists (select 1 from jsonb_array_elements(v_old) o where o ->> 'id' = n ->> 'id')) then
-      raise exception 'Your role (Engineer) can''t add assets.' using errcode = '42501'; end if;
+      return 'Your role (Engineer) can''t add assets.'; end if;
     if exists (select 1 from jsonb_array_elements(v_old) o where not exists (select 1 from jsonb_array_elements(v_new) n where n ->> 'id' = o ->> 'id')) then
-      raise exception 'Your role (Engineer) can''t delete assets.' using errcode = '42501'; end if;
+      return 'Your role (Engineer) can''t delete assets.'; end if;
     if jsonb_array_length(v_new) <> jsonb_array_length(v_old) then   -- e.g. a second copy of an existing asset
-      raise exception 'Your role (Engineer) can''t add assets.' using errcode = '42501'; end if;
+      return 'Your role (Engineer) can''t add assets.'; end if;
     select string_agg(distinct k, ', ') into v_bad
     from jsonb_array_elements(v_new) n join jsonb_array_elements(v_old) o on o ->> 'id' = n ->> 'id',
          lateral (select jsonb_object_keys(n) as k union select jsonb_object_keys(o)) ks
     where (n -> ks.k) is distinct from (o -> ks.k) and not (ks.k = any (v_fields));
-    if v_bad is not null then raise exception 'Your role (Engineer) can''t change asset details (%).', v_bad using errcode = '42501'; end if;
-    return new;
+    if v_bad is not null then return format('Your role (Engineer) can''t change asset details (%s).', v_bad); end if;
+    return null;
   end if;
 
   -- jobs
-  if v_new is null or jsonb_typeof(v_new) <> 'array' then raise exception 'The jobs list must be a list of jobs.' using errcode = '42501'; end if;
+  if v_new is null or jsonb_typeof(v_new) <> 'array' then return 'The jobs list must be a list of jobs.'; end if;
   -- no second copy of a job (one approval can't be spent twice)
   if (select count(*) - count(distinct n ->> 'id') from jsonb_array_elements(v_new) n) > (select count(*) - count(distinct o ->> 'id') from jsonb_array_elements(v_old) o) then
-    raise exception 'Each job can only be in the list once.' using errcode = '42501'; end if;
+    return 'Each job can only be in the list once.'; end if;
   -- amounts are plain numbers on any job that changes (so the database and the app read the same amount)
   if exists (select 1 from jsonb_array_elements(v_new) n
              where (jsonb_typeof(n) <> 'object'
@@ -835,7 +852,7 @@ begin
                and exists (select 1 from unnest(array['quoteAmount', 'approvedAmount']) f
                            where (coalesce(jsonb_typeof(n -> f), 'null') not in ('number', 'null') and coalesce(n ->> f, '') <> '')
                               or (jsonb_typeof(n -> f) = 'number' and (n -> f)::numeric <> round((n -> f)::numeric, 2)))) then
-    raise exception 'Quote amounts must be numbers in pounds and pence.' using errcode = '42501'; end if;
+    return 'Quote amounts must be numbers in pounds and pence.'; end if;
   -- the job lifecycle: who may accept a job, sign off its quality check, or say it needs no invoice
   if v_role not in ('owner', 'admin', 'manager', 'coordinator') and exists (
        select 1 from jsonb_array_elements(v_new) n
@@ -843,20 +860,20 @@ begin
        cross join unnest(array['triagedAt', 'triagedBy', 'checkedAt', 'checkedBy', 'checkNote']) f
        where jsonb_typeof(n) = 'object'
          and ((o is not null and (n -> f) is distinct from (o -> f)) or (o is null and coalesce(n ->> f, '') <> ''))) then
-    raise exception 'Only the office (coordinators and up) can accept jobs or sign off their quality check.' using errcode = '42501'; end if;
+    return 'Only the office (coordinators and up) can accept jobs or sign off their quality check.'; end if;
   if v_role not in ('owner', 'admin', 'manager', 'finance') and exists (
        select 1 from jsonb_array_elements(v_new) n
        left join lateral (select x from jsonb_array_elements(v_old) x where x ->> 'id' = n ->> 'id' limit 1) ox(o) on true
        where jsonb_typeof(n) = 'object'
          and ((o is not null and (n -> 'invoiceNeeded') is distinct from (o -> 'invoiceNeeded')) or (o is null and coalesce(n ->> 'invoiceNeeded', '') <> ''))) then
-    raise exception 'Only finance or an FM manager can say a job needs no invoice.' using errcode = '42501'; end if;
-  v_approver := public.ppm_can_approve(new.org_id);
+    return 'Only finance or an FM manager can say a job needs no invoice.'; end if;
+  v_approver := public.ppm_can_approve(p_org);
   -- the limit: settings.approvalThreshold; never set at all = £1,000, the app's default (0 or empty = no limit)
   select case when not coalesce(ppm_private.j(value) ? 'approvalThreshold', false) then 1000
               when jsonb_typeof(ppm_private.j(value) -> 'approvalThreshold') = 'number' then (ppm_private.j(value) -> 'approvalThreshold')::numeric
               when btrim(coalesce(ppm_private.j(value) ->> 'approvalThreshold', '')) ~ '^[0-9]+(\.[0-9]+)?$' then btrim(ppm_private.j(value) ->> 'approvalThreshold')::numeric
               else 0 end
-    into v_limit from public.kv_store where org_id = new.org_id and key = 'org:settings' and scope = 'shared';
+    into v_limit from public.kv_store where org_id = p_org and key = 'org:settings' and scope = 'shared';
   v_limit := coalesce(v_limit, 1000);
   select m into v_msg from (
     select case
@@ -887,12 +904,389 @@ begin
                                     when btrim(coalesce(o ->> 'quoteAmount', '')) ~ '^[0-9]+(\.[0-9]+)?$' then btrim(o ->> 'quoteAmount')::numeric else 0 end as oq) qq
     where jsonb_typeof(n) = 'object' and (o is null or n is distinct from o)
   ) r where m is not null limit 1;
+  if v_msg is not null then return v_msg; end if;
+  return null;
+end $$;
+revoke all on function ppm_private.list_problem(uuid, text, text, jsonb, jsonb) from public, anon, authenticated;
+-- The rules themselves are in ppm_private.list_problem, shared with ppm_save_list (jobs and visits, round 31.2).
+create or replace function public.ppm_list_guard() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_role text; v_old jsonb; v_msg text;
+begin
+  if new.scope <> 'shared' or auth.uid() is null or new.key not in ('org:devices', 'org:works', 'org:services', 'org:spares') then return new; end if;
+  v_role := public.ppm_role(new.org_id);
+  if v_role is null then return new; end if;   -- not a member: the access rules refuse it anyway
+  v_old := case when tg_op = 'UPDATE' then ppm_private.j(old.value) else null end;
+  v_msg := ppm_private.list_problem(new.org_id, v_role, new.key, v_old, ppm_private.j(new.value));
   if v_msg is not null then raise exception '%', v_msg using errcode = '42501'; end if;
   return new;
 end $$;
 drop trigger if exists kv_store_list_guard on public.kv_store;
 create trigger kv_store_list_guard before insert or update on public.kv_store for each row execute function public.ppm_list_guard();
 create trigger kv_store_freeze before update on public.kv_store for each row execute function public.ppm_kv_freeze();
+
+-- ---------- jobs and visits in their own tables (Phase 2, round 31.2) ----------
+-- Each job (org:works) and each visit (org:services) is a row. Its prices are a separate row that only people who
+-- see money can read: engineers never receive them (the owner's Phase 1 decision). A job's timeline is its own
+-- table that is only ever added to. The app reads and saves these lists through ppm_read_list / ppm_save_list,
+-- which apply the same rules as before (ppm_private.list_problem), record by record, and refuse a save if someone
+-- else changed the same record since it was read. This file moves the old org:works and org:services lists into
+-- the tables when it runs (the old lists are kept, out of sight, under an "archive:" scope).
+create table if not exists public.ppm_works (
+  org_id uuid not null references public.ppm_orgs(id) on delete cascade,
+  id text not null check (length(id) between 1 and 100),
+  data jsonb not null check (jsonb_typeof(data) = 'object'),
+  pos bigint not null default 0,
+  version bigint not null default 1,
+  updated_at timestamptz not null default now(),
+  updated_by uuid,
+  primary key (org_id, id)
+);
+create table if not exists public.ppm_work_money (
+  org_id uuid not null,
+  id text not null,
+  data jsonb not null default '{}'::jsonb check (jsonb_typeof(data) = 'object'),
+  version bigint not null default 1,
+  primary key (org_id, id),
+  foreign key (org_id, id) references public.ppm_works(org_id, id) on delete cascade
+);
+create table if not exists public.ppm_work_events (
+  org_id uuid not null,
+  work_id text not null,
+  seq bigint generated always as identity,
+  ev jsonb not null,
+  primary key (org_id, work_id, seq),
+  foreign key (org_id, work_id) references public.ppm_works(org_id, id) on delete cascade
+);
+create table if not exists public.ppm_visits (
+  org_id uuid not null references public.ppm_orgs(id) on delete cascade,
+  id text not null check (length(id) between 1 and 100),
+  data jsonb not null check (jsonb_typeof(data) = 'object'),
+  pos bigint not null default 0,
+  version bigint not null default 1,
+  updated_at timestamptz not null default now(),
+  updated_by uuid,
+  primary key (org_id, id)
+);
+create table if not exists public.ppm_visit_money (
+  org_id uuid not null,
+  id text not null,
+  data jsonb not null default '{}'::jsonb check (jsonb_typeof(data) = 'object'),
+  version bigint not null default 1,
+  primary key (org_id, id),
+  foreign key (org_id, id) references public.ppm_visits(org_id, id) on delete cascade
+);
+-- one counter per list, so the app can tell when something changed
+create table if not exists public.ppm_list_versions (
+  org_id uuid not null references public.ppm_orgs(id) on delete cascade,
+  key text not null,
+  version bigint not null default 0,
+  primary key (org_id, key)
+);
+create index if not exists ppm_works_by_pos on public.ppm_works (org_id, pos desc);
+create index if not exists ppm_visits_by_pos on public.ppm_visits (org_id, pos desc);
+alter table public.ppm_works enable row level security;
+alter table public.ppm_work_money enable row level security;
+alter table public.ppm_work_events enable row level security;
+alter table public.ppm_visits enable row level security;
+alter table public.ppm_visit_money enable row level security;
+alter table public.ppm_list_versions enable row level security;
+do $$ declare p record; begin
+  for p in select tablename, policyname from pg_policies where schemaname = 'public'
+             and tablename in ('ppm_works', 'ppm_work_money', 'ppm_work_events', 'ppm_visits', 'ppm_visit_money', 'ppm_list_versions') loop
+    execute format('drop policy %I on public.%I', p.policyname, p.tablename);
+  end loop;
+end $$;
+-- who sees prices: everyone in the company except engineers
+create or replace function public.ppm_sees_money(p_org uuid) returns boolean
+language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (select 1 from public.ppm_members where org_id = p_org and user_id = auth.uid() and role <> 'engineer')
+$$;
+-- reading: members read their company's rows; prices only for those who see money. Changes only go through
+-- ppm_save_list and the QR pages' own functions — nobody writes these tables directly.
+create policy ppm_works_read on public.ppm_works for select to authenticated using (public.ppm_is_member(org_id));
+create policy ppm_work_events_read on public.ppm_work_events for select to authenticated using (public.ppm_is_member(org_id));
+create policy ppm_work_money_read on public.ppm_work_money for select to authenticated using (public.ppm_sees_money(org_id));
+create policy ppm_visits_read on public.ppm_visits for select to authenticated using (public.ppm_is_member(org_id));
+create policy ppm_visit_money_read on public.ppm_visit_money for select to authenticated using (public.ppm_sees_money(org_id));
+create policy ppm_list_versions_read on public.ppm_list_versions for select to authenticated using (public.ppm_is_member(org_id));
+revoke all on public.ppm_works, public.ppm_work_money, public.ppm_work_events, public.ppm_visits, public.ppm_visit_money, public.ppm_list_versions from anon;
+revoke insert, update, delete, truncate on public.ppm_works, public.ppm_work_money, public.ppm_work_events, public.ppm_visits, public.ppm_visit_money, public.ppm_list_versions from authenticated;
+grant select on public.ppm_works, public.ppm_work_money, public.ppm_work_events, public.ppm_visits, public.ppm_visit_money, public.ppm_list_versions to authenticated;
+
+-- which lists live in tables, and which of their fields are prices
+create or replace function ppm_private.table_of(p_key text) returns text language sql immutable as $$
+  select case p_key when 'org:works' then 'works' when 'org:services' then 'visits' end
+$$;
+create or replace function ppm_private.money_fields(p_key text) returns text[] language sql immutable as $$
+  select case p_key when 'org:works' then array['quoteAmount', 'finalCost', 'quotes', 'lines', 'approvedAmount']
+                    when 'org:services' then array['cost', 'costBreakdown'] else array[]::text[] end
+$$;
+create or replace function ppm_private.num(p jsonb) returns numeric language sql immutable as $$
+  select case when jsonb_typeof(p) = 'number' then (p #>> '{}')::numeric
+              when jsonb_typeof(p) = 'string' and btrim(p #>> '{}') ~ '^[0-9]+(\.[0-9]+)?$' then btrim(p #>> '{}')::numeric else 0 end
+$$;
+-- the company's approval limit (never set = the app's £1,000 default; 0 or empty = no limit), as ppm_list_guard reads it
+create or replace function ppm_private.limit_for(p_org uuid) returns numeric
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce((select case when not coalesce(ppm_private.j(value) ? 'approvalThreshold', false) then 1000
+                               when jsonb_typeof(ppm_private.j(value) -> 'approvalThreshold') = 'number' then (ppm_private.j(value) -> 'approvalThreshold')::numeric
+                               when btrim(coalesce(ppm_private.j(value) ->> 'approvalThreshold', '')) ~ '^[0-9]+(\.[0-9]+)?$' then btrim(ppm_private.j(value) ->> 'approvalThreshold')::numeric
+                               else 0 end
+                   from public.kv_store where org_id = p_org and key = 'org:settings' and scope = 'shared'), 1000)
+$$;
+-- amounts written into text (job comments) are blanked for people who see no prices, like the app's maskMoney
+create or replace function ppm_private.mask_text(t text) returns text language sql immutable as $$
+  select regexp_replace(regexp_replace(t, '[£$€]\s?-?[0-9][0-9,]*(\.[0-9]+)?(\s?[km]\y)?', '—', 'gi'), '\y[0-9][0-9,]*(\.[0-9]+)?\s?(GBP|EUR|USD)\y', '—', 'g')
+$$;
+-- what a record looks like to someone who sees no prices: comments with amounts blanked, spare parts without their
+-- price, and whether the quote is over the approval limit (but not the amount)
+create or replace function ppm_private.without_money(p_data jsonb, p_money jsonb, p_limit numeric) returns jsonb language sql immutable as $$
+  select (case when jsonb_typeof(p_data -> 'comments') = 'array' then jsonb_build_object('comments',
+            (select coalesce(jsonb_agg(case when jsonb_typeof(c) = 'object' and jsonb_typeof(c -> 'text') = 'string' then jsonb_set(c, '{text}', to_jsonb(ppm_private.mask_text(c ->> 'text'))) else c end order by i), '[]'::jsonb)
+             from jsonb_array_elements(p_data -> 'comments') with ordinality t(c, i))) else '{}'::jsonb end)
+      || (case when jsonb_typeof(p_data -> 'partsUsed') = 'array' then jsonb_build_object('partsUsed',
+            (select coalesce(jsonb_agg(case when jsonb_typeof(x) = 'object' then x - 'unitCost' else x end order by i), '[]'::jsonb)
+             from jsonb_array_elements(p_data -> 'partsUsed') with ordinality t(x, i))) else '{}'::jsonb end)
+      || (case when p_limit > 0 and ppm_private.num(p_money -> 'quoteAmount') >= p_limit then '{"overLimit": true}'::jsonb else '{}'::jsonb end)
+$$;
+-- a whole list, newest first, as the app keeps it (p_money = with prices)
+create or replace function ppm_private.compose(p_org uuid, p_key text, p_money boolean) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare v_limit numeric := case when p_money then 0 else ppm_private.limit_for(p_org) end;
+begin
+  if p_key = 'org:works' then
+    return coalesce((select jsonb_agg(r order by pos desc, id) from (
+      select w.pos, w.id,
+             w.data
+             || case when p_money then coalesce(m.data, '{}'::jsonb) else ppm_private.without_money(w.data, m.data, v_limit) end
+             || coalesce((select jsonb_build_object('events', jsonb_agg(e.ev order by e.seq)) from public.ppm_work_events e where e.org_id = w.org_id and e.work_id = w.id having count(*) > 0), '{}'::jsonb) as r
+      from public.ppm_works w left join public.ppm_work_money m on m.org_id = w.org_id and m.id = w.id
+      where w.org_id = p_org) x), '[]'::jsonb);
+  elsif p_key = 'org:services' then
+    return coalesce((select jsonb_agg(r order by pos desc, id) from (
+      select v.pos, v.id,
+             v.data || case when p_money then coalesce(m.data, '{}'::jsonb) else ppm_private.without_money(v.data, m.data, 0) - 'comments' end as r
+      from public.ppm_visits v left join public.ppm_visit_money m on m.org_id = v.org_id and m.id = v.id
+      where v.org_id = p_org) x), '[]'::jsonb);
+  end if;
+  return null;
+end $$;
+-- one record with its prices and timeline (null if there isn't one)
+create or replace function ppm_private.full_row(p_org uuid, p_key text, p_id text) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if p_key = 'org:works' then
+    return (select w.data || coalesce(m.data, '{}'::jsonb)
+                   || coalesce((select jsonb_build_object('events', jsonb_agg(e.ev order by e.seq)) from public.ppm_work_events e where e.org_id = w.org_id and e.work_id = w.id having count(*) > 0), '{}'::jsonb)
+            from public.ppm_works w left join public.ppm_work_money m on m.org_id = w.org_id and m.id = w.id where w.org_id = p_org and w.id = p_id);
+  end if;
+  return (select v.data || coalesce(m.data, '{}'::jsonb) from public.ppm_visits v left join public.ppm_visit_money m on m.org_id = v.org_id and m.id = v.id where v.org_id = p_org and v.id = p_id);
+end $$;
+create or replace function ppm_private.row_version(p_org uuid, p_key text, p_id text) returns text
+language sql stable security definer set search_path = public, pg_temp as $$
+  select case p_key
+    when 'org:works' then (select w.version::text || '.' || coalesce(m.version, 0)::text from public.ppm_works w left join public.ppm_work_money m on m.org_id = w.org_id and m.id = w.id where w.org_id = p_org and w.id = p_id)
+    else (select v.version::text || '.' || coalesce(m.version, 0)::text from public.ppm_visits v left join public.ppm_visit_money m on m.org_id = v.org_id and m.id = v.id where v.org_id = p_org and v.id = p_id) end
+$$;
+create or replace function ppm_private.row_versions(p_org uuid, p_key text) returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(case p_key
+    when 'org:works' then (select jsonb_object_agg(w.id, w.version::text || '.' || coalesce(m.version, 0)::text) from public.ppm_works w left join public.ppm_work_money m on m.org_id = w.org_id and m.id = w.id where w.org_id = p_org)
+    else (select jsonb_object_agg(v.id, v.version::text || '.' || coalesce(m.version, 0)::text) from public.ppm_visits v left join public.ppm_visit_money m on m.org_id = v.org_id and m.id = v.id where v.org_id = p_org) end, '{}'::jsonb)
+$$;
+create or replace function ppm_private.list_version(p_org uuid, p_key text) returns text
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce((select version from public.ppm_list_versions where org_id = p_org and key = p_key), 0)::text
+$$;
+create or replace function ppm_private.bump(p_org uuid, p_key text) returns text
+language sql security definer set search_path = public, pg_temp as $$
+  insert into public.ppm_list_versions as l (org_id, key, version) values (p_org, p_key, 1)
+  on conflict (org_id, key) do update set version = l.version + 1
+  returning version::text
+$$;
+-- one save at a time per list (the QR pages and the app)
+create or replace function ppm_private.lock_list(p_org uuid, p_key text) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if ppm_private.table_of(p_key) is not null then perform pg_advisory_xact_lock(hashtextextended(p_org::text || '|' || p_key, 0));
+  else perform 1 from public.kv_store where org_id = p_org and key = p_key and scope = 'shared' for update; end if;
+end $$;
+-- write one record (no rules: callers check them). Its timeline only grows: events it carries that aren't stored yet
+-- are added. p_pos = where it goes in the list (null = keep its place).
+create or replace function ppm_private.put_row(p_org uuid, p_key text, p_rec jsonb, p_pos bigint, p_with_money boolean) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_id text := p_rec ->> 'id'; v_mf text[] := ppm_private.money_fields(p_key); v_data jsonb; v_money jsonb; v_n int;
+begin
+  if v_id is null or v_id = '' then return; end if;
+  v_data := p_rec - v_mf - 'events';
+  v_money := coalesce((select jsonb_object_agg(f, p_rec -> f) from unnest(v_mf) f where p_rec ? f), '{}'::jsonb);
+  if p_key = 'org:works' then
+    insert into public.ppm_works as w (org_id, id, data, pos, updated_by) values (p_org, v_id, v_data, coalesce(p_pos, 0), auth.uid())
+    on conflict (org_id, id) do update set data = excluded.data, pos = coalesce(p_pos, w.pos), version = w.version + 1, updated_at = now(), updated_by = auth.uid()
+      where w.data is distinct from excluded.data or (p_pos is not null and w.pos <> p_pos);
+    if p_with_money then
+      if v_money <> '{}'::jsonb or exists (select 1 from public.ppm_work_money where org_id = p_org and id = v_id) then
+        insert into public.ppm_work_money as m (org_id, id, data) values (p_org, v_id, v_money)
+        on conflict (org_id, id) do update set data = excluded.data, version = m.version + 1 where m.data is distinct from excluded.data;
+      end if;
+    end if;
+    if jsonb_typeof(p_rec -> 'events') = 'array' then
+      select count(*) into v_n from public.ppm_work_events where org_id = p_org and work_id = v_id;
+      insert into public.ppm_work_events (org_id, work_id, ev)
+        select p_org, v_id, e from jsonb_array_elements(p_rec -> 'events') with ordinality t(e, i) where i > v_n and jsonb_typeof(e) = 'object' order by i;
+    end if;
+  else
+    insert into public.ppm_visits as v (org_id, id, data, pos, updated_by) values (p_org, v_id, v_data, coalesce(p_pos, 0), auth.uid())
+    on conflict (org_id, id) do update set data = excluded.data, pos = coalesce(p_pos, v.pos), version = v.version + 1, updated_at = now(), updated_by = auth.uid()
+      where v.data is distinct from excluded.data or (p_pos is not null and v.pos <> p_pos);
+    if p_with_money then
+      if v_money <> '{}'::jsonb or exists (select 1 from public.ppm_visit_money where org_id = p_org and id = v_id) then
+        insert into public.ppm_visit_money as m (org_id, id, data) values (p_org, v_id, v_money)
+        on conflict (org_id, id) do update set data = excluded.data, version = m.version + 1 where m.data is distinct from excluded.data;
+      end if;
+    end if;
+  end if;
+end $$;
+create or replace function ppm_private.max_pos(p_org uuid, p_key text) returns bigint
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(case p_key when 'org:works' then (select max(pos) from public.ppm_works where org_id = p_org)
+                             else (select max(pos) from public.ppm_visits where org_id = p_org) end, 0)
+$$;
+-- replace a whole list (the QR pages): changed records are written in place, new ones go to the top, missing ones are removed
+create or replace function ppm_private.put_list(p_org uuid, p_key text, p_val jsonb) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare e jsonb; v_new int; v_k int := 0; v_base bigint;
+begin
+  if jsonb_typeof(p_val) <> 'array' then return; end if;
+  v_base := ppm_private.max_pos(p_org, p_key);
+  v_new := (select count(*) from jsonb_array_elements(p_val) x where jsonb_typeof(x) = 'object' and ppm_private.row_version(p_org, p_key, x ->> 'id') is null);
+  for e in select x from jsonb_array_elements(p_val) x loop
+    if jsonb_typeof(e) <> 'object' or coalesce(e ->> 'id', '') = '' then continue; end if;
+    if ppm_private.row_version(p_org, p_key, e ->> 'id') is null then
+      v_k := v_k + 1; perform ppm_private.put_row(p_org, p_key, e, v_base + v_new - v_k + 1, true);
+    elsif ppm_private.full_row(p_org, p_key, e ->> 'id') is distinct from e then
+      perform ppm_private.put_row(p_org, p_key, e, null, true);
+    end if;
+  end loop;
+  if p_key = 'org:works' then delete from public.ppm_works w where w.org_id = p_org and not exists (select 1 from jsonb_array_elements(p_val) x where x ->> 'id' = w.id);
+  else delete from public.ppm_visits v where v.org_id = p_org and not exists (select 1 from jsonb_array_elements(p_val) x where x ->> 'id' = v.id); end if;
+  perform ppm_private.bump(p_org, p_key);
+end $$;
+-- move the old org:works / org:services lists of a company into the tables (once); the old list is kept under an
+-- "archive:" scope that the app never reads
+create or replace function ppm_private.lists_to_tables(p_org uuid) returns int
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare k text; v jsonb; e jsonb; i bigint; v_n bigint; v_base bigint; v_moved int := 0;
+begin
+  foreach k in array array['org:works', 'org:services'] loop
+    select ppm_private.j(value) into v from public.kv_store where org_id = p_org and key = k and scope = 'shared';
+    if not found then continue; end if;
+    perform ppm_private.lock_list(p_org, k);
+    if jsonb_typeof(v) = 'array' then
+      v_n := jsonb_array_length(v); v_base := ppm_private.max_pos(p_org, k);
+      for e, i in select x, n from jsonb_array_elements(v) with ordinality t(x, n) loop
+        if jsonb_typeof(e) = 'object' and coalesce(e ->> 'id', '') <> '' and ppm_private.row_version(p_org, k, e ->> 'id') is null then
+          perform ppm_private.put_row(p_org, k, e, v_base + v_n - i + 1, true);
+          v_moved := v_moved + 1;
+        end if;
+      end loop;
+    end if;
+    update public.kv_store set scope = 'archive:' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSUS') where org_id = p_org and key = k and scope = 'shared';
+    perform ppm_private.bump(p_org, k);
+  end loop;
+  return v_moved;
+end $$;
+
+-- The app reads a table list here: the records (without prices for engineers), a version for the whole list and one
+-- per record, so a save can tell whether someone else changed a record in the meantime.
+create or replace function public.ppm_read_list(p_org uuid, p_key text) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare v_role text := public.ppm_role(p_org);
+begin
+  if v_role is null then raise exception 'You''re not a member of this company.' using errcode = '42501'; end if;
+  if ppm_private.table_of(p_key) is null then raise exception 'That list isn''t kept in a table.' using errcode = '22023'; end if;
+  return jsonb_build_object('value', ppm_private.compose(p_org, p_key, v_role <> 'engineer'), 'version', ppm_private.list_version(p_org, p_key),
+                            'rows', ppm_private.row_versions(p_org, p_key));
+end $$;
+-- The app saves the records it changed (p_upsert: [{id, v: the version it read or null for a new one, rec}]) and the ones
+-- it removed (p_delete: [{id, v}]). All or nothing: the same rules as before apply to each record (ppm_private.list_problem);
+-- engineers' records keep the stored prices, comments and timeline they can't see. If a record changed since it was read,
+-- nothing is saved and the app merges and tries again.
+create or replace function public.ppm_save_list(p_org uuid, p_key text, p_upsert jsonb, p_delete jsonb) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_role text := public.ppm_role(p_org); v_money boolean; v_mf text[] := ppm_private.money_fields(p_key);
+  u jsonb; d jsonb; v_old jsonb; v_rec jsonb; v_olds jsonb := '[]'::jsonb; v_news jsonb := '[]'::jsonb; v_msg text; v_n int; v_k int := 0; v_base bigint;
+  v_newcount int; v_ids text[] := array[]::text[];
+begin
+  if v_role is null then raise exception 'You''re not a member of this company.' using errcode = '42501'; end if;
+  if ppm_private.table_of(p_key) is null then raise exception 'That list isn''t kept in a table.' using errcode = '22023'; end if;
+  if not public.ppm_can_write(p_org, p_key) then raise exception 'Your role can''t change %.', case p_key when 'org:works' then 'jobs' else 'visits' end using errcode = '42501'; end if;
+  if jsonb_typeof(coalesce(p_upsert, '[]'::jsonb)) <> 'array' or jsonb_typeof(coalesce(p_delete, '[]'::jsonb)) <> 'array' then raise exception 'Nothing to save.' using errcode = '22023'; end if;
+  v_money := v_role <> 'engineer';
+  perform ppm_private.lock_list(p_org, p_key);
+  -- 1. has anyone changed these records since they were read?
+  for u in select x from jsonb_array_elements(coalesce(p_upsert, '[]'::jsonb)) x loop
+    if jsonb_typeof(u -> 'rec') <> 'object' or coalesce(u ->> 'id', '') = '' or (u -> 'rec' ->> 'id') is distinct from (u ->> 'id') then raise exception 'Each record needs its id.' using errcode = '22023'; end if;
+    if (u ->> 'v') is distinct from ppm_private.row_version(p_org, p_key, u ->> 'id') then return jsonb_build_object('ok', false, 'conflict', true); end if;
+  end loop;
+  for d in select x from jsonb_array_elements(coalesce(p_delete, '[]'::jsonb)) x loop
+    if ppm_private.row_version(p_org, p_key, d ->> 'id') is not null and (d ->> 'v') is distinct from ppm_private.row_version(p_org, p_key, d ->> 'id') then
+      return jsonb_build_object('ok', false, 'conflict', true); end if;
+  end loop;
+  -- 2. each record as it is now and as it would be
+  for u in select x from jsonb_array_elements(coalesce(p_upsert, '[]'::jsonb)) x loop
+    v_old := ppm_private.full_row(p_org, p_key, u ->> 'id');
+    v_rec := u -> 'rec';
+    if not v_money then
+      -- a price left empty is the same as none (their app may still hold the empty box of a record it added)
+      v_rec := v_rec - (select coalesce(array_agg(f), array[]::text[]) from unnest(v_mf) f
+                        where v_rec ? f and (v_rec -> f) in ('null'::jsonb, '""'::jsonb, '0'::jsonb, '[]'::jsonb, '{}'::jsonb));
+      -- prices they can't see stay as they are (changing one is refused by the rules below)
+      v_rec := coalesce((select jsonb_object_agg(f, v_old -> f) from unnest(v_mf) f where v_old ? f and not v_rec ? f), '{}'::jsonb) || v_rec;
+      -- comments are shown to them with amounts blanked: keep the stored ones and add theirs
+      if p_key = 'org:works' and jsonb_typeof(v_old -> 'comments') = 'array' then
+        v_n := jsonb_array_length(v_old -> 'comments');
+        v_rec := jsonb_set(v_rec, '{comments}', (v_old -> 'comments') || coalesce((select jsonb_agg(c order by i) from jsonb_array_elements(case when jsonb_typeof(v_rec -> 'comments') = 'array' then v_rec -> 'comments' else '[]'::jsonb end) with ordinality t(c, i) where i > v_n), '[]'::jsonb));
+      end if;
+      -- spare parts are shown to them without prices: keep the stored price of each part already recorded
+      if jsonb_typeof(v_old -> 'partsUsed') = 'array' and jsonb_typeof(v_rec -> 'partsUsed') = 'array' then
+        v_rec := jsonb_set(v_rec, '{partsUsed}', (select coalesce(jsonb_agg(case when jsonb_typeof(x) = 'object' and jsonb_typeof(v_old -> 'partsUsed' -> (i - 1)::int) = 'object'
+                                                                                      and (v_old -> 'partsUsed' -> (i - 1)::int ->> 'spareId') is not distinct from (x ->> 'spareId') and (v_old -> 'partsUsed' -> (i - 1)::int) ? 'unitCost'
+                                                                                 then x || jsonb_build_object('unitCost', v_old -> 'partsUsed' -> (i - 1)::int -> 'unitCost') else x end order by i), '[]'::jsonb)
+                                                  from jsonb_array_elements(v_rec -> 'partsUsed') with ordinality t(x, i)));
+      end if;
+      v_rec := v_rec - 'overLimit';
+    end if;
+    if v_old is not null then v_olds := v_olds || jsonb_build_array(v_old - 'events'); end if;
+    v_news := v_news || jsonb_build_array(v_rec - 'events');
+  end loop;
+  -- 3. the same rules as the lists had, record by record
+  v_msg := ppm_private.list_problem(p_org, v_role, p_key, v_olds, v_news);
+  if v_msg is not null then raise exception '%', v_msg using errcode = '42501'; end if;
+  -- 4. write: new records go to the top, in the order given
+  v_newcount := (select count(*) from jsonb_array_elements(coalesce(p_upsert, '[]'::jsonb)) x where ppm_private.row_version(p_org, p_key, x ->> 'id') is null);
+  v_base := ppm_private.max_pos(p_org, p_key);
+  for u in select x from jsonb_array_elements(coalesce(p_upsert, '[]'::jsonb)) x loop
+    v_rec := (select y from jsonb_array_elements(v_news) y where y ->> 'id' = u ->> 'id' limit 1) || case when jsonb_typeof(u -> 'rec' -> 'events') = 'array' then jsonb_build_object('events', u -> 'rec' -> 'events') else '{}'::jsonb end;
+    if ppm_private.row_version(p_org, p_key, u ->> 'id') is null then
+      v_k := v_k + 1;
+      perform ppm_private.put_row(p_org, p_key, v_rec, v_base + v_newcount - v_k + 1, v_money);
+    else
+      perform ppm_private.put_row(p_org, p_key, v_rec, null, v_money);
+    end if;
+    v_ids := v_ids || (u ->> 'id');
+  end loop;
+  for d in select x from jsonb_array_elements(coalesce(p_delete, '[]'::jsonb)) x loop
+    if p_key = 'org:works' then delete from public.ppm_works where org_id = p_org and id = d ->> 'id';
+    else delete from public.ppm_visits where org_id = p_org and id = d ->> 'id'; end if;
+  end loop;
+  return jsonb_build_object('ok', true, 'version', ppm_private.bump(p_org, p_key),
+                            'rows', (select coalesce(jsonb_object_agg(i, ppm_private.row_version(p_org, p_key, i)), '{}'::jsonb) from unnest(v_ids) i));
+end $$;
+revoke all on all functions in schema ppm_private from public, anon, authenticated;
+revoke all on function public.ppm_read_list(uuid, text), public.ppm_save_list(uuid, text, jsonb, jsonb), public.ppm_sees_money(uuid) from public, anon;
+grant execute on function public.ppm_read_list(uuid, text), public.ppm_save_list(uuid, text, jsonb, jsonb), public.ppm_sees_money(uuid) to authenticated;
 
 -- ---------- who may call what ----------
 revoke all on function public.ppm_role(uuid), public.ppm_is_member(uuid), public.ppm_can_edit(uuid), public.ppm_is_admin(uuid), public.ppm_folder_member(text, boolean) from public, anon;
@@ -928,3 +1322,8 @@ create policy "ppm media upload" on storage.objects for insert to authenticated
 
 -- tell the API about the new tables and functions
 notify pgrst, 'reload schema';
+
+-- ---------- move the old job and visit lists into their tables (round 31.2; safe to run again) ----------
+do $$ declare o record; begin
+  for o in select id from public.ppm_orgs loop perform ppm_private.lists_to_tables(o.id); end loop;
+end $$;

@@ -100,9 +100,11 @@ export function worksRefusal(oldList, newList, { approver = false, limit = 0 } =
     const o = old.get(String(w.id));
     if (JSON.stringify(o) !== JSON.stringify(w) && (!num(w.quoteAmount) || !num(w.approvedAmount))) return "Quote amounts must be numbers.";
     const q = Number(w.quoteAmount) || 0;
+    // people who see no prices get "overLimit" from the database instead of the amount (round 31.2)
+    const over = (lim > 0 && q >= lim) || w.overLimit === true;
     // giving approval
     if (!approver && APPROVAL_FIELDS.some((f) => filled(w[f]) && JSON.stringify(w[f]) !== JSON.stringify(o ? o[f] : undefined))) return "Only someone with quote approval permission can approve quotes.";
-    if (lim > 0 && q >= lim) {
+    if (over) {
       // an over-limit quote can't go ahead without approval: not by moving it on, and not by raising the quote of a
       // job that's already under way (a job that was already going may carry on unchanged, so clearing an approval is allowed)
       const active = (st) => GO_AHEAD.includes(st) || st === "completed";

@@ -55,7 +55,7 @@ export function FieldCard({ device, placeText = "", status = null, openJobs = []
         )}
         {mode === "menu" && (
           <>
-            {elsewhere && <div style={{ fontSize: 12.5, background: "var(--warn-soft)", color: "var(--warn)", borderRadius: 10, padding: "8px 10px", fontWeight: 650 }}>You have a visit in progress on another asset. Finish it first, or start this one (that visit stays saved on your device until you finish it).</div>}
+            {elsewhere && <div style={{ fontSize: 12.5, background: "var(--warn-soft)", color: "var(--warn)", borderRadius: 10, padding: "8px 10px", fontWeight: 650 }}>You have a visit in progress on another asset. Finish it first: starting a visit here asks before it discards that one.</div>}
             {canEdit && (
               <button type="button" onClick={() => onStartVisit?.()} style={{ ...big("var(--accent)", "var(--on-accent)"), minHeight: 84, flexDirection: "row", gap: 10 }}>
                 {mine ? <Timer size={26} /> : <Play size={26} />}

@@ -18,7 +18,7 @@ export function WorksTab({ suggestions = [], onRaiseSuggestion, onDismissSuggest
   // what a job is for: its asset's name, or — for a job with no asset — where it is
   const what = (w) => deviceById[w.deviceId]?.name || (w.deviceId ? "Unknown service" : placeText(w) || w.placeName || "No asset");
   const [waitingOnly, setWaitingOnly] = useState(false); const [overQuoteOnly, setOverQuoteOnly] = useState(false);
-  const needsApproval = (w) => approvalThreshold > 0 && Number(w.quoteAmount) >= approvalThreshold && !w.approvedBy && w.status !== "rejected" && w.status !== "completed";
+  const needsApproval = (w) => ((approvalThreshold > 0 && Number(w.quoteAmount) >= approvalThreshold) || w.overLimit === true) && !w.approvedBy && w.status !== "rejected" && w.status !== "completed";
   // the job's life (Phase 2): which stage each job is at
   const invoicedIds = new Set(invoices.filter((iv) => iv.workId).map((iv) => iv.workId));
   const isInvoiced = (w) => invoicedIds.has(w.id) || (!!w.poNumber && invoices.some((iv) => iv.poNumberText === w.poNumber));
@@ -46,7 +46,9 @@ export function WorksTab({ suggestions = [], onRaiseSuggestion, onDismissSuggest
   if (works.length === 0) {
     return <div>{needsAJob}<EmptyState icon={Receipt} title="No extra works logged" body={hasDevices ? "Track work outside the regular service plan — requests, quotes, approvals and follow-ups from failed checks." : "Add a service first, then log extra works against it."} actionLabel={hasDevices && ACTIVE_CAN_EDIT ? "Add extra work" : undefined} onAction={hasDevices ? onAdd : undefined} /></div>;
   }
-  const isClosed = (w) => w.status === "completed" || w.status === "rejected";
+  // finished = the job's life is over: rejected, or done, checked and invoiced (or none needed). Until then it's open.
+  const isClosed = (w) => { const i = infoOf(w); return i.closed || i.rejected; };
+  const workLeft = (w) => !["completed", "rejected"].includes(w.status);   // "My jobs": work still to do (as on Home)
   const isOpenQuote = (w) => w.status === "quoted" || w.status === "approved";   // same rule as Home's "Open quotes"
   const requestedCount = works.filter((w) => w.status === "requested").length;
   const filtered = works
@@ -54,10 +56,10 @@ export function WorksTab({ suggestions = [], onRaiseSuggestion, onDismissSuggest
     .filter((w) => !waitingOnly || (w.waitingOn && !isClosed(w)))
     .filter((w) => !overQuoteOnly || (Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1))
     .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : statusFilter === "quotes" ? isOpenQuote(w)
-      : statusFilter === "mine" ? (w.assignee === me && !isClosed(w)) : statusFilter === "triage" ? needsTriage(w) : statusFilter === "check" ? needsCheck(w) : statusFilter === "invoice" ? needsInvoice(w, isInvoiced(w)) : !isClosed(w))
+      : statusFilter === "mine" ? (w.assignee === me && workLeft(w)) : statusFilter === "triage" ? needsTriage(w) : statusFilter === "check" ? needsCheck(w) : statusFilter === "invoice" ? needsInvoice(w, isInvoiced(w)) : !isClosed(w))
     // engineers: their own jobs first, then the rest of the site's
     .sort((a, b) => (!office && me ? (b.assignee === me) - (a.assignee === me) : 0) || (sortBy === "newest" ? (b.dateRaised || "").localeCompare(a.dateRaised || "") : sortBy === "oldest" ? (a.dateRaised || "").localeCompare(b.dateRaised || "") : sortBy === "target" ? String(workSla(a)?.deadline || "9999").localeCompare(String(workSla(b)?.deadline || "9999")) : sortBy === "value" ? (Number(b.quoteAmount) || 0) - (Number(a.quoteAmount) || 0) : (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || "")));
-  const mineN = me ? works.filter((w) => w.assignee === me && !isClosed(w)).length : 0;
+  const mineN = me ? works.filter((w) => w.assignee === me && workLeft(w)).length : 0;
   const triageN = works.filter(needsTriage).length; const checkN = works.filter(needsCheck).length; const invoiceN = works.filter((w) => needsInvoice(w, isInvoiced(w))).length;
   const openWork = openWorkId ? works.find((w) => w.id === openWorkId) : null;
   const csvRows = [

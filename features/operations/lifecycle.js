@@ -83,7 +83,8 @@ export function jobStages(w, ctx = {}) {
   const skip = (note = "") => ({ state: "skipped", note });
   const raiser = w.requestedBy || w.loggedBy;
   s.requested = done(`${fmtDate(w.dateRaised)}${raiser ? ` · ${raiser}` : ""}`);
-  s.triage = triaged ? done(w.triagedBy ? `accepted by ${w.triagedBy}` : "accepted") : todo("the office accepts it");
+  // work can start on an urgent job before the office has accepted it: say so, rather than "accepted"
+  s.triage = filled(w.triagedAt) || (triaged && legacy) ? done(w.triagedBy ? `accepted by ${w.triagedBy}` : "accepted") : triaged ? skip("work started before the office accepted it") : todo("the office accepts it");
   s.priority = triaged ? done(priorityLabel(w.priority)) : todo(`${priorityLabel(w.priority)} for now`);
   if (qn === false) { s.quoteReq = skip("no quote needed"); s.quoteIn = skip("no quote needed"); }
   else {
@@ -104,7 +105,9 @@ export function jobStages(w, ctx = {}) {
   else s.check = todo("the office checks it");
   const why = invoiceReason(w);
   if (why) s.invoice = skip(why);
-  else s.invoice = invoiced ? done("recorded") : todo(completed ? "not recorded yet" : "after the work");
+  else if (invoiced) s.invoice = done("recorded");
+  // like the quality check: jobs finished before Phase 2 aren't chased for an invoice (they're not in To invoice either)
+  else s.invoice = legacy && completed ? skip("finished before invoices were tracked") : todo(completed ? "not recorded yet" : "after the work");
   if (hideMoney) s.invoice = { ...s.invoice, hidden: true };
   // people who see no prices don't deal with invoices: for them a job is closed once it's checked
   const closed = rejected || (completed && s.check.state !== "todo" && (hideMoney || s.invoice.state !== "todo"));

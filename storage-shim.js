@@ -151,9 +151,36 @@ function mergeLists(baseStr, oursStr, theirsStr) {
     if (b === undefined) { out.push(o); return; }                 // we added it
     const oursChanged = JSON.stringify(o) !== b;
     if (!t) { if (oursChanged) out.push(o); return; }             // they deleted it: keep only if we edited it
-    out.push(oursChanged ? o : t);                                // take whichever side changed it
+    if (!oursChanged) { out.push(t); return; }                    // only they changed it (or nobody did)
+    out.push(JSON.stringify(t) === b ? o : mergeRecord(b, o, t)); // only we did — or both of us: field by field
   });
   return JSON.stringify(out);
+}
+// Both sides changed the same record (e.g. two people on the same job): keep each field the other side changed unless
+// we changed that field too. A log both sides added to (comments, notes, history) keeps both sides' new entries.
+// Where both changed the same field, ours (the later save) wins.
+function mergeRecord(bStr, o, t) {
+  let b; try { b = JSON.parse(bStr); } catch (e) { return o; }
+  if (!b || typeof b !== "object") return o;
+  const out = { ...t };
+  new Set([...Object.keys(o), ...Object.keys(b)]).forEach((k) => {
+    const bs = JSON.stringify(b[k]); const os = JSON.stringify(o[k]); const ts = JSON.stringify(t[k]);
+    if (os === bs) return;                                        // we didn't touch it: theirs stands
+    const both = ts !== bs && ts !== os ? mergeLog(b[k], o[k], t[k]) : null;
+    if (both) out[k] = both;
+    else if (k in o) out[k] = o[k]; else delete out[k];
+  });
+  return out;
+}
+function mergeLog(b, o, t) {
+  if (!Array.isArray(b) || !Array.isArray(o) || !Array.isArray(t)) return null;
+  const str = (a) => a.map((x) => JSON.stringify(x));
+  const B = str(b); const O = str(o); const T = str(t); const n = B.length;
+  const startsWith = (A) => A.length >= n && B.every((x, i) => x === A[i]);
+  const endsWith = (A) => A.length >= n && B.every((x, i) => x === A[A.length - n + i]);
+  if (startsWith(O) && startsWith(T)) return [...t, ...o.slice(n)];               // added at the end (comments, history)
+  if (endsWith(O) && endsWith(T)) return [...o.slice(0, o.length - n), ...t];     // added at the start (newest first)
+  return null;
 }
 
 /* ---------- local mode ---------- */
@@ -228,15 +255,18 @@ function installCloud(cfg) {
   const kv = {
     async get(key, scope) { const r = await kv.row(key, scope); return r ? r.value : null; },
     async row(key, scope) {
+      if (scope === "shared" && TABLE_KEYS.has(key)) return table.row(key);
       const rows = await api(`/rest/v1/kv_store?${rowFilter(key, scope)}&select=value,version`);
       return rows && rows.length ? rows[0] : null;
     },
     // Only replaces the value if nobody has saved since we read it (the database bumps a version number).
     async update(key, scope, value, version) {
+      if (scope === "shared" && TABLE_KEYS.has(key)) return table.update(key, value, version);
       const rows = await api(`/rest/v1/kv_store?${rowFilter(key, scope)}&version=eq.${Number(version)}&select=version`, { method: "PATCH", body: { value }, headers: { Prefer: "return=representation" } });
       return Array.isArray(rows) && rows.length > 0;
     },
     async insert(key, scope, value) {
+      if (scope === "shared" && TABLE_KEYS.has(key)) { const cur = await table.row(key); return table.update(key, value, cur ? cur.version : null); }
       try { await api(`/rest/v1/kv_store`, { method: "POST", body: [{ org_id: ctx.org, key, scope, value }], headers: { Prefer: "return=minimal" } }); return true; }
       catch (e) { if (e.status === 409 || e.code === "23505") return false; throw e; }
     },
@@ -250,6 +280,68 @@ function installCloud(cfg) {
     },
   };
   const personalKey = (key) => `ppm:personal:${ctx.userId}:${key}`;
+
+  /* --- jobs and visits live in their own tables (Phase 2, round 31.2) ---
+     The rest of the app still sees one list per kind of record. Here those two lists are read through
+     ppm_read_list (engineers get them without prices) and saved through ppm_save_list, which takes only the
+     records that changed, with the version each one had when it was read: if someone else changed one of them in
+     between, nothing is saved and the usual merge runs again. Records are kept with their fields in a fixed order,
+     so comparing two copies of a record means comparing their text. */
+  const TABLE_KEYS = new Set(["org:works", "org:services"]);
+  const tableRead = new Map();   // key -> { list: the records as last read, rows: id -> version }
+  const canonical = (v) => {
+    if (Array.isArray(v)) return v.map(canonical);
+    if (v && typeof v === "object") { const o = {}; Object.keys(v).sort().forEach((k) => { if (v[k] !== undefined) o[k] = canonical(v[k]); }); return o; }
+    return v;
+  };
+  const canonText = (str) => { try { return JSON.stringify(canonical(JSON.parse(str))); } catch (e) { return str; } };
+  const table = {
+    async row(key) {
+      let r;
+      try { r = await rpc("ppm_read_list", { p_org: ctx.org, p_key: key }); }
+      catch (e) {
+        if (!(e.status === 404 || e.code === "PGRST202")) throw e;
+        // The database hasn't had the round 31.2 setup yet: keep using the one-list store until it has, so the
+        // app works whether the new version or the database update goes first. The next read after the update
+        // switches to the tables (a save based on the old store then finds nothing to change and reads again).
+        const rows = await api(`/rest/v1/kv_store?${rowFilter(key, "shared")}&select=value,version`);
+        const row = rows && rows.length ? rows[0] : null;
+        tableRead.set(key, { old: true });
+        return row ? { value: canonText(row.value), version: String(row.version) } : null;
+      }
+      const list = canonical(Array.isArray(r && r.value) ? r.value : []);
+      tableRead.set(key, { list, rows: (r && r.rows) || {} });
+      return { value: JSON.stringify(list), version: "t" + String((r && r.version) ?? "0") };   // never equal to an old-store version
+    },
+    async update(key, value, version) {
+      const snap = tableRead.get(key) || { list: [], rows: {} };
+      if (snap.old) {   // still the one-list store (see above)
+        if (version === undefined || version === null) {
+          try { await api(`/rest/v1/kv_store`, { method: "POST", body: [{ org_id: ctx.org, key, scope: "shared", value }], headers: { Prefer: "return=minimal" } }); return true; }
+          catch (e) { if (e.status === 409 || e.code === "23505" || e.status === 403 || e.code === "42501") return false; throw e; }
+        }
+        const rows = await api(`/rest/v1/kv_store?${rowFilter(key, "shared")}&version=eq.${Number(version)}&select=version`, { method: "PATCH", body: { value }, headers: { Prefer: "return=representation" } });
+        return Array.isArray(rows) && rows.length > 0;
+      }
+      let next; try { next = JSON.parse(value); } catch (e) { next = null; }
+      if (!Array.isArray(next)) { const e = new Error("That list can't be saved like that."); e.status = 400; throw e; }
+      next = canonical(next);
+      const before = new Map(snap.list.filter((x) => x && x.id != null).map((x) => [String(x.id), JSON.stringify(x)]));
+      const seen = new Set(); const upsert = [];
+      next.forEach((rec) => {
+        if (!rec || typeof rec !== "object" || rec.id == null) return;
+        const id = String(rec.id); if (seen.has(id)) return; seen.add(id);
+        if (before.get(id) !== JSON.stringify(rec)) upsert.push({ id, v: snap.rows[id] ?? null, rec: { ...rec, id } });
+      });
+      const del = [...before.keys()].filter((id) => !seen.has(id)).map((id) => ({ id, v: snap.rows[id] ?? null }));
+      if (!upsert.length && !del.length) return true;
+      const r = await rpc("ppm_save_list", { p_org: ctx.org, p_key: key, p_upsert: upsert, p_delete: del });
+      if (!r || !r.ok) return false;
+      const rows = { ...snap.rows, ...(r.rows || {}) }; del.forEach((d) => { delete rows[d.id]; });
+      tableRead.set(key, { list: next, rows });
+      return true;
+    },
+  };
 
   /* --- photos: data URLs in saved data become references to files in private storage --- */
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -352,7 +444,8 @@ function installCloud(cfg) {
          base = the database value the saved list was built from (captured when the save was asked for).
          background saves (moving photos, copying a browser's data) never change what the screen is based on. --- */
   async function remoteSet(key, value, base, { background = false } = {}) {
-    const canon = await externalize(value);
+    let canon = await externalize(value);
+    if (TABLE_KEYS.has(key)) { canon = canonText(canon); if (base !== undefined) base = canonText(base); }
     for (let attempt = 0; attempt < 5; attempt++) {
       const cur = await kv.row(key, "shared");
       const theirs = cur ? cur.value : null;
@@ -483,7 +576,9 @@ function installCloud(cfg) {
     if (!ctx.org || isReadOnly(ctx.role) || migrating) return;
     migrating = true; let again = false;
     try {
-      const rows = await api(`/rest/v1/kv_store?org_id=eq.${ctx.org}&scope=eq.shared&value=like.${encodeURIComponent("*data:image/*")}&select=key`);
+      const rows = (await api(`/rest/v1/kv_store?org_id=eq.${ctx.org}&scope=eq.shared&value=like.${encodeURIComponent("*data:image/*")}&select=key`)) || [];
+      // jobs and visits (their own tables): look in the records themselves
+      for (const key of TABLE_KEYS) { try { const v = await kv.get(key, "shared"); if (v && v.includes("data:image/") && !rows.some((x) => x.key === key)) rows.push({ key }); } catch (e) { /* next time */ } }
       for (const { key } of rows || []) {
         if (!canWrite(ctx.role, key) || hasFieldRules(ctx.role, key)) continue;   // left for someone whose role can change the whole list
         try {
