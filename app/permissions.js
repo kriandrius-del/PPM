@@ -6,9 +6,9 @@ export const ROLES = {
   owner: { label: "Owner", short: "Owner", desc: "Full control, including the team. Set when the company is created." },
   admin: { label: "System administrator", short: "Admin", desc: "Full control, including the team and settings." },
   manager: { label: "FM manager", short: "FM manager", desc: "Runs the site: operations, assets, suppliers, compliance and finance." },
-  coordinator: { label: "Facilities coordinator", short: "Coordinator", desc: "Jobs, contractors, schedules, visitors and safety records. Can't change budgets, POs or invoices." },
-  engineer: { label: "Engineer", short: "Engineer", desc: "Logs visits, updates jobs, readings, checks and incidents. Sees no prices — the office adds them. Can't add or delete assets, or change budgets, suppliers or settings." },
-  finance: { label: "Finance", short: "Finance", desc: "Budgets, purchase orders and invoices, and approves quotes over the limit." },
+  coordinator: { label: "Facilities coordinator", short: "Coordinator", desc: "Jobs (accepts new ones and checks finished work), contractors, schedules, visitors and safety records. Can't change budgets, POs or invoices." },
+  engineer: { label: "Engineer", short: "Engineer", desc: "Logs visits, works on jobs, readings, checks and incidents. Sees no prices — the office adds them, accepts new jobs and checks finished ones. Can't add or delete assets, or change budgets, suppliers or settings." },
+  finance: { label: "Finance", short: "Finance", desc: "Budgets, purchase orders and invoices (including saying a job needs none), and approves quotes over the limit." },
   director: { label: "Senior management", short: "Director", desc: "Dashboards and reports across sites. Read-only." },
   viewer: { label: "Viewer", short: "Viewer", desc: "Can look at everything, can't change anything." },
 };
@@ -45,6 +45,8 @@ export const WRITE_RULES = {
   "org:training": COORD, "org:drills": COORD, "org:waterOutlets": COORD, "org:keys": COORD, "org:waste": COORD, "org:keyDates": COORD,
   "org:carPark": COORD, "org:feedback": COORD, "org:isolations": COORD, "org:meters": COORD, "org:countries": COORD,
   "org:locations": COORD, "org:spaces": COORD, "org:floorplans": COORD, "org:buildings": COORD, "org:suppliers": COORD,
+  // "Needs a job": failed checks the office has dealt with (round 31)
+  "org:followups": COORD,
   // money
   "org:budgets": MONEY, "org:purchaseOrders": MONEY, "org:invoices": MONEY, "org:costLines": MONEY, "org:savings": MONEY,
   // settings: anyone who works in the app, but each field has its own rule (below)
@@ -115,6 +117,30 @@ export function worksRefusal(oldList, newList, { approver = false, limit = 0 } =
   return "";
 }
 
+// ---------- the job lifecycle (Phase 2, round 31) ----------
+// Only the office (coordinators and up) accepts new jobs (triage) and signs off finished work (the quality check);
+// only money roles say a job needs no invoice. The database checks the same (ppm_list_guard).
+export const OFFICE_ROLES = COORD;
+export const OFFICE_JOB_FIELDS = ["triagedAt", "triagedBy", "checkedAt", "checkedBy", "checkNote"];
+export const INVOICE_JOB_FIELDS = ["invoiceNeeded"];
+export const OFFICE_JOB_REFUSAL = "Only the office (coordinators and up) can accept jobs or sign off their quality check.";
+export const INVOICE_JOB_REFUSAL = "Only finance or an FM manager can say a job needs no invoice.";
+export function lifecycleRefusal(role, oldList, newList) {
+  const r = normaliseRole(role);
+  const office = COORD.includes(r); const money = MONEY.includes(r);
+  if (office && money) return "";
+  const a = Array.isArray(oldList) ? oldList : []; const b = Array.isArray(newList) ? newList : [];
+  const old = new Map(a.filter((x) => x && x.id != null).map((x) => [String(x.id), x]));
+  for (const w of b) {
+    if (!w || typeof w !== "object") continue;
+    const o = old.get(String(w.id));
+    const changed = (f) => (o ? JSON.stringify(w[f]) !== JSON.stringify(o[f]) : filled(w[f]));
+    if (!office && OFFICE_JOB_FIELDS.some(changed)) return OFFICE_JOB_REFUSAL;
+    if (!money && INVOICE_JOB_FIELDS.some(changed)) return INVOICE_JOB_REFUSAL;
+  }
+  return "";
+}
+
 // ---------- money: engineers see none and type none (Phase 1 decision, round 30.4) ----------
 // The office (coordinators and up, finance) adds quotes, costs and prices. In the lists engineers write to, a record an
 // engineer adds leaves the money fields empty, and an engineer can't change them on existing records. The database
@@ -178,7 +204,7 @@ export function writeRefusal(role, key, oldStr, newStr, ctx = {}) {
     if (key === "org:devices") return assetRefusal(r, a, b);
     const money = moneyRefusal(r, key, a, b);
     if (money) return money;
-    if (key === "org:works") return worksRefusal(a, b, { approver: isApprover(r, ctx.canApprove), limit: ctx.limit });
+    if (key === "org:works") return lifecycleRefusal(r, a, b) || worksRefusal(a, b, { approver: isApprover(r, ctx.canApprove), limit: ctx.limit });
     return "";
   }
   if (key === "org:settings") {
@@ -214,7 +240,7 @@ export function hasFieldRules(role, key) {
 export const KEY_LABELS = {
   "org:budgets": "budgets", "org:purchaseOrders": "purchase orders", "org:invoices": "invoices", "org:costLines": "budget cost lines", "org:savings": "savings",
   "org:suppliers": "suppliers", "org:locations": "sites", "org:countries": "portfolios", "org:buildings": "buildings", "org:spaces": "rooms", "org:settings": "settings",
-  "org:devices": "assets and services", "org:services": "visits", "org:works": "jobs", "org:users": "profiles",
+  "org:devices": "assets and services", "org:services": "visits", "org:works": "jobs", "org:users": "profiles", "org:followups": "the Needs a job list",
 };
 
 // What each part of the app writes, so a screen is read-only for roles that can't change it.

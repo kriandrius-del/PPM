@@ -3,19 +3,28 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, FileSpreadsheet, FolderKanban, Mail, Printer, Receipt, Repeat, Send, Siren, Square, Timer, Trash2, Upload, X } from "lucide-react";
 import { BudgetTypeTag, CategoryBadge, ConfirmTextDelete, CustomFieldInputs, EmptyState, ExportButton, Field, Modal, PrimaryButton, PriorityTag, Select, TextArea, TextInput, ToggleButton, WorkStatusTag, inputStyle } from "../components/ui.jsx";
 import { PRIORITY_RANK, PROJECT_STATUSES, SLA_DAYS, WORK_BUDGET_TYPES, WORK_CATEGORIES, WORK_PRIORITIES, WORK_STATUSES } from "../lib/constants.js";
-import { ACTIVE_HIDE_MONEY, ACTIVE_CAN_APPROVE, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_SLA, ACTIVE_USERS, siteInfoText } from "../lib/globals.js";
-import { maskMoney, addDays, appBaseUrl, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, parseDelimited, replacementYear, toISO, uid, workSla } from "../lib/utils.js";
+import { ACTIVE_ROLE, ACTIVE_HIDE_MONEY, ACTIVE_CAN_APPROVE, ACTIVE_CAN_EDIT, ACTIVE_CURRENCY_CODE, ACTIVE_SLA, ACTIVE_USERS, siteInfoText } from "../lib/globals.js";
+import { addDays, appBaseUrl, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, parseDelimited, replacementYear, toISO, uid, workSla } from "../lib/utils.js";
 import { buildWorkOrderSheet, openPrintReport, tableHtml } from "../lib/reports.js";
 import { usePlaceText } from "../features/assets/PlacePicker.jsx";
+import { JobNext, JobTimeline, LifecycleStrip, StageChip } from "../features/operations/JobLifecycle.jsx";
+import { INVOICE_ROLES, isOffice, jobStages, needsCheck, needsInvoice, needsTriage } from "../features/operations/lifecycle.js";
+import { NeedsAJob } from "../features/operations/NeedsAJob.jsx";
 import { buildStyledSheet, excelColour, xlsxBlob } from "../lib/excelTemplate.js";
 
-export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = null, onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
+export function WorksTab({ suggestions = [], onRaiseSuggestion, onDismissSuggestion, focus = null, budgetByCat = null, initialOpenId = null, onDuplicateWork, onInvoiceFromWork, onPoFromWork, onImportWorks, spares = [], onUseSpare, onLogChase, onRepeat, invoices = [], locationName = "", onConvertToProject, slaWorkingDays = false, onBulkUpdate, onSetSla, works, deviceById, supplierById, suppliers, onUpdate, onDelete, onAdd, hasDevices, currentUserName, approvalThreshold = 0, onSetThreshold, onConvertToPlan, onConvertToService }) {
   const [importOpen, setImportOpen] = useState(false);
   const placeText = usePlaceText();
   // what a job is for: its asset's name, or — for a job with no asset — where it is
   const what = (w) => deviceById[w.deviceId]?.name || (w.deviceId ? "Unknown service" : placeText(w) || w.placeName || "No asset");
   const [waitingOnly, setWaitingOnly] = useState(false); const [overQuoteOnly, setOverQuoteOnly] = useState(false);
   const needsApproval = (w) => approvalThreshold > 0 && Number(w.quoteAmount) >= approvalThreshold && !w.approvedBy && w.status !== "rejected" && w.status !== "completed";
+  // the job's life (Phase 2): which stage each job is at
+  const invoicedIds = new Set(invoices.filter((iv) => iv.workId).map((iv) => iv.workId));
+  const isInvoiced = (w) => invoicedIds.has(w.id) || (!!w.poNumber && invoices.some((iv) => iv.poNumberText === w.poNumber));
+  const infoOf = (w) => jobStages(w, { limit: approvalThreshold, invoiced: isInvoiced(w), hideMoney: ACTIVE_HIDE_MONEY, supplierName: (id) => supplierById[id]?.name || "" });
+  const me = currentUserName || ""; const office = isOffice(ACTIVE_ROLE); const mayInvoice = INVOICE_ROLES.includes(ACTIVE_ROLE) && !ACTIVE_HIDE_MONEY;
+  const needsAJob = office && ACTIVE_CAN_EDIT && suggestions.length > 0 ? <NeedsAJob suggestions={suggestions} onRaise={onRaiseSuggestion} onDismiss={onDismissSuggestion} /> : null;
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState(String(approvalThreshold || ""));
   const [statusFilter, setStatusFilter] = useState(focus?.filter || "open"); // 'open' | 'quotes' | 'requested' | 'all' | 'closed'
@@ -35,7 +44,7 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
   const budgetedTotal = countable.filter((w) => w.budgetType !== "non_controllable").reduce((sum, w) => sum + (Number(w.quoteAmount) || 0), 0);
   const nonControllableTotal = countable.filter((w) => w.budgetType === "non_controllable").reduce((sum, w) => sum + (Number(w.quoteAmount) || 0), 0);
   if (works.length === 0) {
-    return <EmptyState icon={Receipt} title="No extra works logged" body={hasDevices ? "Track work outside the regular service plan — requests, quotes, approvals and follow-ups from failed checks." : "Add a service first, then log extra works against it."} actionLabel={hasDevices && ACTIVE_CAN_EDIT ? "Add extra work" : undefined} onAction={hasDevices ? onAdd : undefined} />;
+    return <div>{needsAJob}<EmptyState icon={Receipt} title="No extra works logged" body={hasDevices ? "Track work outside the regular service plan — requests, quotes, approvals and follow-ups from failed checks." : "Add a service first, then log extra works against it."} actionLabel={hasDevices && ACTIVE_CAN_EDIT ? "Add extra work" : undefined} onAction={hasDevices ? onAdd : undefined} /></div>;
   }
   const isClosed = (w) => w.status === "completed" || w.status === "rejected";
   const isOpenQuote = (w) => w.status === "quoted" || w.status === "approved";   // same rule as Home's "Open quotes"
@@ -44,8 +53,12 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
     .filter((w) => !tradeFilter || w.category === tradeFilter)
     .filter((w) => !waitingOnly || (w.waitingOn && !isClosed(w)))
     .filter((w) => !overQuoteOnly || (Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1))
-    .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : statusFilter === "quotes" ? isOpenQuote(w) : !isClosed(w))
-    .sort((a, b) => sortBy === "newest" ? (b.dateRaised || "").localeCompare(a.dateRaised || "") : sortBy === "oldest" ? (a.dateRaised || "").localeCompare(b.dateRaised || "") : sortBy === "target" ? String(workSla(a)?.deadline || "9999").localeCompare(String(workSla(b)?.deadline || "9999")) : sortBy === "value" ? (Number(b.quoteAmount) || 0) - (Number(a.quoteAmount) || 0) : (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || ""));
+    .filter((w) => statusFilter === "all" ? true : statusFilter === "closed" ? isClosed(w) : statusFilter === "requested" ? w.status === "requested" : statusFilter === "quotes" ? isOpenQuote(w)
+      : statusFilter === "mine" ? (w.assignee === me && !isClosed(w)) : statusFilter === "triage" ? needsTriage(w) : statusFilter === "check" ? needsCheck(w) : statusFilter === "invoice" ? needsInvoice(w, isInvoiced(w)) : !isClosed(w))
+    // engineers: their own jobs first, then the rest of the site's
+    .sort((a, b) => (!office && me ? (b.assignee === me) - (a.assignee === me) : 0) || (sortBy === "newest" ? (b.dateRaised || "").localeCompare(a.dateRaised || "") : sortBy === "oldest" ? (a.dateRaised || "").localeCompare(b.dateRaised || "") : sortBy === "target" ? String(workSla(a)?.deadline || "9999").localeCompare(String(workSla(b)?.deadline || "9999")) : sortBy === "value" ? (Number(b.quoteAmount) || 0) - (Number(a.quoteAmount) || 0) : (PRIORITY_RANK[a.priority || "medium"] - PRIORITY_RANK[b.priority || "medium"]) || (b.dateRaised || "").localeCompare(a.dateRaised || "")));
+  const mineN = me ? works.filter((w) => w.assignee === me && !isClosed(w)).length : 0;
+  const triageN = works.filter(needsTriage).length; const checkN = works.filter(needsCheck).length; const invoiceN = works.filter((w) => needsInvoice(w, isInvoiced(w))).length;
   const openWork = openWorkId ? works.find((w) => w.id === openWorkId) : null;
   const csvRows = [
     ["Service", "Description", "Priority", "Assigned to", "Amount", "Status", "Budget type", "Date raised", "Raised by", "Comments"],
@@ -147,11 +160,16 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
       {(() => { const rated = works.filter((w) => w.satisfaction); return rated.length ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>Requester satisfaction: <b style={{ color: "#D97706" }}>{(rated.reduce((t, w) => t + w.satisfaction, 0) / rated.length).toFixed(1)} ★</b> from {rated.length} job{rated.length === 1 ? "" : "s"}</div> : null; })()}
       {chaseOpen && <ChaseWorksModal works={overdueWorks} suppliers={suppliers} deviceById={deviceById} locationName={locationName} onClose={() => setChaseOpen(false)} onSent={onLogChase} />}
       {(() => { const open = works.filter((w) => ["approved", "in_progress"].includes(w.status)); const v = open.reduce((a, w) => a + (Number(w.finalCost ?? w.quoteAmount) || 0), 0); return open.length && !ACTIVE_HIDE_MONEY ? <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}><b style={{ color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace" }}>{gbp(v)}</b> committed on {open.length} approved / in-progress job{open.length === 1 ? "" : "s"}</div> : null; })()}
+      {needsAJob}
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        {me && (mineN > 0 || !office) && <ToggleButton active={statusFilter === "mine"} onClick={() => setStatusFilter("mine")}>My jobs ({mineN})</ToggleButton>}
         <ToggleButton active={statusFilter === "open"} onClick={() => setStatusFilter("open")}>Open ({works.filter((w) => !isClosed(w)).length})</ToggleButton>
+        {(triageN > 0 || statusFilter === "triage") && <ToggleButton active={statusFilter === "triage"} onClick={() => setStatusFilter("triage")}>To triage ({triageN})</ToggleButton>}
+        {(checkN > 0 || statusFilter === "check") && <ToggleButton active={statusFilter === "check"} onClick={() => setStatusFilter("check")}>To check ({checkN})</ToggleButton>}
+        {mayInvoice && (invoiceN > 0 || statusFilter === "invoice") && <ToggleButton active={statusFilter === "invoice"} onClick={() => setStatusFilter("invoice")}>To invoice ({invoiceN})</ToggleButton>}
         <ToggleButton active={statusFilter === "quotes"} onClick={() => setStatusFilter("quotes")}>Open quotes ({works.filter(isOpenQuote).length})</ToggleButton>
         <ToggleButton active={statusFilter === "requested"} onClick={() => setStatusFilter("requested")}>New requests ({requestedCount})</ToggleButton>
-        <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Closed ({works.filter(isClosed).length})</ToggleButton>
+        <ToggleButton active={statusFilter === "closed"} onClick={() => setStatusFilter("closed")}>Finished ({works.filter(isClosed).length})</ToggleButton>
         <ToggleButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All ({works.length})</ToggleButton>
         {!ACTIVE_HIDE_MONEY && works.some((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1) && <ToggleButton active={overQuoteOnly} title="Jobs whose final cost is more than 10% above the quote" onClick={() => setOverQuoteOnly((v) => !v)}>Cost over quote ({works.filter((w) => Number(w.quoteAmount) > 0 && Number(w.finalCost) > Number(w.quoteAmount) * 1.1).length})</ToggleButton>}
         {works.some((w) => w.waitingOn && !isClosed(w)) && <ToggleButton active={waitingOnly} onClick={() => setWaitingOnly((v) => !v)}>Waiting on something ({works.filter((w) => w.waitingOn && !isClosed(w)).length})</ToggleButton>}
@@ -166,7 +184,7 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
         )}
       </div>
       <div className="fm-sub" style={{ fontSize: 12, color: "var(--muted)", margin: "-4px 0 10px" }}>
-        {{ open: "Showing every job that isn't completed or rejected.", quotes: "Showing jobs with a quote waiting for a decision, or approved and not finished — the same jobs as Home's Open quotes.", requested: "Showing new requests that haven't been quoted or assigned yet.", closed: "Showing completed and rejected jobs.", all: "Showing every job." }[statusFilter]}
+        {{ open: office || !me ? "Showing every job that isn't completed or rejected." : "Showing every job that isn't completed or rejected — yours first.", quotes: "Showing jobs with a quote waiting for a decision, or approved and not finished — the same jobs as Home's Open quotes.", requested: "Showing new requests that haven't been quoted or assigned yet.", closed: "Showing completed and rejected jobs (a completed job is closed once it's checked and invoiced).", all: "Showing every job.", mine: "Showing the open jobs assigned to you.", triage: "Showing new jobs waiting for the office to accept them and set their priority.", check: "Showing finished jobs waiting for the office's quality check.", invoice: "Showing finished, checked supplier jobs with no invoice recorded yet." }[statusFilter]}
         {(waitingOnly || overQuoteOnly || tradeFilter) ? " Extra filters are on, so some may be hidden." : ""} {filtered.length} shown.
       </div>
       {filtered.length === 0 ? (
@@ -187,7 +205,10 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
                 <WorkStatusTag status={w.status} />
               </div>
               <div style={{ margin: "8px 0", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <StageChip info={infoOf(w)} />
                 <PriorityTag priority={w.priority || "medium"} />
+                {me && w.assignee === me && !isClosed(w) && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--accent-soft)", padding: "3px 8px", borderRadius: 20 }}>Yours</span>}
+                {w.scheduledFor && !isClosed(w) && <span style={{ fontSize: 11, fontWeight: 650, color: "var(--muted)", background: "var(--card-hi)", padding: "3px 8px", borderRadius: 20 }}>Booked {fmtDate(w.scheduledFor)}</span>}
                 {!w.deviceId && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "var(--accent-soft)", padding: "3px 8px", borderRadius: 20 }}>Room / building — no asset</span>}
                 {(() => {
                   const sla = workSla(w); if (!sla) return null;
@@ -224,7 +245,7 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
               )}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "var(--faint)" }}>
                 <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{ACTIVE_HIDE_MONEY ? "" : gbp(w.quoteAmount)}</span>
-                <span>{assignee ? assignee.name : "Unassigned"} · {commentCount} comment{commentCount === 1 ? "" : "s"}</span>
+                <span>{[w.assignee, assignee?.name].filter(Boolean).join(" · ") || "Unassigned"} · {commentCount} comment{commentCount === 1 ? "" : "s"}</span>
               </div>
             </button>
           );
@@ -249,7 +270,7 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
         </div>
       )}
       {openWork && (
-        <WorkDetailModal catBudget={budgetByCat?.[deviceById?.[works.find((x) => x.id === openWorkId)?.deviceId]?.serviceCategory || "maintenance"] || null} allWorks={works} onDuplicate={onDuplicateWork ? () => { onDuplicateWork(openWork); setOpenWorkId(null); } : null} onInvoice={onInvoiceFromWork ? () => onInvoiceFromWork(openWork) : null} onRaisePO={onPoFromWork ? () => onPoFromWork(openWork) : null} spares={spares} onUseSpare={onUseSpare ? (sid, q) => onUseSpare(openWork.id, sid, q) : null} onRepeat={onRepeat ? () => { const w = openWork; setOpenWorkId(null); onRepeat(w); } : null} locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
+        <WorkDetailModal info={infoOf(openWork)} invoiced={isInvoiced(openWork)} catBudget={budgetByCat?.[deviceById?.[works.find((x) => x.id === openWorkId)?.deviceId]?.serviceCategory || "maintenance"] || null} allWorks={works} onDuplicate={onDuplicateWork ? () => { onDuplicateWork(openWork); setOpenWorkId(null); } : null} onInvoice={onInvoiceFromWork ? () => onInvoiceFromWork(openWork) : null} onRaisePO={onPoFromWork ? () => onPoFromWork(openWork) : null} spares={spares} onUseSpare={onUseSpare ? (sid, q) => onUseSpare(openWork.id, sid, q) : null} onRepeat={onRepeat ? () => { const w = openWork; setOpenWorkId(null); onRepeat(w); } : null} locationName={locationName} invoicedTotal={invoices.filter((iv) => iv.workId === openWork.id || (openWork.poNumber && iv.poNumberText === openWork.poNumber)).reduce((t, iv) => t + (Number(iv.amount) || 0), 0)} work={openWork} device={deviceById[openWork.deviceId]} suppliers={suppliers} currentUserName={currentUserName}
           approvalThreshold={approvalThreshold} needsApproval={needsApproval(openWork)}
           onConvertToProject={onConvertToProject ? () => { onConvertToProject(openWork); setOpenWorkId(null); } : null}
           onConvertToPlan={() => onConvertToPlan?.(openWork)} onConvertToService={onConvertToService ? () => onConvertToService(openWork) : null}
@@ -260,79 +281,23 @@ export function WorksTab({ focus = null, budgetByCat = null, initialOpenId = nul
   );
 }
 
-// The life of a reactive job, step by step: quote → approval → purchase order → work done → invoice.
-// Shows what's done, what comes next, and the button for it (or who has to do it, if this person can't).
-function JobSteps({ work, needsApproval, approvalThreshold = 0, invoicedTotal = 0, onRaisePO, onInvoice, onUpdate }) {
-  if (work.status === "rejected") return <div style={{ fontSize: 12.5, background: "var(--card-hi)", borderRadius: 10, padding: "9px 11px" }}><b>Rejected.</b> Nothing more to do on this job.</div>;
-  const quoted = Number(work.quoteAmount) > 0;
-  const overLimit = approvalThreshold > 0 && Number(work.quoteAmount) >= approvalThreshold;
-  const done = work.status === "completed";
-  const goAhead = ["approved", "in_progress", "completed"].includes(work.status);
-  const approved = overLimit ? !!work.approvedBy : quoted;
-  const hasPO = !!work.poNumber; const invoiced = invoicedTotal > 0;
-  const HM = ACTIVE_HIDE_MONEY;   // engineers: the steps without amounts, POs or invoices — the office handles those
-  const steps = [
-    ["Quote", quoted, quoted ? (HM ? "added" : gbp(work.quoteAmount)) : HM ? "the office adds it" : "not added yet"],
-    ["Approval", approved && !needsApproval, !quoted ? "after the quote" : overLimit ? (work.approvedBy ? `by ${work.approvedBy}` : HM ? "needed" : `needed — over ${gbp(approvalThreshold)}`) : HM ? "not needed" : `not needed — under ${gbp(approvalThreshold || 0)}`],
-    !HM && ["Purchase order", hasPO, hasPO ? work.poNumber : "optional"],
-    ["Work done", done, done ? fmtDate(work.completedAt) : goAhead ? "in hand" : "not started"],
-    !HM && ["Invoice", invoiced, invoiced ? `${gbp(invoicedTotal)} recorded` : "not recorded"],
-  ].filter(Boolean);
-  const canPO = !HM && onRaisePO && ACTIVE_CAN_EDIT && !hasPO && quoted && !needsApproval && !done;
-  const canInvoice = !HM && onInvoice && ACTIVE_CAN_EDIT && goAhead;
-  const canComplete = ACTIVE_CAN_EDIT && !done && quoted && !needsApproval;
-  let next;
-  if (!quoted) next = HM ? "The office adds the quote; then the job goes ahead, or waits for approval first." : "Add the quote amount (Quote amount, further down), then it can be approved if it's over the limit.";
-  else if (needsApproval) next = ACTIVE_CAN_APPROVE ? "Approve or reject the quote — the buttons are just below." : "Approval by finance, or by someone an admin allows to approve quotes (see below).";
-  else if (HM) next = done ? "Done. The office deals with the invoice." : "When the work is finished, mark it completed.";
-  else if (!hasPO && !done) next = canPO ? "Raise a purchase order for the supplier (optional — skip it if your company doesn't use POs)." : "A purchase order is optional. Someone with finance permission raises it in Commercial → POs & invoices, or type an existing PO number further down.";
-  else if (!done) next = "When the work is finished, mark it completed.";
-  else if (!invoiced) next = canInvoice ? "Record the supplier's invoice against this job." : "Someone with finance permission records the invoice in Commercial → POs & invoices.";
-  else next = "Invoice recorded. It's approved and paid in Commercial → POs & invoices.";
-  const btn = (primary) => ({ background: primary ? "var(--accent)" : "var(--card)", color: primary ? "var(--on-accent)" : "var(--accent)", border: primary ? "none" : "1px solid var(--border)", borderRadius: 8, padding: "7px 11px", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" });
-  const stage = !quoted || needsApproval ? 0 : !hasPO && !done ? 2 : !done ? 3 : 4;
-  return (
-    <div data-testid="job-steps" style={{ background: "var(--card-hi)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
-        {steps.map(([label, ok, note], i) => (
-          <span key={label} style={{ fontSize: 12, color: ok ? "var(--ok)" : "var(--muted)", fontWeight: ok ? 650 : 500, whiteSpace: "nowrap" }}>{ok ? "✓" : `${i + 1}.`} {label} <span style={{ fontWeight: 400, color: "var(--faint)" }}>· {note}</span></span>
-        ))}
-      </div>
-      <div style={{ fontSize: 12.5 }}><b>Next:</b> {next}</div>
-      {(canPO || canComplete || canInvoice) && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {canPO && <button type="button" onClick={onRaisePO} style={btn(stage === 2)}>Raise a PO</button>}
-          {canComplete && <button type="button" onClick={() => onUpdate({ status: "completed" })} style={btn(stage === 3)}>Mark completed</button>}
-          {canInvoice && <button type="button" onClick={onInvoice} style={btn(stage === 4 && !invoiced)}>{invoiced ? "Record another invoice" : "Record the invoice"}</button>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, onInvoice, onRaisePO, spares = [], onUseSpare, onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
+export function WorkDetailModal({ info = null, invoiced = false, catBudget = null, allWorks = [], onDuplicate, onInvoice, onRaisePO, spares = [], onUseSpare, onRepeat, locationName = "", invoicedTotal = 0, onConvertToProject, work, device, suppliers, currentUserName, onClose, onUpdate, onDelete, approvalThreshold = 0, needsApproval = false, onConvertToPlan, onConvertToService }) {
   const placeText = usePlaceText();
   // what the job is for: its asset, or (no asset) the room, floor or building it's on
   const jobName = device ? device.name : (placeText(work) || work.placeName || "Job on a room or building");
   const [po, setPo] = useState(work.poNumber || "");
   const [statusMsg, setStatusMsg] = useState("");
-  const [comment, setComment] = useState("");
   const [amount, setAmount] = useState(work.quoteAmount ? String(work.quoteAmount) : "");
   const [finalCost, setFinalCost] = useState(work.finalCost != null ? String(work.finalCost) : "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const comments = work.comments || [];
   const relevantSuppliers = suppliers.filter((s) => !device || s.category === device.serviceCategory);
   const otherSuppliers = suppliers.filter((s) => device && s.category !== device.serviceCategory);
-  function addComment() {
-    if (!comment.trim()) return;
-    onUpdate({ comments: [...comments, { text: comment.trim(), by: currentUserName || "Unknown", at: new Date().toISOString() }] });
-    setComment("");
-  }
   return (
     <Modal title={jobName} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 13.5, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{work.description}</div>
-        <JobSteps work={work} needsApproval={needsApproval} approvalThreshold={approvalThreshold} invoicedTotal={invoicedTotal} onRaisePO={onRaisePO} onInvoice={onInvoice} onUpdate={onUpdate} />
+        {info && <LifecycleStrip info={info} />}
+        {info && <JobNext work={work} info={info} jobName={jobName} device={device} suppliers={suppliers} me={currentUserName} locationName={locationName} invoiced={invoiced || invoicedTotal > 0} needsApproval={needsApproval} onUpdate={onUpdate} onRaisePO={onRaisePO} onInvoice={onInvoice} />}
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>Raised {fmtDate(work.dateRaised)}{work.requestedBy ? ` by ${work.requestedBy}` : work.loggedBy ? ` by ${work.loggedBy}` : ""}{work.source === "checklist" ? " · from a failed checklist item" : work.source === "request" ? " · via request portal" : ""}</div>
         <div style={{ display: "flex", gap: 10 }}>
           <Field label="Status">
@@ -453,9 +418,14 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
         </div>
         {work.attendedAt && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: -4 }}>Response time: <b>{(() => { const h = Math.max(0, (new Date(work.attendedAt) - new Date(work.loggedAt || `${work.dateRaised}T09:00:00`)) / 3600000); return h < 48 ? `${h.toFixed(1)} hours` : `${(h / 24).toFixed(1)} days`; })()}</b> from being raised</div>}
         <div style={{ display: "flex", gap: 8 }}>
+          <Field label="Booked for">
+            <TextInput type="date" value={work.scheduledFor || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ scheduledFor: e.target.value || null })} />
+          </Field>
           <Field label="Supplier's expected completion">
             <TextInput type="date" value={work.eta || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ eta: e.target.value || null })} />
           </Field>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
           <Field label="Requester email">
             <TextInput type="email" value={work.requesterEmail || ""} disabled={!ACTIVE_CAN_EDIT} onChange={(e) => onUpdate({ requesterEmail: e.target.value })} placeholder="for updates" />
           </Field>
@@ -539,27 +509,7 @@ export function WorkDetailModal({ catBudget = null, allWorks = [], onDuplicate, 
             {(work.convertedTo || []).length > 0 && <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 6 }}>Already converted: {work.convertedTo.map((c) => c.type === "plan" ? "Plan line" : "Service").join(", ")}</div>}
           </div>
         )}
-        <div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>Comments ({comments.length})</div>
-          {comments.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--faint)", marginBottom: 8 }}>No comments yet.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-              {comments.map((c, i) => (
-                <div key={i} style={{ background: "var(--card-hi)", borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 13, color: "var(--text)", whiteSpace: "pre-wrap" }}>{maskMoney(c.text)}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 3 }}>{c.by} · {new Date(c.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {ACTIVE_CAN_EDIT && (
-            <div style={{ display: "flex", gap: 8 }}>
-              <TextInput value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add an update…" style={{ flex: 1 }} onKeyDown={(e) => { if (e.key === "Enter") addComment(); }} />
-              <button onClick={addComment} style={{ background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 9, padding: "0 14px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Post</button>
-            </div>
-          )}
-        </div>
+        <JobTimeline work={work} me={currentUserName} onUpdate={onUpdate} />
         {ACTIVE_CAN_EDIT && (confirmingDelete ? (
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={onDelete} style={{ flex: 1, background: "var(--danger-soft)", color: "var(--danger)", border: "1px solid #F3C6C6", borderRadius: 9, padding: "9px 12px", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit" }}>Confirm delete</button>

@@ -677,24 +677,42 @@ export function ChaseModal({ devices, supplierById, locationLabel, currentUserNa
 /* ---------------------------------------------------------
    Quick log — phone-first: pick (or scan) a service, photo, cost, checks, sign, save
 --------------------------------------------------------- */
-export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUserName, onScan, onClose, onSave }) {
-  const [deviceId, setDeviceId] = useState(initialDeviceId || null);
+// A visit on one page (Phase 2): with `visit` (a visit started at the asset), it's timed from the start, every change is
+// kept on this person's device until it's finished, and Finish records the start and finish times with the sign-off.
+export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUserName, onScan, onClose, onSave, visit = null, onDraft, onDiscard }) {
+  const [deviceId, setDeviceId] = useState(initialDeviceId || visit?.deviceId || null);
   const [q, setQ] = useState("");
   const device = devices.find((d) => d.id === deviceId) || null;
-  const [photo, setPhoto] = useState(null);
+  const [photo, setPhoto] = useState(visit?.certificatePhoto || null);
+  const [photos, setPhotos] = useState(visit?.photos || []);   // more evidence photos
   const [busy, setBusy] = useState(false);
   const [cost, setCost] = useState("");
-  const [technician, setTechnician] = useState("");
-  const [notes, setNotes] = useState("");
-  const [checks, setChecks] = useState([]);
-  const [signatures, setSignatures] = useState({});
+  const [technician, setTechnician] = useState(visit ? (visit.technician ?? currentUserName ?? "") : "");
+  const [notes, setNotes] = useState(visit?.notes || "");
+  const [checks, setChecks] = useState(visit?.checks || []);
+  const [signatures, setSignatures] = useState(visit?.signatures || {});
+  const [startedAt, setStartedAt] = useState(visit?.startedAt || null);
+  const [arrived, setArrived] = useState(""); const [left, setLeft] = useState("");   // typed, when the visit wasn't timed
+  const [, tick] = useState(0);
+  useEffect(() => { if (!startedAt) return undefined; const t = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(t); }, [startedAt]);
+  // keep the visit in progress on this person's device as it's filled in
+  const latest = useRef(null); latest.current = { startedAt, technician, notes, checks, signatures, photos, certificatePhoto: photo };
+  useEffect(() => { if (!visit || !onDraft) return undefined; const t = setTimeout(() => onDraft(latest.current), 600); return () => clearTimeout(t); }, [startedAt, technician, notes, checks, signatures, photos, photo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const savedRef = useRef(false);
+  useEffect(() => () => { if (visit && onDraft && !savedRef.current) onDraft(latest.current); }, []); // eslint-disable-line react-hooks/exhaustive-deps   // closing it keeps the latest
   const [gps, setGps] = useState(null);
   const [custom, setCustom] = useState({});
   const [err, setErr] = useState("");
   useEffect(() => {
-    setChecks((device?.checklist || []).map((item) => ({ item, result: "", note: "" })));
+    if (!(visit && visit.checks && visit.deviceId === deviceId)) setChecks((device?.checklist || []).map((item) => ({ item, result: "", note: "" })));
     setCost(device?.budgetPerVisit && !ACTIVE_HIDE_MONEY ? String(device.budgetPerVisit) : "");
-  }, [deviceId]);
+  }, [deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function addPhotos(e) {
+    const files = Array.from(e.target.files || []); if (!files.length) return;
+    setBusy(true); try { const more = await Promise.all(files.map((f) => compressImage(f))); setPhotos((p) => [...p, ...more].slice(0, 8)); } catch (x) { /* retry */ } setBusy(false);
+  }
+  const hm = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+  const mins = startedAt ? Math.max(0, Math.round((Date.now() - new Date(startedAt)) / 60000)) : 0;
   async function handleFile(e) {
     const f = e.target.files?.[0]; if (!f) return;
     setBusy(true); try { setPhoto(await compressImage(f)); } catch (x) { /* retry */ } setBusy(false);
@@ -704,9 +722,14 @@ export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUser
     if (checks.some((c) => c.result === "fail" && !c.note.trim())) { setErr("Add a short note for each failed check."); return; }
     const miss = missingRequiredFields("visit", device.serviceCategory, custom);
     if (miss.length) { setErr(`Please fill in: ${miss.join(", ")}`); return; }
+    const finishedAt = new Date().toISOString();
+    const times = startedAt ? { startedAt, finishedAt, arrived: hm(startedAt), left: hm(finishedAt), minutesOnSite: Math.max(0, Math.round((new Date(finishedAt) - new Date(startedAt)) / 60000)) } : { arrived: arrived || undefined, left: left || undefined };
+    if (startedAt && !signatures.technician?.image) { setErr("Sign it off: the person who did the work signs below."); return; }
+    savedRef.current = true;
     onSave({
+      ...times, photos: photos.length ? photos : undefined,
       deviceId: device.id, name: `${(CATEGORY_META[device.serviceCategory] || CATEGORY_META.maintenance).label} visit`,
-      date: new Date().toISOString().slice(0, 10), technician: technician.trim(), supplierId: device.supplierId || "",
+      date: (startedAt || finishedAt).slice(0, 10), technician: technician.trim(), supplierId: device.supplierId || "",
       notes: notes.trim(), cost: cost && !ACTIVE_HIDE_MONEY ? Number(cost) : 0, costPending: ACTIVE_HIDE_MONEY ? true : undefined, certificatePhoto: photo, poNumber: "",
       checklistResults: checks.length ? checks : undefined,
       signatures: signatures.technician || signatures.site ? signatures : undefined, gps: gps || undefined, source: "quick-log",
@@ -745,7 +768,13 @@ export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUser
   return (
     <Modal title={device.name} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {!initialDeviceId && <button onClick={() => setDeviceId(null)} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "var(--accent)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>‹ Change service</button>}
+        {startedAt && (
+          <div data-testid="visit-timer" style={{ background: "var(--accent-soft)", borderRadius: 12, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 14.5, fontWeight: 750, color: "var(--accent)", flex: 1 }}>Visit started {hm(startedAt)} · {mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h ${mins % 60} min`} so far</span>
+            <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>Started at <TextInput type="time" aria-label="Started at" value={hm(startedAt)} onChange={(e) => { const [h, m] = e.target.value.split(":").map(Number); if (isNaN(h)) return; const d = new Date(startedAt); d.setHours(h, m || 0, 0, 0); if (d <= new Date()) setStartedAt(d.toISOString()); }} style={{ width: "auto", padding: "6px 8px" }} /></label>
+          </div>
+        )}
+        {!initialDeviceId && !visit && <button onClick={() => setDeviceId(null)} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "var(--accent)", fontSize: 12.5, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>‹ Change service</button>}
         <label style={{ ...big, minHeight: photo ? 0 : 120, background: photo ? "transparent" : "var(--accent)", color: "var(--on-accent)", flexDirection: "column", border: "none", padding: photo ? 0 : 12 }}>
           {photo ? <img src={photo} alt="" style={{ width: "100%", borderRadius: 12 }} /> : <>{busy ? <Loader2 size={30} style={{ animation: "spin 1s linear infinite" }} /> : <Camera size={32} />}<span>Take photo of work / certificate</span></>}
           <input type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} />
@@ -770,14 +799,28 @@ export function QuickLogModal({ devices, suppliers, initialDeviceId, currentUser
                 {c.result === "fail" && <TextInput value={c.note} onChange={(e) => setChecks((p) => p.map((x, idx) => idx === i ? { ...x, note: e.target.value } : x))} placeholder="What's wrong?" style={{ width: "100%", marginTop: 8, fontSize: 14 }} />}
               </div>
             ))}
-            {checks.some((c) => c.result === "fail") && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>Failed checks create high-priority follow-up jobs in Works.</div>}
+            {checks.some((c) => c.result === "fail") && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>Failed checks go to the office, who raise a job for each one that needs it.</div>}
           </div>
         )}
         <CustomFieldInputs appliesTo="visit" category={device.serviceCategory} values={custom} onChange={setCustom} large />
         <Field label="Notes (optional)"><TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything to report?" style={{ fontSize: 14 }} /></Field>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>More photos{photos.length ? ` (${photos.length})` : ""}</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {photos.map((p, i) => <div key={i} style={{ position: "relative" }}><img src={p} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }} /><button type="button" aria-label="Remove photo" onClick={() => setPhotos((x) => x.filter((_, k) => k !== i))} style={{ position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: 11, border: "none", background: "var(--danger)", color: "#fff", fontSize: 13, cursor: "pointer", lineHeight: "22px", padding: 0 }}>×</button></div>)}
+            {photos.length < 8 && <label style={{ width: 64, height: 64, borderRadius: 8, border: "1px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--accent)" }}><Camera size={20} /><input type="file" accept="image/*" multiple onChange={addPhotos} style={{ display: "none" }} /></label>}
+          </div>
+        </div>
+        {!startedAt && (
+          <div style={{ display: "flex", gap: 10 }}>
+            <Field label="Arrived (optional)"><TextInput type="time" value={arrived} onChange={(e) => setArrived(e.target.value)} style={{ fontSize: 15, padding: "10px 12px" }} /></Field>
+            <Field label="Left (optional)"><TextInput type="time" value={left} onChange={(e) => setLeft(e.target.value)} style={{ fontSize: 15, padding: "10px 12px" }} /></Field>
+          </div>
+        )}
         <SignOffSection signatures={signatures} onChange={setSignatures} gps={gps} onGps={setGps} defaultTechName={technician} />
         {err && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{err}</div>}
-        <button onClick={save} style={{ ...big, background: "#2F855A", color: "var(--on-accent)", border: "none", position: "sticky", bottom: 0 }}><CheckCircle2 size={20} /> Save visit</button>
+        <button onClick={save} style={{ ...big, background: "#2F855A", color: "var(--on-accent)", border: "none", position: "sticky", bottom: 0 }}><CheckCircle2 size={20} /> {startedAt ? "Finish visit" : "Save visit"}</button>
+        {visit && onDiscard && <button type="button" onClick={() => { if (window.confirm("Discard this visit? Nothing is saved.")) onDiscard(); }} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 13, fontWeight: 650, cursor: "pointer", fontFamily: "inherit", padding: 6 }}>Discard this visit</button>}
       </div>
     </Modal>
   );

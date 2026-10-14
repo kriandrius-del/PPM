@@ -1,6 +1,6 @@
-# Going live with logins — round 30.4
+# Going live with logins — round 31.1
 
-> **Phase 1 is in review.** Review it on a separate test copy first: the Phase 1 review checklist has the steps. Only follow this guide for your live app once Phase 1 is approved.
+> **Phase 1 was approved on 14 Oct 2026.** Before following this guide for your live app, do the checks deferred from the review (see "Before going live" below) on the review copy, and make sure they pass.
 
 ## Already live on round 29? Upgrade in 5 minutes
 
@@ -92,9 +92,9 @@ To change someone's role or remove them, use **Team & access**. Removing someone
 | **Owner** | Everything, including the team. Set when the company is created, and can't be changed. | You |
 | **System administrator** | Everything, including the team and settings | IT or a second FM lead |
 | **FM manager** | All data: operations, assets, suppliers, compliance and money | Facilities manager |
-| **Facilities coordinator** | Jobs, maintenance, schedules, suppliers, visitors, safety records, buildings and rooms, and settings other than money. Can't change budgets, POs or invoices. | Helpdesk or coordinator |
-| **Engineer** | Working on the assets that exist: logging visits and inspections, out-of-service and status, notes, run hours and bookings. Also jobs (but not approving quotes), meter and water readings, checks, incidents, actions, permits, spares, sign-ins and handover notes. Can't add, delete or restructure assets. | In-house engineer |
-| **Finance** | Budgets, POs, invoices and savings, and always approves quotes over the limit. Can't change maintenance, assets or suppliers. | Finance / accounts |
+| **Facilities coordinator** | Jobs (including accepting new ones and checking finished work), maintenance, schedules, suppliers, visitors, safety records, buildings and rooms, and settings other than money. Can't change budgets, POs or invoices. | Helpdesk or coordinator |
+| **Engineer** | Working on the assets that exist: logging visits and inspections, out-of-service and status, notes, run hours and bookings. Also jobs (but not approving quotes, accepting new jobs or signing off the quality check), meter and water readings, checks, incidents, actions, permits, spares, sign-ins and handover notes. Can't add, delete or restructure assets. | In-house engineer |
+| **Finance** | Budgets, POs, invoices and savings, and always approves quotes over the limit; records a job's invoice or says none is needed. Can't change maintenance, assets or suppliers. | Finance / accounts |
 | **Senior management** | Nothing (read-only). Home shows every site's health side by side. | Director |
 | **Viewer** | Nothing (read-only) | Anyone who just needs to look |
 
@@ -108,6 +108,9 @@ Things to know about roles:
 - **Assets are shaped by managers.** Owners, admins, FM managers and coordinators add, delete and restructure assets. Engineers work on the ones that exist.
 - **Engineers see no prices.** Engineers don't see or type quotes, costs, budgets, spend or prices anywhere (screens, exports, printouts); the office adds them. The database refuses an engineer's change to a price or cost. Visits an engineer logs show **Cost to add** in Visit history until the office fills it in.
 - **Jobs can be on a room or building.** Raise a job → **No particular asset — the room or building itself**, then choose where. The supplier is assigned on the job later, when it's quoted.
+- **Every job has the same stages** (Phase 2): the office (coordinators and up) accepts new jobs from engineers and QR codes, and checks finished work before it's closed; finance or an FM manager records the invoice or says none is needed. The database checks who does each of these.
+- **Needs a job:** failed checks and open safety actions are listed for the office, who raise a job or say none is needed. Failed visit checks no longer raise jobs on their own.
+- **Field mode:** scanning an asset's QR code gives engineers one screen to start a timed visit, log an inspection, report a problem, take a photo or read a meter.
 - **Each person gets their own version of the app.** Home and the menu change with the role. For example, an engineer gets big Scan / Log / Report buttons, and finance gets the approval queue.
 - **The database decides per list.** An engineer can't change a budget even by calling the database directly. Within a list it can't tell one record from another, so an engineer who may log visits may also edit other visits. Per-record rules come with the move to proper tables (see ROADMAP.md).
 - **Contractors don't need a login.** Send them their job link: People → Suppliers & contractors → **Send a job link**. They only ever see their own jobs.
@@ -119,7 +122,7 @@ These were deferred on 13 Oct 2026 and must be done (and passed) before the app 
 - **Roles & permissions** (checklist lines ROL-01 to ROL-18): sign in as each role and follow the role test plan in the Phase 1 review checklist.
 - **QR and link pages** (QR-01 to QR-05): scan a new sticker, an old sticker, the supplier job link, and the meter, check sheet, feedback and sign-in QR codes on a phone.
 
-On the review copy these need either a Vercel login on every device, or Vercel Authentication switched off for the review project (Settings → Deployment Protection). Neither needs a paid Vercel plan.
+The review copy is https://ppmappandrius3-git-phase-1-review-andrius2.vercel.app (Vercel project `ppm_app_andrius3`, branch `phase-1-review`). These checks need either a Vercel login on every device, or Vercel Authentication switched off for that project (Settings → Deployment Protection). Neither needs a paid Vercel plan.
 
 ## Questions
 

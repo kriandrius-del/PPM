@@ -4,7 +4,7 @@ import { Activity, AlertTriangle, Bell, Calendar, CalendarCheck, CalendarDays, C
 import { EmptyState, StatChip, ToggleButton } from "./components/ui.jsx";
 import { PRODUCT_NAME, PRODUCT_TAGLINE, STATUTORY_ITEMS } from "./lib/constants.js";
 import { ACCENTS, BUILTIN_TEMPLATES, DEFAULT_AUDIT_TEMPLATES, EQUIPMENT_TYPES, INCIDENT_TYPES, LOG_TEMPLATES, MONTH_LABELS, MONTH_NAMES, ONBOARDING_ITEMS, PKEYS, SKEYS, SLA_DAYS, WASTE_STREAMS, WATER_LIMITS, alertGroup } from "./lib/constants.js";
-import { ACTIVE_CAN_EDIT, ACTIVE_HIDE_MONEY, AREA_SUGGESTIONS_CACHE, set_ACTIVE_HIDE_MONEY, set_ACTIVE_CAN_APPROVE, set_ACTIVE_CAN_MANAGE_ASSETS, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_BRAND, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
+import { ACTIVE_CAN_EDIT, ACTIVE_HIDE_MONEY, AREA_SUGGESTIONS_CACHE, set_ACTIVE_HIDE_MONEY, set_ACTIVE_ROLE, set_ACTIVE_CAN_APPROVE, set_ACTIVE_CAN_MANAGE_ASSETS, CATEGORY_KEYS, CATEGORY_META, applyCategorySettings, emptyCatMap, set_ACTIVE_BRAND, set_ACTIVE_CAN_EDIT, set_ACTIVE_CURRENCY_CODE, set_ACTIVE_CUSTOM_FIELDS, set_ACTIVE_SITE_INFO, set_ACTIVE_SLA, set_ACTIVE_TEMPLATES, set_ACTIVE_USERS, set_AREA_SUGGESTIONS_CACHE, set_PARENT_CANDIDATES_CACHE, set_TAG_SUGGESTIONS_CACHE } from "./lib/globals.js";
 import { LAST_LOCAL_WRITE, loadPersonal, loadShared, savePersonal, saveShared, set_SAVE_STATUS_LISTENER, peekShared, acceptShared } from "./lib/storage.js";
 import { addDays, addMonths, appBaseUrl, orgParam, cloudSession, cachedWeather, isDueThisMonth, isDueWithin30, isOverdueService, computeCompliance, currentBooking, currentDowntime, daysUntil, downloadBlob, escapeHtml, fmtDate, gbp, inBlackout, isMirrored, meterStats, replacementYear, shiftDate, siteWeatherSource, uid, workSla } from "./lib/utils.js";
 import { AddCountryModal, AddLocationModal, AlertsModal, DataHealthModal, DataModal, GlobalSearchModal, HelpModal, LocationPickerModal, ReportsModal, SettingsModal, ShortcutsModal, UserSwitchModal } from "./modals/AppModals.jsx";
@@ -27,8 +27,11 @@ import { budgetModel } from "./tabs/BudgetPlus.jsx";
 import { AppShell, liveState } from "./app/AppShell.jsx";
 import { AREA_BY_KEY, alertTarget, areasFor, canSeeArea, defaultSection, otherAreasFor, phoneAreas, resolveTarget, sectionLabel } from "./app/navigation.js";
 import { brandCssVars, brandFrom } from "./lib/brand.js";
-import { GO_AHEAD, ROLES, seesMoney, canEditSection, canManageAssets, canWrite, canWriteSettings, homeKind, isAdminRole, isApprover, isReadOnly, normaliseRole, worksRefusal } from "./app/permissions.js";
+import { GO_AHEAD, ROLES, seesMoney, canEditSection, canManageAssets, canWrite, canWriteSettings, homeKind, isAdminRole, isApprover, isReadOnly, normaliseRole } from "./app/permissions.js";
 import { CommandCentre } from "./features/home/CommandCentre.jsx";
+import { useWorks } from "./features/operations/useWorks.js";
+import { usePlanned } from "./features/operations/usePlanned.js";
+import { FieldCard } from "./features/operations/FieldCard.jsx";
 import { computeSiteHealth } from "./features/health/siteHealth.js";
 import { HealthModal } from "./features/health/HealthPanel.jsx";
 import { complianceRegister } from "./features/compliance/register.js";
@@ -37,7 +40,9 @@ import { LocationsView } from "./features/assets/LocationsView.jsx";
 import { PlaceContext } from "./features/assets/PlacePicker.jsx";
 import { AssetRegister } from "./features/assets/AssetRegister.jsx";
 import { AssetSummary } from "./features/assets/AssetSummary.jsx";
-import { assetStatus, jobWhat, placeOf, portfolioOf } from "./features/assets/places.js";
+import { assetStatus, jobWhat, placeLabel, placeOf, portfolioOf } from "./features/assets/places.js";
+import { isOffice, jobStages, needsCheck, needsTriage } from "./features/operations/lifecycle.js";
+import { jobSuggestions } from "./features/operations/suggestions.js";
 import { CommercialOverview, ContractsView } from "./features/commercial/CommercialViews.jsx";
 import { OnSiteView, TeamView } from "./features/people/PeopleViews.jsx";
 import { MoreMenu } from "./features/more/MoreMenu.jsx";
@@ -138,6 +143,10 @@ export function MainApp() {
   const [showAlerts, setShowAlerts] = useState(false);
   const [showReports, setShowReports] = useState(false);
   const [quickLog, setQuickLog] = useState(null); // null | { deviceId? }
+  // Engineer field mode (Phase 2): the asset card after a scan, and the visit this person has in progress
+  const [fieldFor, setFieldFor] = useState(null);
+  const [visitDraft, setVisitDraft] = useState(null);
+  const [visitOpen, setVisitOpen] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -150,6 +159,7 @@ export function MainApp() {
   const tab = navId;
   const setTab = (t) => { setNavId(resolveTarget(t)); try { window.scrollTo(0, 0); } catch (e) { /* ignore */ } };
   const [buildings, setBuildings] = useState([]);
+  const [followups, setFollowups] = useState([]);   // "Needs a job" suggestions the office has dealt with (round 31)
   const [notifState, setNotifState] = useState({});
   const [healthOpen, setHealthOpen] = useState(null);
   const [liveInfo, setLiveInfo] = useState(false);
@@ -279,7 +289,7 @@ export function MainApp() {
 
   useEffect(() => {
     (async () => {
-      const [u, c, l, d, s, w, sup, b, bl, dt, vb, nav, st, act, mt, mr, si, sn, sp, ky, rm, disp, au, inc, pr, pm, ws, po, inv, wo, wr, tr, dr, trs, nts, lge, svs, asb, acts, spc, wlk, csh, eqp, vsub, fbk, fpl, kdt, cpk, iso, cln, sdn, bld, ntf] = await Promise.all([
+      const [u, c, l, d, s, w, sup, b, bl, dt, vb, nav, st, act, mt, mr, si, sn, sp, ky, rm, disp, au, inc, pr, pm, ws, po, inv, wo, wr, tr, dr, trs, nts, lge, svs, asb, acts, spc, wlk, csh, eqp, vsub, fbk, fpl, kdt, cpk, iso, cln, sdn, bld, ntf, fup, vdr] = await Promise.all([
         loadShared(SKEYS.users), loadShared(SKEYS.countries), loadShared(SKEYS.locations),
         loadShared(SKEYS.devices), loadShared(SKEYS.services), loadShared(SKEYS.works),
         loadShared(SKEYS.suppliers), loadShared(SKEYS.budgets), loadShared(SKEYS.budgetLines),
@@ -295,7 +305,7 @@ export function MainApp() {
         loadShared(SKEYS.coshh), loadShared(SKEYS.equipment), loadShared(SKEYS.visitSubmissions),
         loadShared(SKEYS.feedback), loadShared(SKEYS.floorplans), loadShared(SKEYS.keyDates),
         loadShared(SKEYS.carPark), loadShared(SKEYS.isolations), loadShared(SKEYS.costLines), loadShared(SKEYS.shutdowns),
-        loadShared(SKEYS.buildings), loadPersonal(PKEYS.notif, {}),
+        loadShared(SKEYS.buildings), loadPersonal(PKEYS.notif, {}), loadShared(SKEYS.followups), loadPersonal(PKEYS.visit, null),
       ]);
       setUsers(u); setCountries(c); setLocations(l); setDevices(d);
       setServices(s); setWorks(w); setSuppliers(sup); setBudgets(b); setBudgetLines(bl); setDeviceTasks(dt); setVisitBudgets(vb);
@@ -313,7 +323,7 @@ export function MainApp() {
       setTraining(Array.isArray(tr) ? tr : []); setDrills(Array.isArray(dr) ? dr : []);
       setAsbestos(Array.isArray(asb) ? asb : []);
       setCostLines(Array.isArray(cln) ? cln : []); setShutdowns(Array.isArray(sdn) ? sdn : []);
-      setBuildings(Array.isArray(bld) ? bld : []); setNotifState(ntf && !Array.isArray(ntf) ? ntf : {});
+      setBuildings(Array.isArray(bld) ? bld : []); setNotifState(ntf && !Array.isArray(ntf) ? ntf : {}); setFollowups(Array.isArray(fup) ? fup : []); setVisitDraft(vdr && vdr.deviceId && vdr.startedAt ? vdr : null);
       setCarPark(Array.isArray(cpk) ? cpk : []); setIsolations(Array.isArray(iso) ? iso : []);
       setFeedback(Array.isArray(fbk) ? fbk : []); setFloorplans(Array.isArray(fpl) ? fpl : []); setKeyDates(Array.isArray(kdt) ? kdt : []);
       setCoshh(Array.isArray(csh) ? csh : []); setEquipment(Array.isArray(eqp) ? eqp : []); setVisitSubmissions(Array.isArray(vsub) ? vsub : []);
@@ -342,7 +352,7 @@ export function MainApp() {
         setSelectedLocationId(deepDev.locationId);
         if (deepLoc) setSelectedCountryId(deepLoc.countryId);
         setTab("devices");
-        setHistoryFor(deepDev.id);
+        if (fieldModeFor()) setFieldFor(deepDev.id); else setHistoryFor(deepDev.id);
       }
       const deepJob = new URLSearchParams(window.location.search).get("job");
       const dj = deepJob ? (w || []).find((x) => x.id === deepJob) : null;
@@ -379,7 +389,7 @@ export function MainApp() {
   // Live refresh when a shared database is connected: pull the latest data when the app
   // comes back into view and every minute, so everyone sees each other's changes.
   const REMOTE = typeof window !== "undefined" && !!window.storage?.__remote;
-  const SHARED_SETTERS = { buildings: setBuildings, users: setUsers, countries: setCountries, locations: setLocations, devices: setDevices, services: setServices, works: setWorks, suppliers: setSuppliers, budgets: setBudgets, budgetLines: setBudgetLines, deviceTasks: setDeviceTasks, visitBudgets: setVisitBudgets, activity: setActivity, meters: setMeters, meterReadings: setMeterReadings, signins: setSignins, spares: setSpares, keys: setKeysList, reminders: setReminders, audits: setAudits, incidents: setIncidents, projects: setProjects, permits: setPermits, waste: setWaste, purchaseOrders: setPurchaseOrders, invoices: setInvoices, waterOutlets: setWaterOutlets, waterReadings: setWaterReadings, training: setTraining, drills: setDrills, trash: setTrash, notices: setNotices, logEntries: setLogEntries, savings: setSavings, asbestos: setAsbestos, actions: setActions, spaces: setSpaces, walkrounds: setWalkrounds, coshh: setCoshh, equipment: setEquipment, visitSubmissions: setVisitSubmissions, feedback: setFeedback, floorplans: setFloorplans, keyDates: setKeyDates, carPark: setCarPark, isolations: setIsolations, costLines: setCostLines, shutdowns: setShutdowns };
+  const SHARED_SETTERS = { followups: setFollowups, buildings: setBuildings, users: setUsers, countries: setCountries, locations: setLocations, devices: setDevices, services: setServices, works: setWorks, suppliers: setSuppliers, budgets: setBudgets, budgetLines: setBudgetLines, deviceTasks: setDeviceTasks, visitBudgets: setVisitBudgets, activity: setActivity, meters: setMeters, meterReadings: setMeterReadings, signins: setSignins, spares: setSpares, keys: setKeysList, reminders: setReminders, audits: setAudits, incidents: setIncidents, projects: setProjects, permits: setPermits, waste: setWaste, purchaseOrders: setPurchaseOrders, invoices: setInvoices, waterOutlets: setWaterOutlets, waterReadings: setWaterReadings, training: setTraining, drills: setDrills, trash: setTrash, notices: setNotices, logEntries: setLogEntries, savings: setSavings, asbestos: setAsbestos, actions: setActions, spaces: setSpaces, walkrounds: setWalkrounds, coshh: setCoshh, equipment: setEquipment, visitSubmissions: setVisitSubmissions, feedback: setFeedback, floorplans: setFloorplans, keyDates: setKeyDates, carPark: setCarPark, isolations: setIsolations, costLines: setCostLines, shutdowns: setShutdowns };
   // When two people save the same list at once, the shared-storage layer merges both sets of
   // changes and tells us the merged result, so this screen shows everyone's edits.
   useEffect(() => {
@@ -472,6 +482,7 @@ export function MainApp() {
     costLines: useCallback((next) => { setCostLines(next); saveShared(SKEYS.costLines, next); }, []),
     shutdowns: useCallback((next) => { setShutdowns(next); saveShared(SKEYS.shutdowns, next); }, []),
     buildings: useCallback((next) => { setBuildings(next); saveShared(SKEYS.buildings, next); }, []),
+    followups: useCallback((next) => { setFollowups(next); saveShared(SKEYS.followups, next); }, []),
   };
   function saveNav(patch) {
     const next = { currentUserId, selectedCountryId, selectedLocationId, tab, listPrefs, ...patch };
@@ -499,8 +510,10 @@ export function MainApp() {
   // Your role: with logins, the one your admin gave you (the database enforces it); without, your profile's.
   const role = CLOUD ? normaliseRole(CLOUD.org.role) : normaliseRole(currentUser?.role || "admin");
   // Engineers see no money (Phase 1 decision): set before anything below formats an amount.
-  const hideMoney = !seesMoney(role); set_ACTIVE_HIDE_MONEY(hideMoney);
+  const hideMoney = !seesMoney(role); set_ACTIVE_HIDE_MONEY(hideMoney); set_ACTIVE_ROLE(role);
   const readOnly = isReadOnly(role);
+  // Field mode from a QR link: engineers always; anyone else who logs visits when they're on a touch screen (phone, tablet)
+  function fieldModeFor() { return canWrite(role, SKEYS.services) && (role === "engineer" || !!window.matchMedia?.("(pointer: coarse)").matches); }
   // Two permissions that are separate from being able to edit a screen:
   const canManage = !readOnly && canManageAssets(role);   // add, delete and restructure assets
   const canApproveQuotes = !readOnly && isApprover(role, CLOUD ? CLOUD.org.canApprove : currentUser?.canApprove);   // approve quotes over the limit
@@ -531,9 +544,16 @@ export function MainApp() {
   const locDeviceTasks = useMemo(() => deviceTasks.filter((t) => locDeviceIds.has(t.deviceId)), [deviceTasks, locDeviceIds]);
   const locVisitBudgets = useMemo(() => visitBudgets.filter((v) => locDeviceIds.has(v.deviceId)), [visitBudgets, locDeviceIds]);
 
+  // "Needs a job": failed checks and open safety actions at this site the office hasn't dealt with yet (Phase 2)
+  const suggestions = useMemo(() => jobSuggestions({ siteId: selectedLocationId, services, deviceById: Object.fromEntries(devices.map((d) => [d.id, d])), logEntries, logDefs: settings.logDefs || [],
+    waterReadings, waterOutlets, equipment, actions, works, followups }), [selectedLocationId, services, devices, logEntries, settings.logDefs, waterReadings, waterOutlets, equipment, actions, works, followups]);
   // Notification centre: everything that needs attention at this location right now.
   const alerts = useMemo(() => {
     const out = [];
+    // the job lifecycle (Phase 2): new jobs to accept, finished jobs to check, failed checks that need a job — for the office
+    locWorks.filter(needsTriage).forEach((w) => out.push({ key: `tri-${w.id}`, tone: w.priority === "high" ? "danger" : "warn", title: `New job to accept: ${jobWhat(w, Object.fromEntries(locDevices.map((d) => [d.id, d])), { buildings, spaces })}`, detail: `${w.description}${w.requestedBy || w.loggedBy ? ` · raised by ${w.requestedBy || w.loggedBy}` : ""}`, tab: "works" }));
+    locWorks.filter(needsCheck).forEach((w) => out.push({ key: `chk-${w.id}`, tone: "warn", title: `Finished — check the work: ${jobWhat(w, Object.fromEntries(locDevices.map((d) => [d.id, d])), { buildings, spaces })}`, detail: w.description, tab: "works" }));
+    if (suggestions.length) out.push({ key: `nj-${selectedLocationId}`, tone: suggestions.some((x) => x.priority === "high") ? "warn" : "info", title: `${suggestions.length} failed check${suggestions.length === 1 ? "" : "s"} or safety action${suggestions.length === 1 ? "" : "s"} need${suggestions.length === 1 ? "s" : ""} a job`, detail: suggestions.slice(0, 2).map((x) => x.title).join(" · "), tab: "works" });
     const today = new Date();
     const yr = today.getFullYear();
     locDevices.forEach((d) => {
@@ -614,7 +634,7 @@ export function MainApp() {
     });
     const rank = { danger: 0, warn: 1, info: 2 };
     return out.sort((a, b) => rank[a.tone] - rank[b.tone]);
-  }, [locDevices, locWorks, locServices, locBudgets, locBudgetLines, locSuppliers, settings]);
+  }, [locDevices, locWorks, locServices, locBudgets, locBudgetLines, locSuppliers, settings, suggestions, buildings, spaces, selectedLocationId]);
 
   // Year-to-date spend and budget totals for the Home dashboard (same rules as the budget alerts).
   const spendSummary = useMemo(() => {
@@ -891,7 +911,8 @@ export function MainApp() {
   const hiddenGroups = display.hiddenAlertGroups || [];
   // Only notifications about areas this role has (an engineer isn't told about invoices to approve).
   // only alerts for the areas this role has; no quote or money alerts for roles that don't see money
-  const roleAlerts = useMemo(() => allAlerts.filter((a) => canSeeArea(role, String(alertTarget(a)).split(".")[0]) && !(hideMoney && /^(ap-|oq-|qx-|qa-|qd-|bud|po|iv|inv)/.test(String(a.key)))), [allAlerts, role, hideMoney]);
+  const roleAlerts = useMemo(() => allAlerts.filter((a) => canSeeArea(role, String(alertTarget(a)).split(".")[0]) && !(hideMoney && /^(ap-|oq-|qx-|qa-|qd-|bud|po|iv|inv)/.test(String(a.key)))
+    && !(!isOffice(role) && /^(tri-|chk-|nj-)/.test(String(a.key)))), [allAlerts, role, hideMoney]);   // accepting, checking and "needs a job" are the office's
   const visibleAlerts = useMemo(() => roleAlerts.filter((a) => !(snoozed[a.key] && snoozed[a.key] >= todayISO)).filter((a) => a.tone === "danger" || !hiddenGroups.includes(alertGroup(a.key))), [allAlerts, snoozed, todayISO, hiddenGroups.join(",")]);
   const snoozedCount = roleAlerts.length - visibleAlerts.length;
   // Remember the last services opened on this device (for "Recently opened" on Home).
@@ -994,7 +1015,7 @@ export function MainApp() {
     showToast("Undone — deleted item restored");
   }
   /* ---- backup & restore ---- */
-  const allData = { buildings, users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines, shutdowns };
+  const allData = { followups, buildings, users, countries, locations, devices, services, works, suppliers, budgets, budgetLines, deviceTasks, visitBudgets, settings, activity, meters, meterReadings, signins, spares, keys: keysList, reminders, audits, incidents, projects, permits, waste, purchaseOrders, invoices, waterOutlets, waterReadings, training, drills, trash, notices, logEntries, savings, asbestos, actions, spaces, walkrounds, coshh, equipment, visitSubmissions, feedback, floorplans, keyDates, carPark, isolations, costLines, shutdowns };
   async function downloadBackup() {
     const payload = { app: "PPM Service Book", version: 1, exportedAt: new Date().toISOString(), exportedBy: currentUser?.name || "", data: allData };
     let text = JSON.stringify(payload);
@@ -1012,7 +1033,7 @@ export function MainApp() {
     });
     if (d.settings && !Array.isArray(d.settings)) persist.settings(d.settings);
     if (Array.isArray(d.activity)) { setActivity(d.activity); saveShared(SKEYS.activity, d.activity); }
-    ["buildings", "meters", "meterReadings", "signins", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations", "costLines", "shutdowns"].forEach((k) => { if (Array.isArray(d[k])) persist[k](d[k]); });
+    ["followups", "buildings", "meters", "meterReadings", "signins", "spares", "keys", "reminders", "audits", "incidents", "projects", "permits", "waste", "purchaseOrders", "invoices", "waterOutlets", "waterReadings", "training", "drills", "trash", "notices", "logEntries", "savings", "asbestos", "actions", "spaces", "walkrounds", "coshh", "equipment", "visitSubmissions", "feedback", "floorplans", "keyDates", "carPark", "isolations", "costLines", "shutdowns"].forEach((k) => { if (Array.isArray(d[k])) persist[k](d[k]); });
     showToast("Backup restored", payload.exportedAt ? `from ${fmtDate(payload.exportedAt.slice(0, 10))}` : "");
     return null;
   }
@@ -1175,6 +1196,21 @@ export function MainApp() {
   function duplicateWork(w) { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); if (w.deviceId) setAddWorkFor(w.deviceId); else { setWorkPlace({ buildingId: w.buildingId || "", floorId: w.floorId || "", spaceId: w.spaceId || "" }); setAddWorkFor("__place"); } }
   // a job on a room, floor or building with no asset (Phase 1 decision, round 30.4)
   function raiseJobAt(place) { setWorkPrefill(null); setWorkPlace(place || null); setAddWorkFor("__place"); }
+  // "Needs a job" (Phase 2): raise a job from a failed check or safety action — the office checks the form and saves it —
+  // or record that no job is needed, and why.
+  function raiseFromSuggestion(sg) {
+    const p = sg.prefill || {};
+    const pre = { description: p.description, priority: p.priority, category: p.category || "", supplierId: p.supplierId || "", fromCheck: sg.key, actionId: p.actionId || null };
+    setWorkPrefill(pre); setWorkPlace(null);
+    if (p.deviceId && devices.some((d) => d.id === p.deviceId)) { setAddWorkFor(p.deviceId); return; }
+    if (siteHasPlaces) { setAddWorkFor("__place"); return; }
+    if (locDevices.length) { setAddWorkFor(locDevices[0].id); return; }
+    startJob();
+  }
+  function dismissSuggestion(sg, why) {
+    persist.followups([{ id: sg.key, locationId: selectedLocationId, kind: sg.kind, title: sg.title, dismissed: true, why: why || "", by: currentUser?.name || "Unknown", at: new Date().toISOString() }, ...followups.filter((f) => f.id !== sg.key)]);
+    showToast("Marked: no job needed", sg.title);
+  }
   const siteHasPlaces = buildings.some((b) => b.locationId === selectedLocationId) || spaces.some((x) => x.locationId === selectedLocationId);
   function invoiceFromWork(w) {
     const number = window.prompt(`Invoice number for "${String(w.description).slice(0, 40)}" (${gbp(w.finalCost ?? w.quoteAmount)}):`, ""); if (number === null) return;
@@ -1341,18 +1377,7 @@ export function MainApp() {
     const bad = list.filter((r) => { const o = waterOutlets.find((x) => x.id === r.outletId); return o && WATER_LIMITS[o.type] && !WATER_LIMITS[o.type].ok(Number(r.temp)); }).length;
     showToast(`${list.length} temperature${list.length === 1 ? "" : "s"} recorded`, bad ? `${bad} out of range` : "all in range");
   }
-  function bulkUpdateWorks(ids, patch) {
-    const set = new Set(ids); const today = new Date().toISOString().slice(0, 10); let held = 0;
-    persist.works(works.map((w) => {
-      if (!set.has(w.id)) return w;
-      const extra = patch.status === "completed" && w.status !== "completed" ? { completedAt: today } : patch.status && patch.status !== "completed" ? { completedAt: null } : {};
-      const next = withApprovalRules(w, { ...w, ...patch, ...extra, ...holdChange(w, patch.status, today) });
-      if (approvalProblem(w, next)) { held++; return w; }   // over-limit quotes wait for approval
-      return next;
-    }));
-    const done = ids.length - held;
-    showToast(`${done} work${done === 1 ? "" : "s"} updated`, held ? `${held} left as they were — quote over the approval limit needs approving first` : patch.status ? `status: ${patch.status.replace("_", " ")}` : patch.assignee !== undefined ? `assigned to ${patch.assignee || "nobody"}` : "");
-  }
+  function bulkUpdateWorks(ids, patch) { worksActions.bulkUpdateWorks(ids, patch); }
   /* ---- permits to work ---- */
   function savePermit(pm) {
     if (pm.id) { persist.permits(permits.map((x) => x.id === pm.id ? { ...x, ...pm } : x)); showToast("Permit updated", pm.ref); return pm.ref; }
@@ -2035,21 +2060,13 @@ export function MainApp() {
     const completedDue = isEdit ? null : advanceSchedule(record.deviceId, record.date || new Date().toISOString().slice(0, 10), next, record.nextDueOverride || null);
     if (isEdit) recomputeSchedule(record.deviceId, next);
     if (record.date && record.cost) syncBudgetLineForVisit(record.deviceId, record.date, record.cost, visitId, completedDue);
-    // Failed checklist items become high-priority follow-up works — only for items that
-    // weren't already failed on a previous save of this same visit, so edits don't duplicate them.
+    // Failed checklist items go to the office as "Needs a job" suggestions (Phase 2 decision: the office confirms each job),
+    // counting only items that weren't already failed on a previous save of this same visit.
     const prevFails = new Set(isEdit ? (services.find((s) => s.id === record.id)?.checklistResults || []).filter((r) => r.result === "fail").map((r) => r.item) : []);
     const newFails = (record.checklistResults || []).filter((r) => r.result === "fail" && !prevFails.has(r.item));
     if (newFails.length) {
-      const dev = deviceById[record.deviceId];
-      const followUps = newFails.map((r) => ({
-        id: uid(), deviceId: record.deviceId, description: `Failed check: ${r.item}${r.note ? ` — ${r.note}` : ""}`,
-        quoteAmount: 0, dateRaised: record.date || new Date().toISOString().slice(0, 10), status: "requested",
-        budgetType: "budgeted", photos: [], priority: "high", supplierId: record.supplierId || dev?.supplierId || null,
-        comments: [], source: "checklist", loggedBy: currentUser?.name, loggedAt: new Date().toISOString(),
-      }));
-      persist.works([...followUps, ...works]);
-      showToast(`Visit logged · ${newFails.length} follow-up job${newFails.length === 1 ? "" : "s"} created`);
       setServiceModal(null);
+      showToast(`Visit logged · ${newFails.length} failed check${newFails.length === 1 ? "" : "s"}`, isOffice(role) ? "They're under Reactive works → Needs a job: raise a job for each, or say none is needed." : "The office has been told, and raises a job for each one that needs it.", true);
       return;
     }
     setServiceModal(null);
@@ -2069,16 +2086,12 @@ export function MainApp() {
   }
   function addWork(work) {
     const id = uid();
-    // a new job over the approval limit only starts approved when an approver raises it
-    if (work.quoteAmount !== undefined && work.quoteAmount !== null && work.quoteAmount !== "") work = { ...work, quoteAmount: Math.round((Number(work.quoteAmount) || 0) * 100) / 100 };
-    if (approvalLimit > 0 && Number(work.quoteAmount) >= approvalLimit && (GO_AHEAD.includes(work.status) || work.status === "completed") && !work.approvedBy) {
-      const at = new Date().toISOString();
-      if (canApproveQuotes) work = { ...work, approvedBy: currentUser?.name || "Unknown", approvedAt: at, approvedAmount: Number(work.quoteAmount), comments: [...(work.comments || []), { text: `Approved ${gbp(work.quoteAmount)} when raised`, by: currentUser?.name || "Unknown", at }] };
-      else { work = { ...work, status: "quoted" }; setTimeout(() => showToast("Sent for approval", `The quote is over the ${gbp(approvalLimit)} approval limit`), 2400); }
-    }
-    if (!canApproveQuotes) { const { approvedBy, approvedAt, approvedAmount, ...rest } = work; work = rest; }
+    // approval rules and where the job starts in its life (accepted straight away when the office raises it)
+    work = worksActions.prepareNewWork(work);
     const incidentId = workPrefill?.incidentId || null;
-    persist.works([{ ...work, id, incidentId, loggedBy: currentUser?.name, loggedAt: new Date().toISOString() }, ...works]);
+    const fromCheck = workPrefill?.fromCheck || null; const actionId = workPrefill?.actionId || null;   // raised from "Needs a job"
+    persist.works([{ ...work, id, incidentId, ...(fromCheck ? { fromCheck } : {}), loggedBy: currentUser?.name, loggedAt: new Date().toISOString() }, ...works]);
+    if (actionId && actions.some((a) => a.id === actionId)) persist.actions(actions.map((a) => a.id === actionId ? { ...a, workId: id } : a));
     if (incidentId) persist.incidents(incidents.map((i) => i.id === incidentId ? { ...i, workId: id } : i));
     setAddWorkFor(null); setWorkPrefill(null); setWorkPlace(null);
     showToast("Extra work added", `${jobWhat(work, deviceById, { buildings, spaces })} — ${String(work.description || "").slice(0, 60)}`);
@@ -2176,7 +2189,8 @@ export function MainApp() {
       saveNav({ selectedLocationId: dev.locationId, selectedCountryId: loc?.countryId || selectedCountryId });
     }
     setTab("devices");
-    if (ACTIVE_CAN_EDIT) setQuickLog({ deviceId: dev.id }); else setHistoryFor(dev.id);
+    // field mode (Phase 2): the asset card with Start visit, Log inspection, Report a problem, Photo, Meter reading
+    if (canWrite(role, SKEYS.services)) setFieldFor(dev.id); else setHistoryFor(dev.id);
     return true;
   }
   // How many records use each category (a category in use can't be deleted).
@@ -2191,50 +2205,17 @@ export function MainApp() {
     persist.devices(devices.map((d) => deviceIds.includes(d.id) ? { ...d, chaseLog: [...(d.chaseLog || []), entry] } : d));
     showToast(`Chase logged for ${deviceIds.length} job${deviceIds.length === 1 ? "" : "s"}`);
   }
-  // Quote approval is its own permission. A quote raised above what was approved goes back for approval;
-  // a change the approval rules don't allow is refused here with the reason (the database checks it again).
-  function withApprovalRules(w, next) {
-    // amounts are stored as plain numbers (older records may hold text)
-    const pence = (v) => Math.round((Number(v) || 0) * 100) / 100;
-    for (const f of ["quoteAmount", "approvedAmount"]) if (next[f] !== undefined && next[f] !== null && next[f] !== "" && next[f] !== pence(next[f])) next = { ...next, [f]: pence(next[f]) };
-    const at = new Date().toISOString(); const by = currentUser?.name || "Unknown";
-    const note = (text) => [...(next.comments || []), { text, by, at }];
-    // moving an approved job to another supplier or asset sends it back for approval (unless an approver does it)
-    if (w && w.approvedBy && next.approvedBy && !canApproveQuotes && next.status !== "completed" && (next.supplierId !== w.supplierId || next.deviceId !== w.deviceId)) {
-      next = { ...next, approvedBy: null, approvedAt: null, approvedAmount: null, status: GO_AHEAD.includes(next.status) ? "quoted" : next.status, comments: note("Supplier or asset changed after approval — needs approving again") };
-    }
-    const q = Number(next.quoteAmount) || 0; const oldQ = Number(w?.quoteAmount) || 0;
-    if (!w || approvalLimit <= 0 || q < approvalLimit || q <= oldQ) return next;
-    if (next.approvedBy && q > (Number(w.approvedAmount ?? w.quoteAmount) || 0)) {
-      // an approver changing the quote approves the new amount; anyone else sends it back for approval
-      if (canApproveQuotes) return { ...next, approvedBy: by, approvedAt: at, approvedAmount: q, comments: note(`Approved the new quote of ${gbp(q)}`) };
-      if (next.status === "completed") return next;   // refused below: a finished job's approved quote can't be raised
-      return { ...next, approvedBy: null, approvedAt: null, approvedAmount: null, status: "quoted", comments: note(`Quote changed to ${gbp(q)} after it was approved — needs approving again`) };
-    }
-    if (!next.approvedBy && GO_AHEAD.includes(next.status)) {
-      // a job under way whose quote now goes over the limit waits for approval
-      return { ...next, status: "quoted", comments: note(`Quote changed to ${gbp(q)}, over the ${gbp(approvalLimit)} approval limit — needs approving`) };
-    }
-    return next;
-  }
-  const approvalProblem = (before, after) => worksRefusal(before ? [before] : [], [after], { approver: canApproveQuotes, limit: approvalLimit });
-  function updateWork(id, patch) {
-    const today = new Date().toISOString().slice(0, 10);
-    const w = works.find((x) => x.id === id); if (!w) return false;
-    const extra = patch.status === "completed" && w.status !== "completed" ? { completedAt: today } : patch.status && patch.status !== "completed" ? { completedAt: null } : {};
-    const next = withApprovalRules(w, { ...w, ...patch, ...extra, ...holdChange(w, patch.status, today) });
-    const problem = approvalProblem(w, next);
-    if (problem) { tellUser("Not changed", problem); return false; }
-    if (patch.status === undefined && next.status === "quoted" && w.status !== "quoted") showToast("Quote needs approving", hideMoney ? "It's over the approval limit, so it waits for approval." : `${gbp(next.quoteAmount)} is over what was approved or the ${gbp(approvalLimit)} limit`, true);
-    persist.works(works.map((x) => (x.id === id ? next : x)));
-    return true;
-  }
-  // Going on / coming off hold: the paused days are added to the work's target date.
-  function holdChange(w, newStatus, today) {
-    if (!newStatus || newStatus === w.status) return {};
-    if (newStatus === "on_hold") return { heldSince: today };
-    if (w.status === "on_hold" && w.heldSince) return { heldSince: null, heldDays: (Number(w.heldDays) || 0) + Math.max(0, Math.round((new Date(today) - new Date(w.heldSince)) / 86400000)) };
-    return {};
+  // Jobs: the approval rules, the job's life (stages, quality check, timeline) and refusals live in
+  // features/operations/useWorks.js (Phase 2). MainApp keeps the state and the saving.
+  const worksActions = useWorks({ works, persistWorks: persist.works, userName: currentUser?.name, role, canApprove: canApproveQuotes, limit: approvalLimit, hideMoney, showToast, tellUser, supplierName: (id) => supplierById[id]?.name || "" });
+  const { updateWork } = worksActions;
+  // Planned maintenance in the field: inspections, photos, meter readings, the visit in progress (features/operations/usePlanned.js)
+  function saveVisitDraft(v) { setVisitDraft(v); savePersonal(PKEYS.visit, v); }
+  const planned = usePlanned({ devices, persistDevices: persist.devices, meters, meterReadings, persistMeterReadings: persist.meterReadings, userName: currentUser?.name, showToast, draft: visitDraft, saveDraft: saveVisitDraft });
+  function startVisitAt(id) {
+    if (visitDraft && visitDraft.deviceId !== id && !window.confirm(`You have a visit in progress on ${deviceById[visitDraft.deviceId]?.name || "another asset"}. Discard it and start this one?`)) return;
+    if (visitDraft && visitDraft.deviceId !== id) saveVisitDraft(null);
+    planned.startVisit(id); setFieldFor(null); setVisitOpen(true);
   }
   function deleteWork(id) { const w = works.find((x) => x.id === id); if (w) toTrash({ type: "work", name: `${jobWhat(w, deviceById, { buildings, spaces })} — ${String(w.description).slice(0, 50)}`, payload: { work: w } }); withUndo(() => { persist.works(works.filter((x) => x.id !== id)); showToast("Extra work deleted", w?.description?.slice(0, 60)); }); }
   function saveSupplier(supplier) {
@@ -2473,7 +2454,7 @@ export function MainApp() {
   function goAlert(a) {
     const k = String(a.key || "");
     const dev = k.match(/^(od|ds|nb|bo|we|ws|rp|down|rf)-(.+)$/);
-    const job = k.match(/^(rq|ap|oq|sla|qx)-(.+)$/);
+    const job = k.match(/^(rq|ap|oq|sla|qx|tri|chk)-(.+)$/);
     setShowAlerts(false);
     if (dev && deviceById[dev[2]]) { setTab("ops.ppm"); setHistoryFor(dev[2]); return; }
     if (job && works.some((w) => w.id === job[2])) { openJob(job[2]); return; }
@@ -2521,7 +2502,7 @@ export function MainApp() {
   ];
   const myName = currentUser?.name || "";
   const engineerData = {
-    myJobs: locWorks.filter((w) => !["completed", "rejected"].includes(w.status) && ((myName && w.assignee === myName) || (!w.assignee && w.priority === "high"))).map((w) => ({ key: w.id, title: w.description, sub: [deviceById[w.deviceId]?.name, w.status.replace("_", " "), w.assignee ? "assigned to you" : "urgent, unassigned"].filter(Boolean).join(" · "), tone: w.priority === "high" ? "danger" : "warn", go: () => openJob(w.id) })),
+    myJobs: locWorks.filter((w) => !["completed", "rejected"].includes(w.status) && ((myName && w.assignee === myName) || (!w.assignee && w.priority === "high"))).sort((a, b) => (b.assignee === myName) - (a.assignee === myName)).map((w) => ({ key: w.id, title: w.description, sub: [jobWhat(w, deviceById, { buildings, spaces }), jobStages(w, { limit: approvalLimit, hideMoney }).label, w.scheduledFor ? `booked ${fmtDate(w.scheduledFor)}` : "", w.assignee ? "assigned to you" : "urgent, unassigned — take it"].filter(Boolean).join(" · "), tone: w.priority === "high" ? "danger" : "warn", go: () => openJob(w.id) })),
     duePpm: locDevices.filter((d) => d.nextServiceDate && d.nextServiceDate <= in7).sort((a, b) => (b.assignee === myName) - (a.assignee === myName) || a.nextServiceDate.localeCompare(b.nextServiceDate)).map((d) => ({ key: d.id, title: d.name, sub: [d.nextServiceDate < todayISO ? `overdue since ${fmtDate(d.nextServiceDate)}` : `due ${fmtDate(d.nextServiceDate)}`, d.area, d.assignee === myName ? "yours" : ""].filter(Boolean).join(" · "), tone: d.nextServiceDate < todayISO ? "danger" : "warn", go: () => setHistoryFor(d.id) })),
     checks: register.rows.filter((r) => r.id.startsWith("log-") && r.status !== "green").map((r) => ({ key: r.id, title: r.requirement, sub: r.reasons[0], tone: r.status === "red" ? "danger" : "warn", go: () => setTab("ops.logs") })),
     recent: (display.recent || []).map((id) => locDevices.find((d) => d.id === id)).filter(Boolean).slice(0, 5).map((d) => ({ key: d.id, title: d.name, sub: d.area || "", go: () => setHistoryFor(d.id) })),
@@ -2583,6 +2564,7 @@ export function MainApp() {
     return <AssetSummary device={d} status={assetStatus(d, { works, services })} crumbs={crumbs} supplier={supplierById[d.supplierId]} stats={stats} compliance={register.rows.filter((r) => r.assetId === d.id)} docs={d.links || []}
       canEdit={canWrite(role, SKEYS.services)} onLog={canWrite(role, SKEYS.services) ? () => { const id = d.id; setHistoryFor(null); setServiceModal({ deviceId: id }); } : null}
       onJob={canWrite(role, SKEYS.works) ? () => { const id = d.id; setHistoryFor(null); setWorkPrefill(null); setAddWorkFor(id); } : null}
+      onField={canWrite(role, SKEYS.services) ? () => { const id = d.id; setHistoryFor(null); setFieldFor(id); } : null}
       onQr={() => setQrFor(d)} onSetStatus={canWrite(role, SKEYS.devices) ? (ov) => setAssetStatus(d.id, ov) : null}
       onGoSupplier={() => { setHistoryFor(null); setTab("people.suppliers"); if (canWrite(role, SKEYS.suppliers)) setSupplierModal({ record: supplierById[d.supplierId] }); }} />;
   })();
@@ -2798,7 +2780,7 @@ export function MainApp() {
                 onEdit={(record) => setServiceModal({ deviceId: record.deviceId, record })} />
       );
       case "ops.works": return (
-              <WorksTab focus={worksFocus} budgetByCat={Object.fromEntries(budgetModel({ year: new Date().getFullYear(), budgets: locBudgets, services: locServices, works: locWorks, suppliers: locSuppliers, devices: locDevices, budgetLines: locBudgetLines, costLines: costLines.filter((l) => l.locationId === selectedLocationId), bs: budgetSettingsFor() }).rows.map((r) => [r.cat, { budget: r.budget, forecast: r.forecast, label: CATEGORY_META[r.cat]?.label || r.cat }]))} key={jobOpen ? `${jobOpen.id}-${jobOpen.n}` : "works"} initialOpenId={jobOpen?.id || openJobOnLoad} onDuplicateWork={duplicateWork} onInvoiceFromWork={canWrite(role, SKEYS.invoices) ? invoiceFromWork : null} onPoFromWork={canWrite(role, SKEYS.purchaseOrders) ? poFromWork : null} onImportWorks={canWrite(role, SKEYS.devices) ? importWorks : null} spares={locSpares} onUseSpare={canWrite(role, SKEYS.spares) ? useSpareOnWork : null} onLogChase={logWorkChase} onRepeat={(w) => { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }} invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={canWrite(role, SKEYS.projects) ? convertWorkToProject : null} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
+              <WorksTab suggestions={suggestions} onRaiseSuggestion={raiseFromSuggestion} onDismissSuggestion={dismissSuggestion} focus={worksFocus} budgetByCat={Object.fromEntries(budgetModel({ year: new Date().getFullYear(), budgets: locBudgets, services: locServices, works: locWorks, suppliers: locSuppliers, devices: locDevices, budgetLines: locBudgetLines, costLines: costLines.filter((l) => l.locationId === selectedLocationId), bs: budgetSettingsFor() }).rows.map((r) => [r.cat, { budget: r.budget, forecast: r.forecast, label: CATEGORY_META[r.cat]?.label || r.cat }]))} key={jobOpen ? `${jobOpen.id}-${jobOpen.n}` : "works"} initialOpenId={jobOpen?.id || openJobOnLoad} onDuplicateWork={duplicateWork} onInvoiceFromWork={canWrite(role, SKEYS.invoices) ? invoiceFromWork : null} onPoFromWork={canWrite(role, SKEYS.purchaseOrders) ? poFromWork : null} onImportWorks={canWrite(role, SKEYS.devices) ? importWorks : null} spares={locSpares} onUseSpare={canWrite(role, SKEYS.spares) ? useSpareOnWork : null} onLogChase={logWorkChase} onRepeat={(w) => { setWorkPrefill({ description: w.description, priority: w.priority, category: w.category }); setAddWorkFor(w.deviceId); }} invoices={locInvoices} locationName={locationLabel({ locationId: selectedLocationId })} onConvertToProject={canWrite(role, SKEYS.projects) ? convertWorkToProject : null} onBulkUpdate={bulkUpdateWorks} slaWorkingDays={!!settings.slaWorkingDays} onSetSla={(v, wd) => { persist.settings({ ...settings, slaDays: v, slaWorkingDays: !!wd }); showToast("Target times saved", `High ${v.high}d · Medium ${v.medium}d · Low ${v.low}d`); }} works={locWorks} deviceById={deviceById} supplierById={supplierById} suppliers={locSuppliers}
                 onUpdate={updateWork} onDelete={deleteWork} currentUserName={currentUser?.name}
                 approvalThreshold={Number(settings.approvalThreshold) || 0} onSetThreshold={canWriteSettings(role, ["approvalThreshold"]) && canApproveQuotes ? (v) => { persist.settings({ ...settings, approvalThreshold: Math.round((Number(v) || 0) * 100) / 100 }); showToast("Approval rule saved"); } : null}
                 onConvertToPlan={convertWorkToPlanLine} onConvertToService={canManage ? convertWorkToService : null}
@@ -3116,6 +3098,25 @@ export function MainApp() {
         <AddSupplierModal key={supplierModal.record?.id || "new-supplier"} existing={supplierModal.record}
           subcategoriesByCategory={subcategoriesByCategory} onClose={() => setSupplierModal(null)}
           onSave={saveSupplier} onDelete={deleteSupplier} />
+      )}
+      {fieldFor && deviceById[fieldFor] && (() => { const d = deviceById[fieldFor]; return (
+        <FieldCard device={d} placeText={placeLabel(placeOf(d, { locations, buildings, spaces }))} status={assetStatus(d, { works: locWorks, services: locServices })}
+          openJobs={locWorks.filter((w) => w.deviceId === d.id && !["completed", "rejected"].includes(w.status))} me={currentUser?.name || ""} meters={locMeters} readings={locReadings}
+          draft={visitDraft} canEdit={canWrite(role, SKEYS.services)} onClose={() => setFieldFor(null)}
+          onStartVisit={() => { if (visitDraft && visitDraft.deviceId === d.id) { setFieldFor(null); setVisitOpen(true); } else startVisitAt(d.id); }}
+          onInspection={(x) => planned.logInspection(d.id, x)} onPhoto={(ph, cap) => planned.addAssetPhoto(d.id, ph, cap)} onMeter={(m, v) => planned.addMeterReading(m, v, d.id)}
+          onReport={() => { setFieldFor(null); setWorkPrefill(null); setWorkPlace(null); setAddWorkFor(d.id); }}
+          onOpenJob={(jid) => { setFieldFor(null); openJob(jid); }} onFullRecord={() => { setFieldFor(null); setHistoryFor(d.id); }} />
+      ); })()}
+      {visitOpen && visitDraft && deviceById[visitDraft.deviceId] && (
+        <QuickLogModal devices={devices.filter((x) => x.id === visitDraft.deviceId)} suppliers={suppliers} initialDeviceId={visitDraft.deviceId} currentUserName={currentUser?.name} visit={visitDraft}
+          onDraft={(patch) => planned.updateDraft(patch)} onDiscard={() => { planned.discardDraft(); setVisitOpen(false); showToast("Visit discarded"); }}
+          onScan={() => {}} onClose={() => setVisitOpen(false)} onSave={(record) => { saveService(record); saveVisitDraft(null); setVisitOpen(false); }} />
+      )}
+      {visitDraft && !visitOpen && !fieldFor && deviceById[visitDraft.deviceId] && (
+        <button type="button" data-testid="visit-banner" onClick={() => setVisitOpen(true)} style={{ position: "fixed", bottom: toast ? 140 : 86, left: "50%", transform: "translateX(-50%)", zIndex: 55, background: "var(--accent)", color: "var(--on-accent)", border: "none", borderRadius: 22, padding: "10px 16px", fontSize: 13, fontWeight: 700, boxShadow: "0 6px 18px rgba(0,0,0,0.25)", cursor: "pointer", fontFamily: "inherit", maxWidth: "calc(100vw - 32px)", display: "flex", alignItems: "center", gap: 8 }}>
+          <Timer size={15} /> Visit in progress: {deviceById[visitDraft.deviceId].name} — continue
+        </button>
       )}
       {toast && (
         <div style={{

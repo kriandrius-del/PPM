@@ -1,6 +1,20 @@
-# Feature map — round 30.4 (FMOS phase 1, review decisions)
+# Feature map — round 31.1 (FMOS phase 2, parts 1 and 2)
 
-**Status:** Phase 1 is in review. The owner retested and passed every 30.3 fix (13 Oct 2026). Round 30.4 builds the two decisions from the review; they need retesting. The owner's Roles & permissions and QR/link checks are deferred to the end of the project, before going live. Phase 2 starts only after Phase 1 is approved.
+**Status:** Phase 1 was approved by the owner on 14 Oct 2026, on round 30.4 (commit `d96b32b`). Before going live, the owner's Roles & permissions and QR/link checks must still pass (deferred from the review). **Phase 2 (Operations) is being built on the review copy:** part 1 (one job lifecycle) and part 2 (engineer field mode and visits) are in round 31.1; part 3 (jobs and visits in proper database tables) comes next. Phase 2 needs the owner's review and approval like Phase 1.
+
+**Round 31.1 — Phase 2, parts 1 and 2** (the owner's decisions of 14 Oct 2026: skip stages a job doesn't need; engineers see their own jobs first; the office checks every finished job; failed checks suggest a job for the office to confirm):
+
+- **One life for every job:** request → triage → prioritised → quote required → quote received → approval → scheduled → assigned → in progress → completed → quality check → invoice → closed. Every job shows the same strip; a stage it doesn't need is skipped with the reason (no quote for in-house work, no approval under the limit, no invoice for in-house, warranty or no-cost work), and a stage the work went past is marked not needed. The job pop-up shows the strip (tap for every stage), **Next** with its buttons, and a **Timeline** of everything that happened (events, comments, supplier sign-off). Rules: `features/operations/lifecycle.js` (`jobStages`, `lifecycleEvents`, `jobTimeline`); screens: `features/operations/JobLifecycle.jsx` (`LifecycleStrip`, `JobNext`, `JobTimeline`, `StageChip`), used by `tabs/WorksTab.jsx`. The 30.3 steps (quote → approval → PO → work done → invoice) are inside it; Raise a PO is offered once the job can go ahead.
+  - **Triage:** jobs raised by engineers, QR codes or older requests wait in **To triage**; the office (coordinators and up) accepts them with a priority and whether a quote is needed (no quote = go ahead, status Approved), or rejects them. Jobs the office raises are accepted straight away.
+  - **Booked for** (`scheduledFor`) and **Assigned to** a person (`assignee`) as well as a supplier; engineers get **Take this job** on unassigned jobs; booking and assigning can be skipped (Start work / Mark completed straight away).
+  - **Quality check:** jobs finished from round 31 (`lc: 2`) wait in **To check** until the office passes them (who, when, a note) or sends them back with what still needs doing. Older finished jobs show "before checks began".
+  - **Invoice:** supplier jobs wait in **To invoice** (finance and FM managers) until an invoice is recorded against the job or its PO, or they say **No invoice needed**.
+  - **Lists:** My jobs, To triage, To check, To invoice filters; each card shows its stage; engineers see their own jobs first. **Closed** filter renamed **Finished** (completed or rejected) because "closed" is now the last stage. Home: the engineer's My jobs shows each job's stage and booking; the office gets "New job to accept" and "Finished — check the work" alerts.
+  - **Needs a job:** failed visit checklist items, failed field inspections, failed check-log ticks, outlets whose latest water temperature is out of range, failed equipment inspections and open safety actions (last 90 days) are listed for the office under Reactive works → **Needs a job**: **Raise a job** (form filled in; the job carries `fromCheck`, a safety action gets `workId`) or **No job needed** with the reason (`org:followups`). Failed visit checks no longer create jobs on their own. `features/operations/suggestions.js`, `NeedsAJob.jsx`.
+  - **Database:** only the office may set `triagedAt`/`triagedBy`/`checkedAt`/`checkedBy`/`checkNote`; only finance and FM managers and up may set `invoiceNeeded`; `org:followups` is written by coordinators and up (`ppm_list_guard`, `ppm_write_roles`; app copy `lifecycleRefusal` in `app/permissions.js`). QR-reported jobs carry `lc: 2`.
+  - **Code:** the job rules (approval, lifecycle follow-ons, timeline events, refusals) moved out of MainApp into `features/operations/useWorks.js`.
+- **Engineer field mode:** scanning an asset (in-app scanner, or its QR link for engineers and anyone on a touch screen) opens one screen with big buttons: **Start visit**, **Log inspection** (All OK / Needs attention / Not working, with a note and photo; can mark the asset's status), **Report a problem**, **Photo** (with a caption), **Meter reading**. The asset record has a **Field card** button. `features/operations/FieldCard.jsx`, `usePlanned.js`.
+  - **Visits on one page:** a visit started at the asset is timed; it's kept for the person (`me:visit`) until finished, with a "Visit in progress — continue" bar; Finish needs the technician's signature and records `startedAt`, `finishedAt`, `arrived`, `left`, `minutesOnSite`, more photos (`photos`) and the sign-off. Quick log can also record arrived/left times and more photos.
 
 **Round 30.4 changes** (the review's two decisions — no Phase 2 work):
 
@@ -55,7 +69,7 @@ What the app does, where each feature lives now, and where its code is. No featu
 | Area | Sections | Code |
 |---|---|---|
 | **Home** | What needs attention (new command centre: critical → action required → today → site health → money → coming up), Site desk (the previous Home: noticeboard, handover, reminders, notes, weather, on call, emergency contacts, statutory list, TV mode, daily briefing, weekly email) | `features/home/CommandCentre.jsx`, `tabs/HomeTab.jsx` |
-| **Operations** | Planned maintenance, Reactive works, Schedule, Projects, Visit history, Logs & checks, Walk-rounds, Shutdowns | `tabs/ServicesTab.jsx`, `WorksTab.jsx`, `ScheduleTab.jsx`, `CompletedTab.jsx`, `SafetyViews.LogsView`, `MoreViews` |
+| **Operations** | Planned maintenance, Reactive works (with job stages, Needs a job, To triage / To check / To invoice), Schedule, Projects, Visit history, Logs & checks, Walk-rounds, Shutdowns; field card after a scan | `tabs/ServicesTab.jsx`, `WorksTab.jsx`, `ScheduleTab.jsx`, `CompletedTab.jsx`, `SafetyViews.LogsView`, `MoreViews`, `features/operations/*` |
 | **Assets** | Locations (portfolio → site → building → floor → room → asset), Asset register (status and the reason for it), Rooms & spaces, Meters & energy, Floor plans, Isolation points | `features/assets/*`, `MoreViews.SpacesView`, `SiteTab.MetersTab` |
 | **People** | On site & visitors (sign-in register, roll call, expected visitors), Suppliers & contractors (scorecard, onboarding, portal links), Team & contacts (profiles, directory, on call, emergency contacts), Occupant feedback, Car park | `features/people/PeopleViews.jsx`, `tabs/SuppliersTab.jsx` |
 | **Compliance & Safety** | Compliance register (new: one red/amber/green list), Incidents, Actions, Permits, Water hygiene, Fire drills, Equipment inspections, Asbestos, COSHH, Audits, Training | `features/compliance/*`, `tabs/SiteTab.jsx`, `SafetyViews.jsx`, `MoreViews.jsx` |
@@ -76,20 +90,21 @@ What the app does, where each feature lives now, and where its code is. No featu
 
 ## Data
 
-- **Storage:** one JSON list per company per kind of record, in `kv_store` (key `org:<name>`), 49 lists in all.
+- **Storage:** one JSON list per company per kind of record, in `kv_store` (key `org:<name>`), 50 lists in all.
 - **New in round 30:**
   - `org:buildings`: buildings with their floors.
   - Rooms (`org:spaces`) gain `buildingId` and `floorId`.
   - Assets (`org:devices`) gain `spaceId` and an optional `statusOverride`.
   - Round 30.3: assets, meters (`org:meters`) and isolation points (`org:isolations`) can also carry `buildingId` / `floorId`; floor plans (`org:floorplans`) carry `buildingId` / `floorId`; shutdowns carry `typeOther`.
   - Round 30.4: a job (`org:works`) may have no `deviceId`, with `locationId` + `buildingId` / `floorId` / `spaceId` + `placeName` instead; visits (`org:services`) may carry `costPending: true` (logged by an engineer, cost to be added by the office).
-  - Personal `me:notif` holds which notifications you've read or marked done.
+  - Round 31.1: jobs gain `lc` (2 = raised or finished under the Phase 2 lifecycle), `triagedAt`/`triagedBy`, `quoteNeeded`, `quotedAt`, `scheduledFor`, `startedAt`, `checkedAt`/`checkedBy`/`checkNote`, `invoiceNeeded`, `fromCheck` and `events` (the timeline); new list `org:followups` (suggestions the office said need no job); safety actions may carry `workId`; asset notes (`notesLog`) may be inspections (`kind: "inspection"`, `result`) or photos (`kind: "photo"`); visits may carry `startedAt`, `finishedAt`, `minutesOnSite` and `photos`; meter readings may carry `fromDeviceId`.
+  - Personal `me:notif` holds which notifications you've read or marked done; `me:visit` holds the visit you have in progress.
 - **Links:** an asset is in a room either through `spaceId` or because its Area text matches the room's name. **Assets → Locations → Organise into rooms** creates the rooms from Areas in one go.
 - **Roles:** the database decides who may change each list (`ppm_write_roles`), with a field-by-field rule for settings (`ppm_settings_check`). Saved rows can't be moved between lists, scopes or companies (`ppm_kv_freeze`).
 
 ## Technical debt still to pay
 
-- **MainApp.jsx** still holds all the state and save handlers (it has grown to about 3,000 lines). The plan in ROADMAP.md moves each area's state and handlers into `features/<area>/` hooks.
+- **MainApp.jsx** still holds most state and save handlers (about 3,200 lines). Phase 2 started moving them out: the job rules are in `features/operations/useWorks.js` and the field actions in `usePlanned.js`; the visit schedule and budget rules (`saveService`) are next, with the move to tables.
 - **Older screens** (`tabs/`) use inline styles and the render-time `ACTIVE_CAN_EDIT` flag. New screens use the design system, but the old ones move across area by area.
 - **Storage:** one JSON blob per list means the database can enforce rules per list, not per record. For example, an engineer may change the asset list because logging a visit updates it. Real tables with foreign keys come in phases 2–3.
 - **Duplication:** the old statutory card on the Site desk overlaps the compliance register. It is kept for now and will be retired once the register has been in use for a while.

@@ -1,14 +1,14 @@
 // The top of an asset's record: where it is, its status and why, and everything connected to it —
 // maintenance, jobs, supplier and contract, costs, certificates, documents, meters and QR code.
 import { useState } from "react";
-import { FileCheck, Gauge, Hammer, QrCode, ShieldCheck, Truck, Wrench, Flag } from "lucide-react";
+import { FileCheck, Gauge, Hammer, QrCode, ShieldCheck, Smartphone, Truck, Wrench, Flag } from "lucide-react";
 import { Breadcrumb, Btn, Kpi, Pill } from "../../components/ds.jsx";
 import { ASSET_STATUSES } from "./places.js";
 import { CRITICALITY, CONDITION_GRADES } from "../../lib/constants.js";
 import { ACTIVE_HIDE_MONEY } from "../../lib/globals.js";
 import { daysUntil, fmtDate, gbp } from "../../lib/utils.js";
 
-export function AssetSummary({ device, status, crumbs = [], supplier, stats = {}, compliance = [], meters = [], docs = [], canEdit, onLog, onJob, onQr, onSetStatus, onGoSupplier, onGoMeters }) {
+export function AssetSummary({ device, status, crumbs = [], supplier, stats = {}, compliance = [], meters = [], docs = [], canEdit, onLog, onJob, onField, onQr, onSetStatus, onGoSupplier, onGoMeters }) {
   const [marking, setMarking] = useState(false);
   if (!device) return null;
   const ins = supplier?.insuranceExpiry ? daysUntil(supplier.insuranceExpiry) : null;
@@ -54,6 +54,7 @@ export function AssetSummary({ device, status, crumbs = [], supplier, stats = {}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {canEdit && onLog && <Btn size="sm" variant="primary" icon={Wrench} onClick={onLog}>Log a visit</Btn>}
         {canEdit && onJob && <Btn size="sm" icon={Hammer} onClick={onJob}>Raise a job</Btn>}
+        {canEdit && onField && <Btn size="sm" icon={Smartphone} onClick={onField}>Field card</Btn>}
         {onQr && <Btn size="sm" icon={QrCode} onClick={onQr}>QR sticker</Btn>}
       </div>
     </div>

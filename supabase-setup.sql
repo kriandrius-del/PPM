@@ -1,6 +1,6 @@
 -- =====================================================================
 --  PPM Service Book — Supabase database setup (secure, multi-company)
---  Round 30.4. Paste this whole file into Supabase → SQL Editor → Run.
+--  Round 31.1 (Phase 2). Paste this whole file into Supabase → SQL Editor → Run.
 --  Safe to run again (it updates what's already there).
 --
 --  What it does
@@ -11,6 +11,8 @@
 --     Which lists each role may change is decided here, by ppm_write_roles() — not by the app.
 --   • Engineers work on the assets that exist: they can't add, delete or restructure them (ppm_list_guard).
 --   • Engineers don't add or change prices or costs on jobs, visits or spare parts — the office does (ppm_list_guard).
+--   • Every job has the same life (Phase 2). Only the office (coordinators and up) accepts new jobs and signs off
+--     their quality check; only finance or an FM manager says a job needs no invoice (ppm_list_guard).
 --   • Approving quotes over the approval limit is a separate permission ("Approves quotes"): finance always,
 --     anyone else only when an admin gives it to them. Editing jobs never gives it (ppm_can_approve, ppm_list_guard).
 --   • Photos and certificates go to private file storage (bucket "ppm-media").
@@ -131,7 +133,7 @@ language sql immutable set search_path = public, pg_temp as $$
     -- registers, sites, buildings, rooms, suppliers and projects
     when p_key in ('org:projects', 'org:shutdowns', 'org:asbestos', 'org:coshh', 'org:equipment', 'org:audits', 'org:training', 'org:drills', 'org:waterOutlets',
                    'org:keys', 'org:waste', 'org:keyDates', 'org:carPark', 'org:feedback', 'org:isolations', 'org:meters', 'org:countries', 'org:locations',
-                   'org:spaces', 'org:floorplans', 'org:buildings', 'org:suppliers')
+                   'org:spaces', 'org:floorplans', 'org:buildings', 'org:suppliers', 'org:followups')
       then array['owner', 'admin', 'manager', 'coordinator']
     -- money
     when p_key in ('org:budgets', 'org:purchaseOrders', 'org:invoices', 'org:costLines', 'org:savings')
@@ -589,7 +591,8 @@ begin
     v_rec := jsonb_build_object('id', v_id, 'deviceId', p_ref, 'description', ppm_private.txt(p_data, 'description', 2000), 'quoteAmount', 0,
       'dateRaised', ppm_private.today(), 'status', 'requested', 'budgetType', 'budgeted',
       'photos', case when ppm_private.img(p_data ->> 'photo', 700000) is not null then jsonb_build_array(p_data ->> 'photo') else '[]'::jsonb end,
-      'priority', v_pr, 'supplierId', v_dev -> 'supplierId', 'comments', '[]'::jsonb, 'source', 'request', 'requestedBy', v_name, 'loggedAt', v_now);
+      'priority', v_pr, 'supplierId', v_dev -> 'supplierId', 'comments', '[]'::jsonb, 'source', 'request', 'requestedBy', v_name, 'loggedAt', v_now,
+      'lc', 2);   -- round 31: waits for the office to accept it (triage)
     if ppm_private.txt(p_data, 'email', 120) <> '' then v_rec := v_rec || jsonb_build_object('requesterEmail', ppm_private.txt(p_data, 'email', 120)); end if;
     perform ppm_private.prepend(v_org, 'org:works', v_rec, null);
     return jsonb_build_object('id', v_id);
@@ -772,6 +775,8 @@ drop trigger if exists kv_store_freeze on public.kv_store;
 --   jobs (org:works): only approvers may give approval; a quote over the company's approval limit can't go ahead
 --   without approval; a quote raised after approval needs approving again
 --   money (jobs, visits, spares): engineers add and change no prices or costs — the office does (round 30.4)
+--   the job lifecycle (round 31): only the office accepts jobs (triage) and signs off their quality check; only
+--   finance and FM managers and up say a job needs no invoice
 create or replace function public.ppm_list_guard() returns trigger
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_role text; v_old jsonb; v_new jsonb; v_bad text; v_limit numeric; v_approver boolean; v_msg text; v_mf text[];
@@ -831,6 +836,20 @@ begin
                            where (coalesce(jsonb_typeof(n -> f), 'null') not in ('number', 'null') and coalesce(n ->> f, '') <> '')
                               or (jsonb_typeof(n -> f) = 'number' and (n -> f)::numeric <> round((n -> f)::numeric, 2)))) then
     raise exception 'Quote amounts must be numbers in pounds and pence.' using errcode = '42501'; end if;
+  -- the job lifecycle: who may accept a job, sign off its quality check, or say it needs no invoice
+  if v_role not in ('owner', 'admin', 'manager', 'coordinator') and exists (
+       select 1 from jsonb_array_elements(v_new) n
+       left join lateral (select x from jsonb_array_elements(v_old) x where x ->> 'id' = n ->> 'id' limit 1) ox(o) on true
+       cross join unnest(array['triagedAt', 'triagedBy', 'checkedAt', 'checkedBy', 'checkNote']) f
+       where jsonb_typeof(n) = 'object'
+         and ((o is not null and (n -> f) is distinct from (o -> f)) or (o is null and coalesce(n ->> f, '') <> ''))) then
+    raise exception 'Only the office (coordinators and up) can accept jobs or sign off their quality check.' using errcode = '42501'; end if;
+  if v_role not in ('owner', 'admin', 'manager', 'finance') and exists (
+       select 1 from jsonb_array_elements(v_new) n
+       left join lateral (select x from jsonb_array_elements(v_old) x where x ->> 'id' = n ->> 'id' limit 1) ox(o) on true
+       where jsonb_typeof(n) = 'object'
+         and ((o is not null and (n -> 'invoiceNeeded') is distinct from (o -> 'invoiceNeeded')) or (o is null and coalesce(n ->> 'invoiceNeeded', '') <> ''))) then
+    raise exception 'Only finance or an FM manager can say a job needs no invoice.' using errcode = '42501'; end if;
   v_approver := public.ppm_can_approve(new.org_id);
   -- the limit: settings.approvalThreshold; never set at all = £1,000, the app's default (0 or empty = no limit)
   select case when not coalesce(ppm_private.j(value) ? 'approvalThreshold', false) then 1000

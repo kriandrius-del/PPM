@@ -674,7 +674,7 @@ export function AddDeviceModal({ buildings = [], spaces = [], plannedCount = 0, 
               + Start from a standard {(CATEGORY_META[serviceCategory] || CATEGORY_META.maintenance).label.toLowerCase()} checklist
             </button>
           )}
-          <span style={{ fontSize: 10.5, color: "var(--faint)" }}>Ticked off Pass / Fail / N/A each time a visit is logged. Failed items create follow-up jobs in Works.</span>
+          <span style={{ fontSize: 10.5, color: "var(--faint)" }}>Ticked off Pass / Fail / N/A each time a visit is logged. Failed items go to the office under Reactive works → Needs a job.</span>
         </Field>
         <CustomFieldInputs appliesTo="service" category={serviceCategory} values={custom} onChange={setCustom} />
         {fieldErr && <div style={{ fontSize: 12, color: "var(--danger)" }}>{fieldErr}</div>}
@@ -978,7 +978,7 @@ export function LogServiceModal({ planLine = null, overspendPct = 0, onVerify, s
                     </div>
                   </div>
                   {r.result === "fail" && (
-                    <TextInput value={r.note} onChange={(e) => setCheck(i, { note: e.target.value })} placeholder="What's wrong? (creates a follow-up job)" style={{ width: "100%", marginTop: 6, fontSize: 12.5 }} />
+                    <TextInput value={r.note} onChange={(e) => setCheck(i, { note: e.target.value })} placeholder="What's wrong? (the office is told)" style={{ width: "100%", marginTop: 6, fontSize: 12.5 }} />
                   )}
                 </div>
               ))}
@@ -1193,7 +1193,7 @@ export function AddWorkModal({ siteId = "", buildings = [], spaces = [], jobTemp
   const [poNumber, setPoNumber] = useState("");
   const [workCustom, setWorkCustom] = useState({});
   const [workFieldErr, setWorkFieldErr] = useState("");
-  const [supplierId, setSupplierId] = useState(() => devices.find((d) => d.id === (defaultDeviceId || devices[0]?.id))?.supplierId || "");   // empty for a job on a place
+  const [supplierId, setSupplierId] = useState(() => (defaultDeviceId === PLACE ? "" : prefill?.supplierId) || devices.find((d) => d.id === (defaultDeviceId || devices[0]?.id))?.supplierId || "");   // empty for a job on a place
   const [description, setDescription] = useState(prefill?.description || "");
   const [quoteAmount, setQuoteAmount] = useState("");
   const [dateRaised, setDateRaised] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1336,7 +1336,7 @@ export function NotesLog({ notes, onAdd, onDelete }) {
   const list = showAll ? notes : notes.slice(0, 3);
   return (
     <div style={{ background: "var(--card-hi)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", display: "flex", alignItems: "center", gap: 5 }}><StickyNote size={13} /> Site notes ({notes.length})</div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", display: "flex", alignItems: "center", gap: 5 }}><StickyNote size={13} /> Site notes, inspections and photos ({notes.length})</div>
       {ACTIVE_CAN_EDIT && onAdd && (
         <div style={{ display: "flex", gap: 6 }}>
           <TextInput value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { onAdd(text); setText(""); } }} placeholder="e.g. Fan belt worn — monitor next visit" style={{ flex: 1, fontSize: 13 }} />
@@ -1346,7 +1346,8 @@ export function NotesLog({ notes, onAdd, onDelete }) {
       {list.map((n) => (
         <div key={n.id} style={{ background: "var(--card)", borderRadius: 8, padding: "7px 9px", display: "flex", gap: 6, alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12.5, whiteSpace: "pre-wrap" }}>{n.text}</div>
+            <div style={{ fontSize: 12.5, whiteSpace: "pre-wrap", color: n.kind === "inspection" && n.result !== "ok" ? (n.result === "failed" ? "var(--danger)" : "var(--warn)") : "inherit", fontWeight: n.kind === "inspection" ? 650 : 400 }}>{n.text}</div>
+            {n.photo && <img src={n.photo} alt="" style={{ marginTop: 5, width: 96, height: 72, objectFit: "cover", borderRadius: 7, border: "1px solid var(--border)" }} />}
             <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 2 }}>{n.by} · {fmtDate(n.at.slice(0, 10))}</div>
           </div>
           {onDelete && <ConfirmDeleteButton onConfirm={() => onDelete(n.id)} size={12} />}

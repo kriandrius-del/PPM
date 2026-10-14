@@ -17,14 +17,18 @@
 
 Each later phase is small enough to ship and test on its own, keeping the app working throughout.
 
-> **Phase 1 is under review.** The owner retested and passed every round 30.3 fix (13 Oct 2026). Round 30.4 builds the two decisions from the review — engineers see no prices, and jobs can be raised on a room or building with no asset — and needs retesting. The owner's own checks of **Roles & permissions** and **QR and link pages** are deferred to the end of the project, before going live; they stay "Not tested" until then. No Phase 2 work starts until Phase 1 is approved.
+> **Phase 1 was approved by the owner on 14 Oct 2026** (round 30.4, commit `d96b32b` on `phase-1-review`): 53 of 76 review lines pass, with no snags. One condition: the owner's checks of **Roles & permissions** (ROL-01 to ROL-18) and **QR and link pages** (QR-01 to QR-05) must pass before the app goes live; they stay "Not tested" until then. The live app and live database stay untouched until the owner chooses to go live.
+> **Phase 2 is being built on the review copy.** The owner's decisions (14 Oct 2026): every job gets the same stages and skips the ones it doesn't need; engineers see their own jobs first and can see the rest; the office checks every finished job; failed checks and safety actions are suggested to the office, who confirm each job. Round 31.1 has part 1 (the job lifecycle, quality check, timeline, Needs a job) and part 2 (field mode and visits); part 3 (jobs and visits in proper database tables) is next. Phase 3 starts only after the owner approves Phase 2.
 > The product name stays **Service Book** for now, and the commercial name will be decided later. It's one line: `PRODUCT_NAME` in `lib/constants.js`.
 
 ## Later — Company branding
 
 Upload a company logo and choose a colour palette, both admin only. The hooks are already in place (`lib/brand.js`, the `AppShell` `brand` prop and the theme tokens). See DESIGN-SYSTEM.md.
 
-## Phase 2 — Operations
+## Phase 2 — Operations (in progress — round 31)
+
+Done in round 31.1: the lifecycle, triage, quality check, timeline, Needs a job, field mode, visits on one page, and the job rules moved into `features/operations/useWorks.js`. Still to come in Phase 2: the tables below, the visit schedule rules (`saveService`) moved into `usePlanned()`, and per-record access (engineers can see the site's jobs but change only theirs or unassigned ones, and the database itself hides prices from engineers).
+
 
 - **One work lifecycle.** Every job goes request → triage → prioritised → quote required → quote received → approval → scheduled → assigned → in progress → completed → quality check → invoice → closed. Each job shows its stage as a progress strip and keeps a full activity timeline. Safety actions and failed checks feed the same queue.
 - **Engineer field mode.** Scan → action → done. The asset QR opens a one-screen card with Start visit, Log inspection, Report problem, Photo and Meter reading, using big buttons and minimal typing.
